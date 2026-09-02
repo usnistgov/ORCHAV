@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+  <key id="x_local" for="node" attr.name="x_local" attr.type="double" />
+  <key id="y_local" for="node" attr.name="y_local" attr.type="double" />
+  <key id="length" for="edge" attr.name="length" attr.type="double" />
+  <key id="highway" for="edge" attr.name="highway" attr.type="string" />
+  <graph id="cached-local-route" edgedefault="undirected">
+    <node id="start">
+      <data key="x_local">0.0</data>
+      <data key="y_local">0.0</data>
+    </node>
+    <node id="middle">
+      <data key="x_local">2.0</data>
+      <data key="y_local">1.0</data>
+    </node>
+    <node id="end">
+      <data key="x_local">4.0</data>
+      <data key="y_local">0.0</data>
+    </node>
+    <edge source="start" target="middle">
+      <data key="length">2.2360679775</data>
+      <data key="highway">residential</data>
+    </edge>
+    <edge source="middle" target="end">
+      <data key="length">2.2360679775</data>
+      <data key="highway">residential</data>
+    </edge>
+  </graph>
+</graphml>

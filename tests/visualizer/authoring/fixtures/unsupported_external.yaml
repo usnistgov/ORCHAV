@@ -1,0 +1,28 @@
+schema_version: 2
+scene:
+  source: library
+  id: empty/empty.xml
+timeline:
+  steps: 30
+  duration_s: 3.0
+raytracing:
+  enabled: true
+actors:
+  tx:
+    - name: TX1
+      mobility:
+        type: stationary
+        position_m: [0.0, 0.0, 1.0]
+  rx:
+    - name: RX1
+      mobility:
+        type: random_waypoint
+        initial_position_m: [2.0, 0.0, 1.0]
+        x_bounds_m: [0.0, 10.0]
+        y_bounds_m: [0.0, 10.0]
+        z_bounds_m: [0.0, 2.0]
+        speed_range_mps: [1.0, 2.0]
+        pause_range_s: [0.0, 1.0]
+        seed: 7
+coverage:
+  enabled: true

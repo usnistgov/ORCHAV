@@ -1,0 +1,42 @@
+# Scene Diffuse Scattering, ITU Preset With Concrete Override
+# ===========================================================
+# ORCHAV applies the ITU-family preset, then an explicit material override sets
+# the loaded concrete material back to zero scattering.
+
+schema_version: 2
+
+scene:
+  id: box/open_room6materials.xml
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  scene_materials:
+    scattering_coefficient_preset: itu
+  quality:
+    custom:
+      max_depth: 1
+      diffuse_reflection: true
+  materials:
+    itu_concrete:
+      scattering_coefficient: 0.0
+
+timeline:
+  steps: 1
+  duration_s: 0.0
+
+actors:
+  tx:
+    - name: TX
+      mobility:
+        type: stationary
+        position_m: [-3.0, -3.0, 4.0]
+
+  rx:
+    - name: RX
+      mobility:
+        type: stationary
+        position_m: [3.0, 3.0, 1.0]
+
+view_defaults:
+  color_mode: mpc_type

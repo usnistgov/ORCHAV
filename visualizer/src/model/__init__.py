@@ -1,0 +1,65 @@
+"""Renderer-neutral visualizer domain models.
+
+This package exports declarative render objects and mutable render state used
+by services, scene builders, and renderer backends. Geometry payload types live
+under ``visualizer.src.types``; models here add stable object identity,
+visibility, transform, and domain metadata.
+"""
+
+from .render_objects import (
+    MaterialState,
+    NodeMarker,
+    RenderObject,
+    RenderObjectState,
+    SceneObject,
+    TargetInstance,
+    TrajectoryPreview,
+    Transform,
+    Visibility,
+    VisualEntity,
+    compose_render_state_transform,
+    make_text_label_state,
+    offset_render_state_transform,
+    render_state_aabb_center,
+    render_state_bounds,
+    render_state_center,
+    render_state_colors,
+    render_state_local_center,
+    render_state_points,
+    render_state_triangles,
+    replace_render_state_payload,
+    set_render_state_colors,
+    set_render_state_points,
+    set_render_state_triangles,
+    tint_render_state_payload,
+    transform_render_state_payload,
+)
+
+__all__ = [
+    "MaterialState",
+    "NodeMarker",
+    "RenderObject",
+    "RenderObjectState",
+    "SceneObject",
+    "TargetInstance",
+    "TrajectoryPreview",
+    "Transform",
+    "Visibility",
+    "VisualEntity",
+    "compose_render_state_transform",
+    "make_text_label_state",
+    "offset_render_state_transform",
+    "render_state_aabb_center",
+    "render_state_bounds",
+    "render_state_center",
+    "render_state_colors",
+    "render_state_local_center",
+    "render_state_points",
+    "render_state_triangles",
+    "replace_render_state_payload",
+    "set_render_state_colors",
+    "set_render_state_points",
+    "set_render_state_triangles",
+    "tint_render_state_payload",
+    "transform_render_state_payload",
+]

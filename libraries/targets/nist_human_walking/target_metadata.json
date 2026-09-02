@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "front": {
+    "axis": "-X",
+    "yaw_offset_deg": 180.0,
+    "note": "The reconstructed walking mesh faces local -X. Add this offset when using forward-style orientation so the visual target faces its trajectory in the Open3D/global frame."
+  }
+}

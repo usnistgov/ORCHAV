@@ -1,0 +1,68 @@
+# Multi-TX Coverage Map - Serving Cell And Margin Analysis
+# =======================================================
+# Demonstrates coverage maps with two transmitters over the Etoile scene.
+#
+# Run with: orchav-generator scenarios/generator/coverage/multi_tx/
+
+schema_version: 2
+
+scene:
+  source: sionna
+  id: etoile
+
+timeline:
+  steps: 1
+  duration_s: 0.0
+
+actors:
+  tx:
+    - name: BaseStation1
+      mobility:
+        type: stationary
+        position_m: [-90.0, 15.0, 35.0]
+      orientation:
+        type: fixed
+        yaw_deg: 35.0
+        pitch_deg: -35.0
+    - name: BaseStation2
+      mobility:
+        type: stationary
+        position_m: [-180.0, 50.0, 35.0]
+      orientation:
+        type: fixed
+        yaw_deg: 15.0
+        pitch_deg: -35.0
+
+coverage:
+  enabled: true
+  grid:
+    resolution_m: [7.5, 7.5]
+    heights_m: [1.5, 10.0]
+  solver:
+    seed: 42
+  save:
+    figure:
+      enabled: true
+      overlay_scene: true
+      overlay_alpha: 0.35
+      metrics:
+        - path_loss_db/BaseStation1
+        - path_loss_db/BaseStation2
+        - best_path_loss_db
+        - serving_tx
+        - tx_margin_db
+        - sinr_db
+      distribution:
+        enabled: true
+        metrics:
+          - path_loss_db/BaseStation1
+          - path_loss_db/BaseStation2
+          - best_path_loss_db
+          - tx_margin_db
+          - sinr_db
+
+generator_summary:
+  enabled: true
+  create: [scene2d]
+  visualization:
+    actor_label_mode: name

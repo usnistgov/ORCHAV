@@ -1,0 +1,142 @@
+# Python caches and build outputs
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments and local environment files
+.env
+.env.*
+.venv
+.venv*/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+Pipfile.lock
+poetry.lock
+.pdm.toml
+.pdm-python
+__pypackages__/
+
+# Test, coverage, and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.coverage
+htmlcov/
+cover/
+.cache/
+.hypothesis/
+nosetests.xml
+
+# Notebook and documentation build artifacts
+.ipynb_checkpoints/
+docs/_build/
+profile_default/
+ipython_config.py
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+*_backup/
+*_old/
+
+# Local configuration and secrets
+config/local/
+config/secrets/
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Native/build artifacts
+*.so
+*.dll
+*.dylib
+*.manifest
+*.spec
+
+# Generated ORCHAV scenario outputs
+scenarios/**/frames/
+scenarios/**/summary/
+scenarios/**/experiments/
+scenarios/**/mesh/
+scenarios/**/*.h5
+scenarios/**/*.hdf5
+scenarios/**/*.npz
+scenarios/**/*.npy
+scenarios/**/*.png
+scenarios/**/*.jpg
+scenarios/**/*.jpeg
+scenarios/**/*.gif
+scenarios/**/*.mp4
+scenarios/**/*.graphml
+scenarios/**/osm_metadata.json
+scenarios/**/scene.xml
+
+# Generated benchmark and report outputs
+benchmarks/figures/
+benchmarks/results/
+results/
+reports/
+comparison/
+mpcComparisons/
+test_outputs/
+test_results/
+
+# External model/data inputs and generated target libraries
+models/
+motions/
+libraries/targets/smpl_*/
+libraries/targets/*/preview/
+
+# Sionna RT, renderer, and texture caches
+*.npz
+libraries/ibl/.pygfx_cache/
+*.exr
+
+# Local renderer UI state
+.polyscope.ini
+imgui.ini
+
+# Root-level scratch artifacts
+/*.mp4
+/*.zip
+/*.pdf
+/*.png
+/output/
+/bench_*.py
+/debug_*.py
+/example.py
+/inspect_h5.py
+/test_plotter.py
+/notebook_demo.ipynb

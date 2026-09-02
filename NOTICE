@@ -1,0 +1,10 @@
+ORCHAV
+
+ORCHAV source code is distributed under the GNU General Public License version 2
+unless a file states otherwise.
+
+NIST-developed software is provided with the terms and warranty disclaimer in
+NIST_SOFTWARE_DISCLAIMER.md.
+
+Third-party dependencies and bundled assets are covered by their own licenses.
+See THIRD_PARTY_NOTICES.md and the credit files under libraries/.

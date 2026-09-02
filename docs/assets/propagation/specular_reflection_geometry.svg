@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="360" viewBox="0 0 960 360" role="img" aria-labelledby="title desc">
+  <title id="title">Specular reflection geometry</title>
+  <desc id="desc">Two panels compare a valid specular reflection, where incident and reflected angles are equal around the surface normal, with an invalid sampled candidate where those angles do not match.</desc>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#1f77b4"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2ca02c"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#d62728"/>
+    </marker>
+    <style>
+      .panel { fill: #ffffff; stroke: #d8dee9; stroke-width: 1.5; }
+      .title { font: 700 18px sans-serif; fill: #111827; }
+      .label { font: 14px sans-serif; fill: #1f2937; }
+      .small { font: 12px sans-serif; fill: #4b5563; }
+      .surface { stroke: #6b7280; stroke-width: 5; stroke-linecap: round; }
+      .normal { stroke: #7c3aed; stroke-width: 2; stroke-dasharray: 6 5; }
+      .ray-blue { stroke: #1f77b4; stroke-width: 4; fill: none; marker-end: url(#arrow-blue); }
+      .ray-green { stroke: #2ca02c; stroke-width: 4; fill: none; marker-end: url(#arrow-green); }
+      .ray-red { stroke: #d62728; stroke-width: 4; fill: none; marker-end: url(#arrow-red); }
+      .candidate { stroke-dasharray: 7 6; }
+      .angle { fill: none; stroke: #111827; stroke-width: 1.8; }
+      .ok { fill: #e9f7ef; stroke: #2ca02c; stroke-width: 1.5; }
+      .bad { fill: #fdecec; stroke: #d62728; stroke-width: 1.5; }
+      .node-tx { fill: #1f77b4; }
+      .node-rx { fill: #2ca02c; }
+      .node-rx-bad { fill: #d62728; }
+      .hit { fill: #111827; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="360" fill="#f8fafc"/>
+
+  <rect class="panel" x="24" y="24" width="436" height="312" rx="8"/>
+  <text class="title" x="44" y="58">Valid specular path</text>
+  <text class="small" x="44" y="80">Mirror law satisfied: theta_i = theta_r</text>
+
+  <line class="surface" x1="70" y1="260" x2="414" y2="260"/>
+  <line class="normal" x1="242" y1="260" x2="242" y2="92"/>
+  <text class="small" x="250" y="102">surface normal</text>
+
+  <circle class="node-tx" cx="98" cy="116" r="11"/>
+  <text class="label" x="80" y="100">TX</text>
+  <circle class="node-rx" cx="386" cy="116" r="11"/>
+  <text class="label" x="372" y="100">RX</text>
+  <circle class="hit" cx="242" cy="260" r="5"/>
+  <text class="small" x="218" y="283">target facet</text>
+
+  <line class="ray-blue" x1="108" y1="124" x2="236" y2="253"/>
+  <line class="ray-green" x1="247" y1="253" x2="376" y2="124"/>
+
+  <path class="angle" d="M224,241 A29,29 0 0 1 242,231"/>
+  <path class="angle" d="M242,231 A29,29 0 0 1 260,241"/>
+  <text class="small" x="195" y="229">theta_i</text>
+  <text class="small" x="263" y="229">theta_r</text>
+
+  <rect class="ok" x="72" y="298" width="316" height="26" rx="13"/>
+  <text class="small" x="89" y="316">Accepted as a possible specular MPC</text>
+
+  <rect class="panel" x="500" y="24" width="436" height="312" rx="8"/>
+  <text class="title" x="520" y="58">Rejected candidate hit</text>
+  <text class="small" x="520" y="80">Ray touches the object, but mirror law fails</text>
+
+  <line class="surface" x1="546" y1="260" x2="890" y2="260"/>
+  <line class="normal" x1="718" y1="260" x2="718" y2="92"/>
+  <text class="small" x="726" y="102">surface normal</text>
+
+  <circle class="node-tx" cx="574" cy="116" r="11"/>
+  <text class="label" x="556" y="100">TX</text>
+  <circle class="node-rx-bad" cx="842" cy="170" r="11"/>
+  <text class="label" x="828" y="154">RX</text>
+  <circle class="hit" cx="718" cy="260" r="5"/>
+  <text class="small" x="694" y="283">target facet</text>
+
+  <line class="ray-blue" x1="584" y1="124" x2="712" y2="253"/>
+  <line class="ray-red candidate" x1="724" y1="254" x2="833" y2="176"/>
+
+  <path class="angle" d="M700,241 A29,29 0 0 1 718,231"/>
+  <path class="angle" d="M718,232 A45,45 0 0 1 754,235"/>
+  <text class="small" x="671" y="229">theta_i</text>
+  <text class="small" x="758" y="232">theta_r</text>
+
+  <rect class="bad" x="548" y="298" width="322" height="26" rx="13"/>
+  <text class="small" x="565" y="316">Rejected: angles and visibility do not solve</text>
+</svg>

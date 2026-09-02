@@ -1,0 +1,44 @@
+# Scene Diffuse Scattering, Solver Switch Only
+# =============================================
+# Diffuse solving is enabled, but ORCHAV leaves the material scattering
+# coefficients loaded by Sionna RT unchanged.
+#
+# Run with:
+#   orchav-generator scenarios/generator/propagation_and_materials/scene_diffuse_scattering/
+
+schema_version: 2
+
+scene:
+  id: box/open_room6materials.xml
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    custom:
+      max_depth: 1
+      diffuse_reflection: true
+
+timeline:
+  steps: 1
+  duration_s: 0.0
+
+actors:
+  tx:
+    - name: TX
+      mobility:
+        type: stationary
+        position_m: [-3.0, -3.0, 4.0]
+
+  rx:
+    - name: RX
+      mobility:
+        type: stationary
+        position_m: [3.0, 3.0, 1.0]
+
+view_defaults:
+  color_mode: mpc_type
+
+generator_summary:
+  enabled: true
+  create: [scene2d]

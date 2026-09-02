@@ -1,0 +1,60 @@
+schema_version: 2
+scene:
+  source: library
+  id: empty/empty.xml
+timeline:
+  steps: 30
+  duration_s: 3.0
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    preset: ultra-low
+actors:
+  tx:
+    - name: TX Stationary
+      mobility:
+        type: stationary
+        position_m: [0.0, 0.0, 1.0]
+      orientation:
+        type: fixed
+        yaw_deg: 0.0
+        pitch_deg: 0.0
+        roll_deg: 0.0
+    - name: TX Linear
+      mobility:
+        type: linear
+        start_m: [0.0, 1.0, 1.0]
+        end_m: [5.0, 1.0, 1.0]
+      orientation:
+        type: align_motion
+  rx:
+    - name: RX Waypoint
+      mobility:
+        type: waypoint
+        points_m:
+          - [0.0, 2.0, 1.0]
+          - [2.0, 3.0, 1.0]
+          - [5.0, 2.0, 1.0]
+      orientation:
+        type: look_at
+        actor: Target Circular
+  targets:
+    - name: Target Circular
+      mobility:
+        type: circular
+        center_m: [2.0, 2.0, 1.0]
+        radius_m: 1.0
+        start_angle_deg: 90.0
+        clockwise: false
+      orientation:
+        type: fixed
+      asset:
+        source: catalog
+        id: cube
+        material_type: glass
+        scale: 1.0
+        switch_meshes: true
+visualizer:
+  scenario_builder:
+    document_version: 2

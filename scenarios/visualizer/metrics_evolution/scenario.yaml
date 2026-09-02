@@ -1,0 +1,57 @@
+# Metrics Evolution
+# =================
+# One fixed transmitter and one receiver approaching over 100 frames. Diffuse
+# ground scattering provides enough MPCs to make current-frame channel metrics
+# useful.
+#
+# Run with:
+#   orchav-generator scenarios/visualizer/metrics_evolution/
+#   orchav-visualizer --scenario scenarios/visualizer/metrics_evolution/
+
+schema_version: 2
+
+scene:
+  id: ground/ground_60x50.xml
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    preset: custom
+    custom:
+      max_depth: 1
+      samples_per_src: 20000
+      max_num_paths_per_src: 500000
+  materials:
+    # The XML material ID is mat-ground_asphalt. ORCHAV exposes it without
+    # the mat- prefix; its radio propagation model is concrete.
+    ground_asphalt:
+      scattering_coefficient: 0.3
+      scattering_pattern: lambertian
+
+timeline:
+  steps: 100
+  duration_s: 20.0
+
+actors:
+  tx:
+    - name: TX
+      mobility:
+        type: stationary
+        position_m: [-20.0, 0.0, 4.0]
+
+  rx:
+    - name: ApproachingRX
+      mobility:
+        type: linear
+        start_m: [25.0, 0.0, 1.5]
+        end_m: [-15.0, 0.0, 1.5]
+
+view_defaults:
+  camera_view: top
+  camera_dist: 70.0
+  selected_tx: 0
+  selected_rx: 0
+  color_mode: delay
+  mpc_visibility:
+    bounce_points: false

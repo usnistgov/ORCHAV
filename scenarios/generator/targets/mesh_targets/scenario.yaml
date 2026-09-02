@@ -1,0 +1,94 @@
+# Mesh Targets
+# ============
+# Adds passive mesh targets to the Actor Mobility topology:
+#   - 1 stationary TX
+#   - 4 RXs using simple mobility models
+#   - 1 animated walking human target
+#   - 1 stationary parked car target
+#
+# Run with:
+#   orchav-generator scenarios/generator/targets/mesh_targets/
+
+schema_version: 2
+
+scene:
+  id: ground/ground_60x50.xml
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    preset: ultra-low
+
+timeline:
+  steps: 33
+  duration_s: 8.0
+
+actors:
+  tx:
+    - name: MainTransmitter
+      mobility:
+        type: stationary
+        position_m: [0.0, 0.0, 10.0]
+      orientation:
+        type: fixed
+        pitch_deg: -45.0
+
+  rx:
+    - name: RX_Static
+      mobility:
+        type: stationary
+        position_m: [24.0, -8.0, 1.5]
+
+    - name: RX_Linear
+      mobility:
+        type: linear
+        start_m: [-22.0, -18.0, 1.5]
+        end_m: [23.0, -18.0, 1.5]
+
+    - name: RX_Waypoint
+      mobility:
+        type: waypoint
+        points_m:
+          - [10.0, -15.0, 1.5]
+          - [10.0, 0.0, 1.5]
+          - [25.0, 0.0, 1.5]
+
+    - name: RX_Circular
+      mobility:
+        type: circular
+        center_m: [-8.0, 14.0, 1.5]
+        radius_m: 6.0
+        clockwise: true
+
+  targets:
+    - name: Pedestrian
+      asset:
+        source: directory
+        path: libraries/targets/nist_human_walking
+        pattern: "fitted_*.ply"
+      mobility:
+        type: linear
+        start_m: [-15.0, 5.0, 0.85]
+        end_m: [15.0, 5.0, 0.85]
+      orientation:
+        type: align_motion
+        allow_pitch: false
+
+    - name: ParkedCar
+      asset:
+        source: directory
+        path: libraries/targets/car
+        pattern: "car.ply"
+        material_type: metal
+        switch_meshes: false
+      mobility:
+        type: stationary
+        position_m: [5.0, -8.0, 0.79]
+
+generator_summary:
+  enabled: true
+  create: [scene2d, speed, orientation]
+  visualization:
+    scene2d_mode: auto
+    actor_label_mode: name

@@ -1,0 +1,6 @@
+[paths]
+scenes = "libraries/scenes"
+ibl = "libraries/ibl"          # Directory for HDRI/IBL environments
+
+[live_grpc]
+sionna = "grpc://localhost:50051"

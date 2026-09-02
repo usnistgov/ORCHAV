@@ -1,0 +1,37 @@
+# HDF5 Files Mode - Local Frames
+# ==============================
+# Load precomputed frames from disk.
+
+schema_version: 2
+
+scene:
+  source: sionna
+  id: etoile
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+
+timeline:
+  steps: 50
+  duration_s: 5.0
+
+actors:
+  tx:
+    - name: BaseStation
+      mobility:
+        type: stationary
+        position_m: [0.0, 0.0, 30.0]
+      orientation:
+        type: fixed
+        pitch_deg: -45.0
+
+  rx:
+    - name: MobileRx
+      mobility:
+        type: linear
+        start_m: [60.0, -40.0, 1.5]
+        end_m: [-60.0, 40.0, 1.5]
+      orientation:
+        type: fixed
+        yaw_deg: 180.0

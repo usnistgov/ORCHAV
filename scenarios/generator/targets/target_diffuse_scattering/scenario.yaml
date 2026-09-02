@@ -1,0 +1,67 @@
+# Target Diffuse Scattering
+# =========================
+# Static target-reflection example:
+#   - 1 stationary TX
+#   - 1 stationary RX
+#   - 1 large metallic cube target
+#   - diffuse reflection enabled in the ray-tracing quality block
+#
+# Run with:
+#   orchav-generator scenarios/generator/targets/target_diffuse_scattering/
+
+schema_version: 2
+
+scene:
+  id: ground/ground_60x50.xml
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    custom:
+      diffuse_reflection: true
+  materials:
+    itu_metal_MetalCube:
+      scattering_coefficient: 0.3
+
+timeline:
+  steps: 1
+  duration_s: 0.0
+
+actors:
+  tx:
+    - name: TX
+      mobility:
+        type: stationary
+        position_m: [-18.0, -8.0, 4.0]
+      orientation:
+        type: fixed
+        pitch_deg: -20.0
+
+  rx:
+    - name: RX
+      mobility:
+        type: stationary
+        position_m: [18.0, -8.0, 1.5]
+
+  targets:
+    - name: MetalCube
+      asset:
+        source: directory
+        path: libraries/targets/cube
+        pattern: "cube.ply"
+        material_type: metal
+        scale: 5.0
+        switch_meshes: false
+      mobility:
+        type: stationary
+        position_m: [0.0, 2.0, 2.5]
+
+view_defaults:
+  color_mode: mpc_type
+
+generator_summary:
+  enabled: true
+  create: [scene2d]
+  visualization:
+    scene2d_mode: auto

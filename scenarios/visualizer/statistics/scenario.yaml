@@ -1,0 +1,78 @@
+# Statistics Scenario - Florence Street Walk
+# ==========================================
+# A receiver follows a street-level route through the Florence scene while a
+# rooftop transmitter stays fixed. The frame sequence supports whole-sequence
+# statistics, with a coverage-map overlay for the same urban area.
+#
+# Run with: orchav-generator scenarios/visualizer/statistics/
+
+schema_version: 2
+
+scene:
+  source: sionna
+  id: florence
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    preset: custom
+    custom:
+      max_depth: 5
+      samples_per_src: 50000
+      refraction: true
+      diffraction: true
+  materials:
+    marble:
+      scattering_coefficient: 0.3
+    concrete:
+      scattering_coefficient: 0.3
+
+timeline:
+  steps: 50
+  duration_s: 50.0
+
+actors:
+  tx:
+    - name: TX1
+      mobility:
+        type: stationary
+        position_m: [21.703, -22.033, 36.904]
+
+  rx:
+    - name: RX1
+      mobility:
+        type: waypoint
+        points_m:
+          - [6.0, -72.2, 1.5]
+          - [-8.193, -411.832, 1.5]
+          - [28.910, -414.991, 1.5]
+
+coverage:
+  enabled: true
+  grid:
+    resolution_m: [2.0, 2.0]
+    heights_m: [1.5]
+  tx:
+    mode: best_server
+  solver:
+    preset: custom
+    custom:
+      max_depth: 5
+      samples_per_src: 50000
+      refraction: true
+      diffraction: true
+  save:
+    figure:
+      enabled: true
+      overlay_scene: true
+      overlay_alpha: 0.35
+
+generator_summary:
+  enabled: true
+  create:
+    - scene2d
+    - speed
+
+view_defaults:
+  merge_scene_meshes: true

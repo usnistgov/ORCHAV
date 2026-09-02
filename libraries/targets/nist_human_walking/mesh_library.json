@@ -1,0 +1,11 @@
+{
+  "fps": 7.1,
+  "total_frames": 37,
+  "cycle_duration_s": 5.2113,
+  "cyclic": false,
+  "source": "NIST measurement 3D reconstruction (generic human)",
+  "mesh_format": "ply",
+  "vertices_per_frame": 24997,
+  "faces_per_frame": 50000,
+  "coordinate_frame": "world_embedded"
+}

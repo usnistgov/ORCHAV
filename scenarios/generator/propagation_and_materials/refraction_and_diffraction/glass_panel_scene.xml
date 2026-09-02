@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<scene version="2.1.0">
+  <bsdf type="itu-radio-material" id="mat-itu_glass_panel">
+    <string name="type" value="glass"/>
+    <float name="thickness" value="0.02"/>
+    <rgb value="0.55 0.78 1.0" name="color"/>
+  </bsdf>
+
+  <shape type="ply" id="mesh-glass-panel">
+    <string name="filename" value="meshes/glass_panel.ply"/>
+    <boolean name="face_normals" value="true"/>
+    <ref id="mat-itu_glass_panel" name="bsdf"/>
+  </shape>
+</scene>

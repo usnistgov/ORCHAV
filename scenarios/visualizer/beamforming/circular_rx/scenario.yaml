@@ -1,0 +1,69 @@
+# Beamforming - Circular RX
+# =========================
+# Visualizer scenario for inspecting antenna beam-pattern overlays.
+#
+# Run with:
+#   orchav-generator scenarios/visualizer/beamforming/circular_rx/
+#   orchav-visualizer --scenario scenarios/visualizer/beamforming/circular_rx/
+
+schema_version: 2
+
+scene:
+  id: ground/ground_60x50.xml
+
+data:
+  files:
+    chunk_size: 8
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    preset: ultra-low
+  antenna:
+    tx:
+      pattern: iso
+      num_rows: 4
+      num_cols: 8
+    rx:
+      pattern: dipole
+      num_rows: 4
+      num_cols: 8
+
+timeline:
+  steps: 32
+  duration_s: 8.0
+
+actors:
+  tx:
+    - name: CenterTX
+      mobility:
+        type: stationary
+        position_m: [0.0, 0.0, 8.0]
+
+  rx:
+    - name: OrbitRX
+      mobility:
+        type: circular
+        center_m: [0.0, 0.0, 1.5]
+        radius_m: 12.0
+      orientation:
+        type: look_at
+        actor: CenterTX
+
+view_defaults:
+  mpc_visibility:
+    enabled: false
+    paths: false
+    bounce_points: false
+
+visualizer:
+  panels:
+    statistics:
+      enabled: false
+
+generator_summary:
+  enabled: true
+  create: [scene2d, speed]
+  visualization:
+    scene2d_mode: devices

@@ -1,0 +1,72 @@
+# Actor Orientation
+# =================
+# Demonstrates orientation with a compact actor tracking chain on the ground scene:
+#   - TrackingTX is stationary and points at PatrolDrone.
+#   - PatrolDrone flies above the ground and points at Walker.
+#   - Walker moves linearly and faces its direction of travel.
+#   - GroundRX stays stationary so the ray-tracing setup remains simple.
+#
+# Run with:
+#   orchav-generator scenarios/generator/mobility_and_orientation/actor_orientation/
+
+schema_version: 2
+
+scene:
+  id: ground/ground_60x50.xml
+
+raytracing:
+  enabled: true
+  quality:
+    preset: ultra-low
+
+timeline:
+  steps: 32
+  duration_s: 8.0
+
+actors:
+  tx:
+    - name: TrackingTX
+      mobility:
+        type: stationary
+        position_m: [-22.0, -14.0, 8.0]
+      orientation:
+        type: look_at
+        actor: PatrolDrone
+
+  rx:
+    - name: GroundRX
+      mobility:
+        type: stationary
+        position_m: [22.0, -14.0, 1.5]
+      orientation:
+        type: fixed
+        yaw_deg: 180.0
+
+    - name: Walker
+      mobility:
+        type: linear
+        start_m: [-6.0, 6.0, 1.5]
+        end_m: [6.0, 6.0, 1.5]
+      orientation:
+        type: align_motion
+        allow_pitch: false
+
+    - name: PatrolDrone
+      mobility:
+        type: waypoint
+        points_m:
+          - [-18.0, 16.0, 12.0]
+          - [-6.0, 20.0, 14.0]
+          - [8.0, 18.0, 12.0]
+          - [18.0, 10.0, 14.0]
+          - [8.0, 2.0, 12.0]
+      orientation:
+        type: look_at
+        actor: Walker
+
+generator_summary:
+  enabled: true
+  create: [scene2d, speed, orientation]
+  visualization:
+    scene2d_mode: auto
+    actor_label_mode: name

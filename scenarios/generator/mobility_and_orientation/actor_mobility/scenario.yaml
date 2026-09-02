@@ -1,0 +1,77 @@
+# Actor Mobility
+# ==============
+# Compact YAML mobility example:
+#   - 1 stationary transmitter
+#   - 5 receivers using stationary, linear, waypoint, circular, and mesh-grid mobility
+#   - no passive targets
+#
+# Run with:
+#   orchav-generator scenarios/generator/mobility_and_orientation/actor_mobility/
+
+schema_version: 2
+
+scene:
+  id: ground/ground_60x50.xml
+
+raytracing:
+  enabled: true
+  quality:
+    preset: ultra-low
+
+timeline:
+  steps: 32
+  duration_s: 8.0
+
+actors:
+  tx:
+    - name: MainTransmitter
+      mobility:
+        type: stationary
+        position_m: [0.0, 0.0, 10.0]
+      orientation:
+        type: fixed
+        pitch_deg: -45.0
+
+  rx:
+    - name: RX_Static
+      mobility:
+        type: stationary
+        position_m: [24.0, -8.0, 1.5]
+
+    - name: RX_Linear
+      mobility:
+        type: linear
+        start_m: [-22.0, -18.0, 1.5]
+        end_m: [23.0, -18.0, 1.5]
+
+    - name: RX_Waypoint
+      mobility:
+        type: waypoint
+        points_m:
+          - [10.0, -15.0, 1.5]
+          - [10.0, 0.0, 1.5]
+          - [25.0, 0.0, 1.5]
+
+    - name: RX_Circular
+      mobility:
+        type: circular
+        center_m: [-8.0, 14.0, 1.5]
+        radius_m: 6.0
+        clockwise: true
+
+    - name: RX_MeshGrid
+      mobility:
+        type: grid_scan
+        x_bounds_m: [-28.0, -20.0]
+        y_bounds_m: [8.0, 20.0]
+        z_bounds_m: [1.5, 1.5]
+        x_steps: 3
+        y_steps: 3
+        z_steps: 1
+
+generator_summary:
+  enabled: true
+  create: [scene2d, speed]
+  visualization:
+    scene2d_mode: auto
+    actor_label_mode: name

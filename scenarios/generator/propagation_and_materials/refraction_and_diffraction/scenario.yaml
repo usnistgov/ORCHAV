@@ -1,0 +1,46 @@
+# Refraction And Diffraction
+# ==========================
+# Static TX/RX example using a thin glass panel. The scenario requests
+# refraction and edge diffraction from the active Sionna RT PathSolver.
+
+schema_version: 2
+
+scene:
+  source: local
+  id: glass_panel_scene.xml
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    custom:
+      max_depth: 2
+      samples_per_src: 10000000
+      max_num_paths_per_src: 1000000
+      refraction: true
+      diffraction: true
+      edge_diffraction: true
+
+timeline:
+  steps: 1
+  duration_s: 0.0
+
+actors:
+  tx:
+    - name: TX
+      mobility:
+        type: stationary
+        position_m: [-4.0, 0.0, 1.0]
+
+  rx:
+    - name: RX
+      mobility:
+        type: stationary
+        position_m: [4.0, 1.4, 1.0]
+
+view_defaults:
+  color_mode: mpc_type
+
+generator_summary:
+  enabled: true
+  create: [scene2d]

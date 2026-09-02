@@ -1,0 +1,32 @@
+* text=auto eol=lf
+# Keep executable shell scripts portable when contributors use core.autocrlf.
+*.sh text eol=lf
+
+# Protobuf regeneration is byte-checked, so the checked-in stubs use one
+# newline representation on every supported platform.
+shared/protos/*_pb2.py text eol=lf
+shared/protos/*_pb2_grpc.py text eol=lf
+
+# =============================================================================
+# Export Ignore - Exclude from git archive / release packages
+# =============================================================================
+
+# Deprecated directories (not for open-source release)
+generator/examples/deprecated/ export-ignore
+scenarios/deprecated/ export-ignore
+docsDeprecated/ export-ignore
+
+# Private research scenarios (kept in the private source repository only)
+scenarios/visualizer/private/ export-ignore
+
+# Development/internal files
+.claude/ export-ignore
+*.jsonl export-ignore
+
+# Generated output directories (users should generate their own)
+scenarios/*/frames/ export-ignore
+scenarios/*/summary/ export-ignore
+scenarios/*/experiments/ export-ignore
+
+# Calibration data (optional module, not in initial release)
+scenarios/calibration/ export-ignore

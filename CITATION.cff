@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use ORCHAV, please cite the project."
+title: "ORCHAV"
+version: "0.1.0"
+date-released: 2026-09-01
+repository-code: "https://github.com/usnistgov/ORCHAV"
+license: "GPL-2.0-only"
+authors:
+  - name: "ORCHAV Team"
+    email: "tanguy.ropitault@nist.gov"

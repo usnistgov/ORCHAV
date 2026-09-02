@@ -1,0 +1,230 @@
+[project]
+name = "orchav"
+version = "0.1.0"
+description = "Scenario-driven orchestration and visualization workflows for Sionna RT-based radio propagation studies"
+authors = [
+    {name = "ORCHAV Team"},
+    {email = "tanguy.ropitault@nist.gov"},
+]
+license = "GPL-2.0-only"
+license-files = [
+    "LICENSE",
+    "NOTICE",
+    "NIST_SOFTWARE_DISCLAIMER.md",
+    "THIRD_PARTY_NOTICES.md",
+]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy",
+    "contourpy>=1.2",
+    "open3d",
+    "PySide6>=6.7,<6.9",
+    "mitsuba>=3.8,<3.9",
+    "sionna>=2.0.1,<2.1",
+    "sionna-rt>=2.0.1,<2.1",
+    "pyyaml",
+    "pydantic>=2.0",
+    "toml",
+    "h5py",
+    "imageio",
+    "pyqtgraph",
+    "pygfx>=0.16,<0.17",
+    "wgpu>=0.31,<0.32",
+    "rendercanvas>=2.6,<2.7",
+    "pylinalg>=0.4",
+    "networkx>=3.4,<4",
+]
+
+[project.scripts]
+orchav-visualizer = "visualizer.__main__:main"
+orchav-generator = "generator.__main__:main"
+orchav-validate = "shared.cli.validate:main"
+orchav-inspect = "shared.cli.inspect:main"
+
+[project.urls]
+Homepage = "https://github.com/usnistgov/ORCHAV"
+Repository = "https://github.com/usnistgov/ORCHAV"
+
+[build-system]
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared*", "visualizer*", "generator*", "tools*"]
+exclude = [
+    "generator.tools._deprecated*",
+    "visualizer.tests*",
+]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml", "*.yml", "*.toml", "*.xml"]
+visualizer = [
+    "resources/branding/*.svg",
+    "resources/branding/png/*.png",
+    "resources/branding/windows/*.ico",
+    "resources/branding/macos/*.icns",
+    "resources/branding/macos/orchav.iconset/*.png",
+    "resources/branding/linux/hicolor/*/apps/*",
+    "resources/branding/social/*.png",
+    "resources/branding/web/*",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-mock>=3.10",
+    "pytest-qt>=4.2",
+    "black>=23.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+    "pre-commit>=3.0",
+    "sphinx>=6.0",
+    "sphinx-rtd-theme>=1.3",
+    "grpcio-tools==1.81.1",
+]
+grpc = [
+    "grpcio>=1.81.1",
+    "protobuf>=6.33.5,<7",
+]
+jupyter = [
+    "jupyterlab>=4",
+    "jupyter_rfb>=0.4",
+]
+
+all = [
+    "grpcio>=1.81.1",
+    "protobuf>=6.33.5,<7",
+    "jupyterlab>=4",
+    "jupyter_rfb>=0.4",
+    "scipy>=1.9",
+]
+
+# Black configuration
+[tool.black]
+line-length = 100
+target-version = ['py312']
+include = '\.pyi?$'
+extend-exclude = '''
+(
+  /(
+    # directories
+    \.eggs
+    | \.git
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | build
+    | dist
+    | __pycache__
+    | libraries
+    | sionna-channel-generator
+    | sionnaRTCode
+  )/
+  | .*_pb2\.py
+  | .*_pb2_grpc\.py
+)
+'''
+
+# Pytest configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--import-mode=importlib",
+    "-v",
+    "--strict-markers",
+]
+markers = [
+    "headless: marks tests that can run in headless mode (deselect with '-m \"not headless\"')",
+    "display: marks tests that require a display (deselect with '-m \"not display\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "pygfx_runtime: pygfx renderer tests that require an explicitly enabled backend profile",
+    "optional_runtime: runtime-dependent tests that require a usable Mitsuba/Sionna backend",
+    "optional_socket: socket/gRPC tests that require local socket creation",
+    "private_fixture: tests that require private scenarios, measurements, or local fixtures",
+    "soak: extended soak tests excluded from routine health runs",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# MyPy configuration
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_equality = true
+ignore_missing_imports = true
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["visualizer", "generator"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/build/*",
+    "*/dist/*",
+    "*/libraries/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+# Ruff configuration
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    "libraries",
+    "*.ipynb",
+    "**/*_pb2.py",
+    "**/*_pb2_grpc.py",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "I",  # isort
+]
+extend-select = ["T201"]  # disallow print statements
+ignore = [
+    "E402",  # module import not at top of file (legacy modules manipulate sys.path)
+    "E501",  # line too long (handled by black)
+    "E722",  # bare except (legacy sections still handle broad errors)
+    "B008",
+    "C901",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/**/*.py" = ["T201"]
+"scenarios/**/*.py" = ["T201"]
+"tests/**/*" = ["T201"]
+"visualizer/test_*.py" = ["T201"]

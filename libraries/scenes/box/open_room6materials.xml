@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<scene version="2.1.0">
+  <!-- Open-top five-surface box room for tutorial scenarios. -->
+
+  <bsdf type="itu-radio-material" id="mat-itu_concrete">
+    <string name="type" value="concrete" />
+    <float name="thickness" value="1." />
+    <rgb value="0.854902 0.854902 0.854902" name="color" />
+  </bsdf>
+
+  <bsdf type="itu-radio-material" id="mat-itu_wood">
+    <string name="type" value="wood" />
+    <float name="thickness" value="1." />
+    <rgb value="0.800000 0.366359 0.003741" name="color" />
+  </bsdf>
+
+  <bsdf type="itu-radio-material" id="mat-itu_brick">
+    <string name="type" value="brick" />
+    <float name="thickness" value="1." />
+    <rgb value="0.700000 0.250000 0.150000" name="color" />
+  </bsdf>
+
+  <bsdf type="itu-radio-material" id="mat-itu_plasterboard">
+    <string name="type" value="plasterboard" />
+    <float name="thickness" value="1." />
+    <rgb value="0.312122 0.800000 0.022504" name="color" />
+  </bsdf>
+
+  <bsdf type="itu-radio-material" id="mat-itu_chipboard">
+    <string name="type" value="chipboard" />
+    <float name="thickness" value="1." />
+    <rgb value="0.800000 0.130376 0.047800" name="color" />
+  </bsdf>
+
+  <shape type="ply" id="mesh-box-front">
+    <string name="filename" value="meshes/box_front.ply" />
+    <boolean name="face_normals" value="true" />
+    <ref id="mat-itu_concrete" name="bsdf" />
+  </shape>
+
+  <shape type="ply" id="mesh-box-back">
+    <string name="filename" value="meshes/box_back.ply" />
+    <boolean name="face_normals" value="true" />
+    <ref id="mat-itu_wood" name="bsdf" />
+  </shape>
+
+  <shape type="ply" id="mesh-box-left">
+    <string name="filename" value="meshes/box_left.ply" />
+    <boolean name="face_normals" value="true" />
+    <ref id="mat-itu_brick" name="bsdf" />
+  </shape>
+
+  <shape type="ply" id="mesh-box-right">
+    <string name="filename" value="meshes/box_right.ply" />
+    <boolean name="face_normals" value="true" />
+    <ref id="mat-itu_plasterboard" name="bsdf" />
+  </shape>
+
+  <shape type="ply" id="mesh-box-bottom">
+    <string name="filename" value="meshes/box_bottom.ply" />
+    <boolean name="face_normals" value="true" />
+    <ref id="mat-itu_chipboard" name="bsdf" />
+  </shape>
+</scene>

@@ -1,0 +1,40 @@
+# Notebook Mode
+# =============
+# Small YAML-only scenario for Jupyter and headless rendering examples.
+#
+# Run with:
+#   orchav-generator scenarios/visualizer/notebook_mode/
+
+schema_version: 2
+
+scene:
+  source: sionna
+  id: munich
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+
+timeline:
+  steps: 3
+  duration_s: 2.0
+
+actors:
+  tx:
+    - name: RooftopCell
+      mobility:
+        type: stationary
+        position_m: [80.0, 100.0, 30.0]
+
+  rx:
+    - name: NotebookRx
+      mobility:
+        type: linear
+        start_m: [25.0, 80.0, 1.5]
+        end_m: [5.0, 80.0, 1.5]
+
+generator_summary:
+  enabled: true
+  create: [scene2d]
+  visualization:
+    scene2d_mode: auto

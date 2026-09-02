@@ -1,0 +1,20 @@
+schema_version: 2
+scene:
+  source: library
+  id: empty/empty.xml
+timeline:
+  steps: 30
+  duration_s: 3.0
+raytracing:
+  enabled: true
+actors:
+  tx:
+    - name: TX1
+      mobility:
+        type: stationary
+        position_m: [0.0, 0.0, 1.0]
+  rx:
+    - name: RX1
+      mobility:
+        type: stationary
+        position_m: [2.0, 0.0, 1.0]

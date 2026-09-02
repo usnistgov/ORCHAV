@@ -1,0 +1,954 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1024"
+   height="1024"
+   viewBox="0 0 1024 1024"
+   role="img"
+   aria-labelledby="title desc"
+   version="1.1"
+   id="svg81"
+   sodipodi:docname="orchav-app-icon.svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview81"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.89697265"
+     inkscape:cx="1201.8204"
+     inkscape:cy="859.00055"
+     inkscape:window-width="4096"
+     inkscape:window-height="2054"
+     inkscape:window-x="-11"
+     inkscape:window-y="-11"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg81" />
+  <title
+     id="title">ORCHAV application icon</title>
+  <desc
+     id="desc">Glossy vector ORCHAV icon. The rounded O-shaped frame surrounds the custom RCH wordmark and a transmitter-to-receiver multipath ray reflecting from two surfaces.</desc>
+  <defs
+     id="defs54">
+    <!-- Frame / panel -->
+    <linearGradient
+       id="frameGrad"
+       x1="28.028911"
+       y1="25.973182"
+       x2="997.02839"
+       y2="994.97267"
+       gradientTransform="scale(0.99896854,1.0010325)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#2E78CB"
+         id="stop1" />
+      <stop
+         offset="0.18"
+         stop-color="#0C4C9B"
+         id="stop2" />
+      <stop
+         offset="0.55"
+         stop-color="#063675"
+         id="stop3" />
+      <stop
+         offset="1"
+         stop-color="#011A46"
+         id="stop4" />
+    </linearGradient>
+    <linearGradient
+       id="frameEdge"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#6FC2FF"
+         id="stop5" />
+      <stop
+         offset="0.10"
+         stop-color="#176AC1"
+         id="stop6" />
+      <stop
+         offset="0.55"
+         stop-color="#03255E"
+         id="stop7" />
+      <stop
+         offset="0.92"
+         stop-color="#001534"
+         id="stop8" />
+      <stop
+         offset="1"
+         stop-color="#2A7DD5"
+         id="stop9" />
+    </linearGradient>
+    <radialGradient
+       id="panelGrad"
+       cx="373.44"
+       cy="234.88001"
+       r="822.69999"
+       fx="373.44"
+       fy="234.88001"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#FFFFFF"
+         id="stop10" />
+      <stop
+         offset="0.55"
+         stop-color="#FCFDFF"
+         id="stop11" />
+      <stop
+         offset="0.82"
+         stop-color="#F3F6FB"
+         id="stop12" />
+      <stop
+         offset="1"
+         stop-color="#E7EDF7"
+         id="stop13" />
+    </radialGradient>
+    <linearGradient
+       id="panelLower"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#DCE6F4"
+         stop-opacity="0"
+         id="stop14" />
+      <stop
+         offset="1"
+         stop-color="#CBD8EA"
+         stop-opacity="0.72"
+         id="stop15" />
+    </linearGradient>
+    <!-- Navy elements -->
+    <linearGradient
+       id="navyGloss"
+       x1="0"
+       y1="0"
+       x2="0.85"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#0A4E9B"
+         id="stop16" />
+      <stop
+         offset="0.20"
+         stop-color="#073B7D"
+         id="stop17" />
+      <stop
+         offset="0.52"
+         stop-color="#02265E"
+         id="stop18" />
+      <stop
+         offset="1"
+         stop-color="#00163B"
+         id="stop19" />
+    </linearGradient>
+    <linearGradient
+       id="navyBar"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#1D6AB5"
+         id="stop20" />
+      <stop
+         offset="0.18"
+         stop-color="#0A438A"
+         id="stop21" />
+      <stop
+         offset="0.65"
+         stop-color="#02265E"
+         id="stop22" />
+      <stop
+         offset="1"
+         stop-color="#00163B"
+         id="stop23" />
+    </linearGradient>
+    <!-- Ray gradients -->
+    <linearGradient
+       id="ray1"
+       x1="170"
+       y1="790"
+       x2="370"
+       y2="458"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#14D4F4"
+         id="stop24" />
+      <stop
+         offset="0.50"
+         stop-color="#05BDF5"
+         id="stop25" />
+      <stop
+         offset="1"
+         stop-color="#2391FA"
+         id="stop26" />
+    </linearGradient>
+    <linearGradient
+       id="ray2"
+       x1="370"
+       y1="458"
+       x2="580"
+       y2="805"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#2391FA"
+         id="stop27" />
+      <stop
+         offset="0.48"
+         stop-color="#256BF2"
+         id="stop28" />
+      <stop
+         offset="1"
+         stop-color="#263EDB"
+         id="stop29" />
+    </linearGradient>
+    <linearGradient
+       id="ray3"
+       x1="580"
+       y1="805"
+       x2="830"
+       y2="520"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#263EDB"
+         id="stop30" />
+      <stop
+         offset="0.48"
+         stop-color="#4437E5"
+         id="stop31" />
+      <stop
+         offset="1"
+         stop-color="#8E22F0"
+         id="stop32" />
+    </linearGradient>
+    <!-- Ray gloss overlays -->
+    <linearGradient
+       id="rayHi1"
+       x1="170"
+       y1="790"
+       x2="370"
+       y2="458"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#FFFFFF"
+         stop-opacity="0.12"
+         id="stop33" />
+      <stop
+         offset="0.45"
+         stop-color="#FFFFFF"
+         stop-opacity="0.66"
+         id="stop34" />
+      <stop
+         offset="1"
+         stop-color="#FFFFFF"
+         stop-opacity="0.18"
+         id="stop35" />
+    </linearGradient>
+    <linearGradient
+       id="rayHi2"
+       x1="370"
+       y1="458"
+       x2="580"
+       y2="805"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#FFFFFF"
+         stop-opacity="0.52"
+         id="stop36" />
+      <stop
+         offset="0.48"
+         stop-color="#FFFFFF"
+         stop-opacity="0.12"
+         id="stop37" />
+      <stop
+         offset="1"
+         stop-color="#FFFFFF"
+         stop-opacity="0.34"
+         id="stop38" />
+    </linearGradient>
+    <linearGradient
+       id="rayHi3"
+       x1="580"
+       y1="805"
+       x2="830"
+       y2="520"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#FFFFFF"
+         stop-opacity="0.08"
+         id="stop39" />
+      <stop
+         offset="0.50"
+         stop-color="#FFFFFF"
+         stop-opacity="0.54"
+         id="stop40" />
+      <stop
+         offset="1"
+         stop-color="#FFFFFF"
+         stop-opacity="0.22"
+         id="stop41" />
+    </linearGradient>
+    <!-- TX/RX nodes -->
+    <linearGradient
+       id="txGrad"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#FFF37C"
+         id="stop42" />
+      <stop
+         offset="0.45"
+         stop-color="#FFD52E"
+         id="stop43" />
+      <stop
+         offset="1"
+         stop-color="#F8A900"
+         id="stop44" />
+    </linearGradient>
+    <linearGradient
+       id="rxGrad"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#43F0B2"
+         id="stop45" />
+      <stop
+         offset="0.48"
+         stop-color="#00C997"
+         id="stop46" />
+      <stop
+         offset="1"
+         stop-color="#009778"
+         id="stop47" />
+    </linearGradient>
+    <!-- Effects -->
+    <filter
+       id="shadow"
+       x="-0.029752066"
+       y="-0.029690722"
+       width="1.0595041"
+       height="1.0696907">
+      <feGaussianBlur
+         in="SourceAlpha"
+         stdDeviation="12"
+         result="shadowBlur"
+         id="feGaussianBlur47" />
+      <feOffset
+         in="shadowBlur"
+         dx="0"
+         dy="10"
+         result="shadowOffset"
+         id="feOffset47" />
+      <feFlood
+         flood-color="#001A45"
+         flood-opacity="0.35"
+         result="shadowColor"
+         id="feFlood47" />
+      <feComposite
+         in="shadowColor"
+         in2="shadowOffset"
+         operator="in"
+         result="shadowPaint"
+         id="feComposite47" />
+      <feMerge
+         id="feMerge48">
+        <feMergeNode
+           in="shadowPaint"
+           id="feMergeNode47" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode48" />
+      </feMerge>
+    </filter>
+    <filter
+       id="softShadow"
+       x="-0.15789474"
+       y="-0.13636364"
+       width="1.3157895"
+       height="1.3295455">
+      <feGaussianBlur
+         in="SourceAlpha"
+         stdDeviation="5"
+         result="softBlur"
+         id="feGaussianBlur48" />
+      <feOffset
+         in="softBlur"
+         dx="0"
+         dy="5"
+         result="softOffset"
+         id="feOffset48" />
+      <feFlood
+         flood-color="#001A45"
+         flood-opacity="0.32"
+         result="softColor"
+         id="feFlood48" />
+      <feComposite
+         in="softColor"
+         in2="softOffset"
+         operator="in"
+         result="softPaint"
+         id="feComposite48" />
+      <feMerge
+         id="feMerge50">
+        <feMergeNode
+           in="softPaint"
+           id="feMergeNode49" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode50" />
+      </feMerge>
+    </filter>
+    <filter
+       id="rayGlow"
+       x="-0.039095755"
+       y="-0.057709526"
+       width="1.0754839"
+       height="1.1217478">
+      <feGaussianBlur
+         stdDeviation="5"
+         result="blur"
+         id="feGaussianBlur50" />
+      <feMerge
+         id="feMerge52">
+        <feMergeNode
+           in="blur"
+           id="feMergeNode51" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode52" />
+      </feMerge>
+    </filter>
+    <filter
+       id="tinyGlow"
+       x="-0.024421832"
+       y="-0.014949038"
+       width="1.0488437"
+       height="1.0298981">
+      <feGaussianBlur
+         stdDeviation="2.2"
+         result="b"
+         id="feGaussianBlur52" />
+      <feMerge
+         id="feMerge54">
+        <feMergeNode
+           in="b"
+           id="feMergeNode53" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode54" />
+      </feMerge>
+    </filter>
+    <!-- Clip all internal artwork to the white panel -->
+    <clipPath
+       id="panelClip">
+      <rect
+         x="85"
+         y="86"
+         width="854"
+         height="852"
+         rx="150"
+         ry="150"
+         id="rect54" />
+    </clipPath>
+    <linearGradient
+       id="ray"
+       x1="1077"
+       y1="0"
+       x2="1514"
+       y2="0"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#04ADF2"
+         id="stop1-4" />
+      <stop
+         offset="0.48"
+         stop-color="#2B83F6"
+         id="stop2-2" />
+      <stop
+         offset="1"
+         stop-color="#6C5CF2"
+         id="stop3-3" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#ray"
+       id="linearGradient2"
+       gradientUnits="userSpaceOnUse"
+       x1="1077"
+       y1="0"
+       x2="1514"
+       y2="0" />
+    <filter
+       inkscape:collect="always"
+       style="color-interpolation-filters:sRGB"
+       id="filter2"
+       x="-0.056470305"
+       y="-0.17767399"
+       width="1.1106087"
+       height="1.3459426">
+      <feGaussianBlur
+         inkscape:collect="always"
+         stdDeviation="7.0593968"
+         id="feGaussianBlur2" />
+    </filter>
+    <filter
+       id="softShadow-4"
+       x="-0.15789474"
+       y="-0.13636364"
+       width="1.3157895"
+       height="1.3295455">
+      <feGaussianBlur
+         in="SourceAlpha"
+         stdDeviation="5"
+         result="softBlur"
+         id="feGaussianBlur48-27" />
+      <feOffset
+         in="softBlur"
+         dx="0"
+         dy="5"
+         result="softOffset"
+         id="feOffset48-7" />
+      <feFlood
+         flood-color="#001A45"
+         flood-opacity="0.32"
+         result="softColor"
+         id="feFlood48-9" />
+      <feComposite
+         in="softColor"
+         in2="softOffset"
+         operator="in"
+         result="softPaint"
+         id="feComposite48-3" />
+      <feMerge
+         id="feMerge50-19">
+        <feMergeNode
+           in="softPaint"
+           id="feMergeNode49-8" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode50-6" />
+      </feMerge>
+    </filter>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#rxGrad-6"
+       id="linearGradient11"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="scale(0.91459073,1.0933852)"
+       x1="876.23895"
+       y1="445.68826"
+       x2="938.78058"
+       y2="508.22989" />
+    <linearGradient
+       id="rxGrad-6"
+       x1="876.23895"
+       y1="445.68826"
+       x2="938.78058"
+       y2="508.22989"
+       gradientTransform="scale(0.91459073,1.0933852)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#43F0B2"
+         id="stop45-8" />
+      <stop
+         offset="0.48"
+         stop-color="#00C997"
+         id="stop46-5" />
+      <stop
+         offset="1"
+         stop-color="#009778"
+         id="stop47-7" />
+    </linearGradient>
+    <filter
+       id="softShadow-3-9"
+       x="-0.15789474"
+       y="-0.13636364"
+       width="1.3157895"
+       height="1.3295455">
+      <feGaussianBlur
+         in="SourceAlpha"
+         stdDeviation="5"
+         result="softBlur"
+         id="feGaussianBlur48-22-2" />
+      <feOffset
+         in="softBlur"
+         dx="0"
+         dy="5"
+         result="softOffset"
+         id="feOffset48-1-7" />
+      <feFlood
+         flood-color="#001A45"
+         flood-opacity="0.32"
+         result="softColor"
+         id="feFlood48-6-9" />
+      <feComposite
+         in="softColor"
+         in2="softOffset"
+         operator="in"
+         result="softPaint"
+         id="feComposite48-8-5" />
+      <feMerge
+         id="feMerge50-5-4">
+        <feMergeNode
+           in="softPaint"
+           id="feMergeNode49-76-3" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode50-18-1" />
+      </feMerge>
+    </filter>
+    <linearGradient
+       id="txGrad-2"
+       x1="165.53853"
+       y1="688.96936"
+       x2="228.08015"
+       y2="751.51099"
+       gradientTransform="scale(0.91459073,1.0933852)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#FFF37C"
+         id="stop42-3" />
+      <stop
+         offset="0.45"
+         stop-color="#FFD52E"
+         id="stop43-3" />
+      <stop
+         offset="1"
+         stop-color="#F8A900"
+         id="stop44-4" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#ray"
+       id="linearGradient1"
+       gradientUnits="userSpaceOnUse"
+       x1="1077"
+       y1="0"
+       x2="1514"
+       y2="0" />
+    <filter
+       id="shadow-6"
+       x="-0.029752066"
+       y="-0.029690722"
+       width="1.0595041"
+       height="1.0696907">
+      <feGaussianBlur
+         in="SourceAlpha"
+         stdDeviation="12"
+         result="shadowBlur"
+         id="feGaussianBlur47-1" />
+      <feOffset
+         in="shadowBlur"
+         dx="0"
+         dy="10"
+         result="shadowOffset"
+         id="feOffset47-8" />
+      <feFlood
+         flood-color="#001A45"
+         flood-opacity="0.35"
+         result="shadowColor"
+         id="feFlood47-9" />
+      <feComposite
+         in="shadowColor"
+         in2="shadowOffset"
+         operator="in"
+         result="shadowPaint"
+         id="feComposite47-2" />
+      <feMerge
+         id="feMerge48-7">
+        <feMergeNode
+           in="shadowPaint"
+           id="feMergeNode47-9" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode48-5" />
+      </feMerge>
+    </filter>
+    <linearGradient
+       id="frameGrad-4"
+       x1="28.028911"
+       y1="25.973182"
+       x2="997.02839"
+       y2="994.97267"
+       gradientTransform="matrix(0.99896854,0,0,1.0010325,65.472717,1144.8673)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#2E78CB"
+         id="stop1-3" />
+      <stop
+         offset="0.18"
+         stop-color="#0C4C9B"
+         id="stop2-1" />
+      <stop
+         offset="0.55"
+         stop-color="#063675"
+         id="stop3-2" />
+      <stop
+         offset="1"
+         stop-color="#011A46"
+         id="stop4-3" />
+    </linearGradient>
+    <radialGradient
+       id="panelGrad-3"
+       cx="373.44"
+       cy="234.88001"
+       r="822.69999"
+       fx="373.44"
+       fy="234.88001"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#FFFFFF"
+         id="stop10-4" />
+      <stop
+         offset="0.55"
+         stop-color="#FCFDFF"
+         id="stop11-1" />
+      <stop
+         offset="0.82"
+         stop-color="#F3F6FB"
+         id="stop12-1" />
+      <stop
+         offset="1"
+         stop-color="#E7EDF7"
+         id="stop13-3" />
+    </radialGradient>
+  </defs>
+  <!-- Transparent outside the rounded icon. -->
+  <g
+     filter="url(#shadow)"
+     id="g58"
+     transform="translate(-7.7851578e-6,6.613213)">
+    <rect
+       x="28"
+       y="26"
+       width="968"
+       height="970"
+       rx="190"
+       ry="190"
+       fill="url(#frameGrad)"
+       id="rect55"
+       style="display:inline;fill:url(#frameGrad)" />
+    <rect
+       x="66"
+       y="66"
+       width="892"
+       height="892"
+       rx="166"
+       ry="166"
+       fill="#00163b"
+       opacity="0.92"
+       id="rect57"
+       style="display:inline" />
+    <rect
+       x="82"
+       y="82"
+       width="860"
+       height="860"
+       rx="151"
+       ry="151"
+       fill="url(#panelGrad)"
+       stroke="#0b326d"
+       stroke-width="6"
+       id="rect58"
+       style="display:inline;fill:url(#panelGrad)" />
+  </g>
+  <!-- Glass/panel highlights -->
+  <!-- RCH custom wordmark: vector paths, not text -->
+  <!-- Fine specular line on RCH -->
+  <!-- Ray path. Main strokes are vectors with gradient + gloss. -->
+  <!-- Gloss streaks on rays -->
+  <!-- Reflecting surfaces -->
+  <!-- TX node -->
+  <!-- RX node -->
+  <!-- Tiny contact glints -->
+  <g
+     fill="#ffffff"
+     filter="url(#tinyGlow)"
+     id="g81"
+     style="display:none">
+    <circle
+       cx="370"
+       cy="458"
+       r="3.2"
+       opacity="0.88"
+       id="circle80" />
+    <circle
+       cx="580"
+       cy="805"
+       r="3"
+       opacity="0.75"
+       id="circle81" />
+  </g>
+  <!-- Inner edge highlight -->
+  <rect
+     x="88"
+     y="88"
+     width="848"
+     height="848"
+     rx="145"
+     ry="145"
+     fill="none"
+     stroke="#ffffff"
+     stroke-width="3"
+     opacity="0.72"
+     id="rect81"
+     style="display:none" />
+  <polyline
+     points="1077,565 1197,380 1340,565 1514,380"
+     fill="none"
+     stroke="url(#ray)"
+     stroke-width="19"
+     stroke-linecap="butt"
+     stroke-linejoin="miter"
+     id="polyline9"
+     style="stroke:url(#linearGradient1);stroke-width:24.1562;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;paint-order:normal"
+     transform="matrix(1.516454,0,0,1.7454964,-1441.2781,-107.67474)" />
+  <polyline
+     points="1077,565 1197,380 1340,565 1514,380"
+     fill="none"
+     stroke="url(#ray)"
+     stroke-width="19"
+     stroke-linecap="butt"
+     stroke-linejoin="miter"
+     id="polyline9-8"
+     style="mix-blend-mode:normal;stroke:url(#linearGradient2);stroke-width:18.4394;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-dashoffset:0;paint-order:normal;filter:url(#filter2)"
+     transform="matrix(1.516454,0,0,1.7454964,-1442.027,-108.99046)" />
+  <rect
+     x="446.70721"
+     y="896.33252"
+     width="288.12625"
+     height="19.200459"
+     fill="#011a46"
+     id="rect9"
+     style="stroke-width:1.62695" />
+  <rect
+     x="227.57953"
+     y="516.68903"
+     width="289.6427"
+     height="19.200459"
+     fill="#011a46"
+     id="rect8"
+     style="stroke-width:1.62695;stroke-dasharray:none;paint-order:markers stroke fill" />
+  <g
+     filter="url(#softShadow)"
+     id="g80-6"
+     style="display:inline;filter:url(#softShadow-4)"
+     transform="matrix(0.78742806,0,0,0.78038422,192.94104,151.62566)">
+    <polygon
+       points="792,500 830,478 868,500 868,544 830,566 792,544 "
+       fill="#00163b"
+       id="polygon78-0"
+       style="display:inline" />
+    <polygon
+       points="830,488 858,504 858,539 830,555 802,539 802,504 "
+       fill="url(#rxGrad)"
+       stroke="#00dca6"
+       stroke-width="1.2"
+       id="polygon80-2"
+       style="display:inline;fill:url(#linearGradient11)" />
+    <path
+       d="m 806,507 24,-14 22,13 -36,18 z"
+       fill="#ffffff"
+       opacity="0.42"
+       id="path80-4"
+       style="display:inline" />
+  </g>
+  <g
+     filter="url(#softShadow)"
+     id="g77-1"
+     style="filter:url(#softShadow-3-9)"
+     transform="matrix(0.7901306,0,0,0.79008408,61.696142,238.75711)">
+    <polygon
+       points="218,810 180,832 142,810 142,766 180,744 218,766 "
+       fill="#00163b"
+       id="polygon75-3" />
+    <polygon
+       points="208,805 180,821 152,805 152,770 180,754 208,770 "
+       fill="url(#txGrad)"
+       stroke="#ffd84a"
+       stroke-width="1.2"
+       id="polygon77-8"
+       style="fill:url(#txGrad-2)" />
+    <path
+       d="m 156,773 24,-14 22,13 -36,18 z"
+       fill="#ffffff"
+       opacity="0.48"
+       id="path77-7" />
+  </g>
+  <path
+     fill="#011a46"
+     d="m 181.43767,201.83179 h 159 c 24,0 41,17 41,41 v 16 c 0,24 -17,41 -41,41 h -121 l -19,-19 h 140 c 14,0 24,-9 24,-22 v -16 c 0,-14 -10,-23 -24,-23 h -142 z"
+     id="path3" />
+  <path
+     fill="#011a46"
+     d="m 214.92233,281.98443 h 23.37057 l 143.14477,88.04305 -17.52793,8.80431 z"
+     id="path4"
+     style="stroke-width:0.976012" />
+  <rect
+     x="197.43767"
+     y="308.83179"
+     width="17"
+     height="70"
+     fill="#011a46"
+     id="rect4" />
+  <path
+     fill="#011a46"
+     fill-rule="evenodd"
+     d="m 622.43767,201.83179 h -158 c -20,0 -33,14 -33,34 v 109 c 0,20 13,34 33,34 h 158 l -18,-18 h -140 c -10,0 -16,-6 -16,-16 v -109 c 0,-10 6,-16 16,-16 h 140 z"
+     id="path5" />
+  <rect
+     x="668.43768"
+     y="201.83179"
+     width="17"
+     height="177"
+     fill="#011a46"
+     id="rect5" />
+  <rect
+     x="826.43768"
+     y="201.83179"
+     width="17"
+     height="177"
+     fill="#011a46"
+     id="rect6" />
+  <rect
+     x="668.43768"
+     y="276.83179"
+     width="175"
+     height="18"
+     fill="#011a46"
+     id="rect7" />
+</svg>

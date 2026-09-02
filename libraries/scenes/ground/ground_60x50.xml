@@ -1,0 +1,65 @@
+<scene version="2.1.0">
+
+<!-- Defaults, these can be set via the command line: -Darg=value -->
+
+	<default name="spp" value="4096"/>
+	<default name="resx" value="1920"/>
+	<default name="resy" value="1080"/>
+
+<!-- Camera and Rendering Parameters -->
+
+	<integrator type="path" id="elm__0" name="elm__0">
+		<integer name="max_depth" value="12"/>
+	</integrator>
+	<sensor type="perspective" id="elm__2" name="elm__2">
+		<string name="fov_axis" value="x"/>
+		<float name="fov" value="39.597755"/>
+		<float name="principal_point_offset_x" value="0.000000"/>
+		<float name="principal_point_offset_y" value="-0.000000"/>
+		<float name="near_clip" value="0.100000"/>
+		<float name="far_clip" value="100.000000"/>
+		<transform name="to_world">
+			<rotate x="1" angle="-153.5592908827048"/>
+			<rotate y="1" angle="-46.691938147394204"/>
+			<rotate z="1" angle="-179.999991348578"/>
+			<translate value="7.358891 4.958309 6.925791"/>
+		</transform>
+		<sampler type="independent" name="sampler">
+			<integer name="sample_count" value="$spp"/>
+		</sampler>
+		<film type="hdrfilm" name="film">
+			<integer name="width" value="$resx"/>
+			<integer name="height" value="$resy"/>
+			<string name="pixel_format" value="luminance"/>
+		</film>
+	</sensor>
+
+<!-- Materials -->
+
+	<!-- Asphalt visual material; uses concrete for radio propagation because
+	     Sionna RT does not provide a dedicated ITU asphalt material. -->
+	<bsdf type="itu-radio-material" id="mat-ground_asphalt">
+		<string name="type" value="concrete"/>
+		<float name="thickness" value="0.3"/>
+		<rgb value="0.18 0.18 0.18" name="color"/>
+	</bsdf>
+
+<!-- Emitters -->
+
+	<emitter type="point" id="elm__1" name="elm__1">
+		<point name="position" x="4.076245307922363" y="5.903861999511719" z="-1.0054539442062378"/>
+		<rgb value="79.577469 79.577469 79.577469" name="intensity"/>
+	</emitter>
+
+<!-- Shapes -->
+
+	<!-- Ground plane: 60x50 m asphalt-looking floor at z=0 for compact mobility examples -->
+	<shape type="ply" id="mesh-ground-60x50">
+		<string name="filename" value="ground_60x50.ply"/>
+		<boolean name="face_normals" value="true"/>
+		<ref id="mat-ground_asphalt" name="bsdf"/>
+	</shape>
+
+<!-- Volumes -->
+
+</scene>

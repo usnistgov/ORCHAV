@@ -1,0 +1,88 @@
+# Beamforming - Multiple-Device Pair Selection
+# ============================================
+# Two transmitters and three receivers for comparing selected TX/RX pairs.
+
+schema_version: 2
+
+scene:
+  id: ground/ground_60x50.xml
+
+data:
+  files:
+    chunk_size: 8
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    preset: ultra-low
+  antenna:
+    tx:
+      pattern: tr38901
+      num_rows: 4
+      num_cols: 8
+    rx:
+      pattern: dipole
+      num_rows: 4
+      num_cols: 8
+
+timeline:
+  steps: 24
+  duration_s: 6.0
+
+actors:
+  tx:
+    - name: WestTX
+      mobility:
+        type: stationary
+        position_m: [-8.0, 0.0, 8.0]
+    - name: EastTX
+      mobility:
+        type: stationary
+        position_m: [8.0, 0.0, 8.0]
+      orientation:
+        type: fixed
+        yaw_deg: 180.0
+
+  rx:
+    - name: OrbitRX
+      mobility:
+        type: circular
+        center_m: [0.0, 0.0, 1.5]
+        radius_m: 12.0
+        start_angle_deg: 90.0
+        clockwise: true
+      orientation:
+        type: look_at
+        actor: WestTX
+    - name: StaticNorthRX
+      mobility:
+        type: stationary
+        position_m: [0.0, 18.0, 1.5]
+      orientation:
+        type: look_at
+        actor: WestTX
+    - name: StaticSouthRX
+      mobility:
+        type: stationary
+        position_m: [0.0, -18.0, 1.5]
+      orientation:
+        type: look_at
+        actor: EastTX
+
+view_defaults:
+  mpc_visibility:
+    enabled: false
+    paths: false
+    bounce_points: false
+
+visualizer:
+  panels:
+    statistics:
+      enabled: false
+
+generator_summary:
+  enabled: true
+  create: [scene2d, speed]
+  visualization:
+    scene2d_mode: devices

@@ -1,0 +1,55 @@
+# Single-Transmitter Coverage Map
+# ===============================
+# Demonstrates coverage map generation on the Etoile (Arc de Triomphe) scene.
+#
+# Run with: orchav-generator scenarios/generator/coverage/single_tx/
+
+schema_version: 2
+
+# ------------------------------------------------------------------------------
+# Scene Configuration
+# ------------------------------------------------------------------------------
+scene:
+  source: sionna
+  id: etoile
+
+timeline:
+  steps: 1
+  duration_s: 0.0
+
+actors:
+  tx:
+    - name: BaseStation
+      mobility:
+        type: stationary
+        position_m: [0.0, 0.0, 30.0]
+      orientation:
+        type: fixed
+        pitch_deg: -45.0
+
+# ------------------------------------------------------------------------------
+# Coverage Map Configuration
+# ------------------------------------------------------------------------------
+coverage:
+  enabled: true
+  grid:
+    resolution_m: [5.0, 5.0]
+    heights_m: [1.5, 30.0]
+  solver:
+    seed: 42
+  save:
+    figure:
+      enabled: true
+      overlay_scene: true
+      overlay_alpha: 0.35
+      metrics: [best_path_loss_db, best_rss_dbm, sinr_db]
+      distribution:
+        enabled: true
+        metrics: [best_path_loss_db, best_rss_dbm, sinr_db]
+
+# ------------------------------------------------------------------------------
+# Summary Generation
+# ------------------------------------------------------------------------------
+generator_summary:
+  enabled: true
+  create: [scene2d]

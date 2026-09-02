@@ -1,0 +1,44 @@
+# Multi-Actor Trajectory - Etoile
+# ================================
+# Demonstrates a multi-actor trajectory and orientation workflow:
+#   - 1 TX near the Arc de Triomphe
+#   - 3 RX nodes (two airborne receivers + one ground patrol receiver)
+#   - 1 moving mesh target used as a visual reference and scatterer
+#
+# Run with: python scenarios/visualizer/multi_device_trajectory/generate.py
+
+schema_version: 2
+
+scene:
+  source: sionna
+  id: etoile
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+
+  quality:
+    preset: ultra-low
+
+timeline:
+  steps: 50
+  duration_s: 10.0
+
+generator_summary:
+  enabled: true
+  create:
+    - scene2d
+    - speed
+    - orientation
+  visualization:
+    actor_label_mode: name
+
+visualizer:
+  node_markers:
+    tx:
+      shape: box
+      size: 2.0
+    rx:
+      shape: mesh
+      mesh_path: meshes/receiver_marker.obj
+      marker_size: 4.0

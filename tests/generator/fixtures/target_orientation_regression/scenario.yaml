@@ -1,0 +1,76 @@
+schema_version: 1
+debug_level: WARNING
+
+scene:
+  source: sionna
+  id: simple_street_canyon
+
+data:
+  mode: files
+  files:
+    format: hdf5
+    directory: /tmp/orchav_target_orientation_regression
+    pattern: mpc_frames_*.h5
+
+raytracing:
+  enabled: true
+  steps: 5
+  duration_s: 4.0
+  export_path_metrics: true
+  quality:
+    preset: ultra-low
+
+devices:
+  tx:
+    - name: FixtureTX
+      position: [-8.0, -6.0, 3.0]
+      orientation: [0.0, 0.0, 0.0]
+
+  rx:
+    - name: FixtureRX
+      position: [8.0, 6.0, 1.5]
+      orientation: [180.0, 0.0, 0.0]
+
+targets:
+  - name: SpinTarget
+    mesh_directory: "${PROJECT_ROOT}/tests/generator/fixtures/target_orientation_regression/meshes"
+    mesh_pattern: "*.ply"
+    position: [0.0, 0.0, 0.0]
+    switch_meshes: false
+    orientation:
+      type: circular
+      start_yaw: 10.0
+      rotations: 0.25
+      pitch: -5.0
+      roll: 2.0
+
+  - name: ReferenceTarget
+    mesh_directory: "${PROJECT_ROOT}/tests/generator/fixtures/target_orientation_regression/meshes"
+    mesh_pattern: "*.ply"
+    position: [10.0, 0.0, 0.0]
+    mobility:
+      type: linear
+      end_position: [10.0, 10.0, 0.0]
+    switch_meshes: false
+
+  - name: LookerTarget
+    mesh_directory: "${PROJECT_ROOT}/tests/generator/fixtures/target_orientation_regression/meshes"
+    mesh_pattern: "*.ply"
+    position: [0.0, 0.0, 0.0]
+    switch_meshes: false
+    orientation:
+      type: lookat
+      target: ReferenceTarget
+      allow_pitch: false
+
+  - name: ForwardTarget
+    mesh_directory: "${PROJECT_ROOT}/tests/generator/fixtures/target_orientation_regression/meshes"
+    mesh_pattern: "*.ply"
+    position: [0.0, 0.0, 0.0]
+    mobility:
+      type: linear
+      end_position: [0.0, 10.0, 0.0]
+    switch_meshes: false
+    orientation:
+      type: forward
+      allow_pitch: false

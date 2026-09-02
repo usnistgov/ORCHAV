@@ -1,0 +1,36 @@
+# Hello World - Minimal Generator Example
+# ========================================
+# The simplest possible ray tracing scenario:
+#   - 1 stationary TX (transmitter)
+#   - 1 stationary RX (receiver)
+#   - 1 simulation step
+#
+# Run with:
+#   orchav-generator scenarios/getting_started/hello_world/
+
+schema_version: 2
+
+scene:
+  source: sionna
+  id: etoile
+
+raytracing:
+  enabled: true
+  quality:
+    preset: ultra-low
+
+timeline:
+  steps: 1
+  duration_s: 0.0
+
+actors:
+  tx:
+    - name: TX1
+      mobility:
+        type: stationary
+        position_m: [-114.0, 37.0, 30.0]
+  rx:
+    - name: RX1
+      mobility:
+        type: stationary
+        position_m: [-27.18, -12.61, 1.5]

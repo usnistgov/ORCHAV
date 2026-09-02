@@ -1,0 +1,496 @@
+syntax = "proto3";
+
+package visualizer;
+
+// Service definition for generator-to-visualizer communication
+service GeneratorService {
+  // Bidirectional streaming pipeline for on-demand frames and flow control.
+  rpc StreamFrames(stream FrameRequest) returns (stream FrameResponse);
+
+  // Metadata endpoints retained for auxiliary UI features.
+  rpc GetFrameInfo(GetFrameInfoRequest) returns (GetFrameInfoResponse);
+  rpc GetGeneratorStatus(GetGeneratorStatusRequest) returns (GetGeneratorStatusResponse);
+
+  // Health monitoring endpoints
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc GetCacheStatus(CacheStatusRequest) returns (CacheStatusResponse);
+}
+
+// Service for serving pregenerated HDF5 frames from disk (remote_hdf5 mode)
+service FrameFileService {
+  // Get metadata about the available frames
+  rpc GetFileServerMetadata(FileServerMetadataRequest) returns (FileServerMetadataResponse);
+
+  // List all available frame indices
+  rpc ListAvailableFrames(ListFramesRequest) returns (ListFramesResponse);
+
+  // Get a single pre-generated frame by index
+  rpc GetPreGeneratedFrame(PreGeneratedFrameRequest) returns (PreGeneratedFrameResponse);
+
+}
+
+// Streamed command from the visualizer to the generator.
+message FrameRequest {
+  oneof request_type {
+    StreamFrameCommand get_frame = 1;
+    NodeOverrideList override_cmd = 2;
+    FlowControlSignal flow_control = 3;
+    ParameterUpdate parameter_update = 4;  // Update raytracing parameters
+    ObjectUpdate object_update = 5;         // Update object geometry/material
+    CacheFlushRequest cache_flush = 6;      // Request cache flush
+  }
+}
+
+// Explicit frame request for seeking or scrubbing.
+message StreamFrameCommand {
+  reserved 2 to 3;
+  reserved "include_paths", "include_metadata";
+
+  int32 frame_idx = 1;
+}
+
+// Flow-control signal emitted by the client to throttle streaming.
+message FlowControlSignal {
+  int32 frames_consumed = 1;
+  int32 buffer_capacity = 2;              // Maximum frames to send; must not exceed the server frame-cache capacity
+  int32 current_display_frame_idx = 3;
+  int32 server_prefetch_limit = 4;         // Maximum frames to compute ahead; must not exceed the server frame-cache capacity
+}
+
+// Streamed response from the generator to the visualizer.
+message FrameResponse {
+  oneof response_type {
+    FrameData frame_data = 1;
+    GetGeneratorStatusResponse status_update = 2;
+    ErrorDetails error = 3;
+    EndOfStream eof = 4;
+    ParameterUpdateResponse param_update_response = 5;  // Response to parameter update
+    ObjectUpdateResponse object_update_response = 6;     // Response to object update
+    CacheFlushResponse cache_flush_response = 7;         // Response to cache flush
+  }
+  int32 frame_idx = 10;
+  int64 generation_epoch = 11;           // Cache-generation epoch for stale-frame rejection
+}
+
+// Response to parameter update request
+message ParameterUpdateResponse {
+  bool success = 1;                      // Whether update was successful
+  string message = 2;                    // Response message
+  RaytracingConfig applied_config = 3;   // The configuration that was applied
+  bool cache_flushed = 4;                // Whether cache was flushed
+  int64 generation_epoch = 5;            // Current cache-generation epoch
+}
+
+// Response to object update request
+message ObjectUpdateResponse {
+  bool success = 1;                      // Whether update was successful
+  string message = 2;                    // Response message
+  string object_name = 3;                 // Object that was updated
+  bool cache_flushed = 4;                // Whether cache was flushed
+  bool recomputation_triggered = 5;       // Whether frame recomputation was triggered
+  int64 generation_epoch = 6;            // Current cache-generation epoch
+}
+
+// Response to cache flush request
+message CacheFlushResponse {
+  bool success = 1;                      // Whether flush was successful
+  string message = 2;                    // Response message
+  bool client_cache_flushed = 3;           // Whether client cache was flushed
+  bool server_cache_flushed = 4;          // Whether server cache was flushed
+  int32 frames_cleared = 5;               // Number of frames cleared from cache
+  int64 generation_epoch = 6;             // Current cache-generation epoch
+}
+
+message ErrorDetails {
+  string code = 1;
+  string message = 2;
+}
+
+message EndOfStream {
+  int32 last_frame_idx = 1;
+}
+
+// Node types that can be overridden from the visualizer
+enum NodeType {
+  NODE_TYPE_UNSPECIFIED = 0;
+  NODE_TYPE_TX = 1;
+  NODE_TYPE_RX = 2;
+  NODE_TYPE_TARGET = 3;
+}
+
+// A single TX, RX, or target override
+message NodeOverride {
+  string name = 1;
+  NodeType type = 2;
+  double x = 3;
+  double y = 4;
+  double z = 5;
+  repeated double orientation = 6;
+}
+
+message NodeOverrideList {
+  repeated NodeOverride overrides = 1;
+}
+
+// Raytracing configuration parameters
+message RaytracingConfig {
+  int32 max_depth = 1;                    // Maximum reflection bounces
+  int64 samples_per_src = 2;               // Samples per transmitter
+  int64 max_num_paths_per_src = 3;         // Maximum paths per transmitter
+  bool los = 4;                            // Line-of-sight enabled
+  bool specular_reflection = 5;            // Mirror reflections
+  bool diffuse_reflection = 6;             // Scattered reflections
+  bool refraction = 7;                    // Material transmission
+  bool diffraction = 8;                    // Edge diffraction
+  bool synthetic_array = 9;                // Synthetic antenna arrays
+  int32 seed = 10;                         // Random seed
+}
+
+// Parameter update request for changing raytracing settings
+message ParameterUpdate {
+  string preset = 1;                       // Optional client/UI label for the supplied settings
+  RaytracingConfig raytracing_config = 2;  // Required complete ray-tracing configuration
+  bool flush_cache = 3;                    // Whether the client requests cache invalidation
+}
+
+// Object update request for changing object geometry or material
+message ObjectUpdate {
+  reserved 11 to 12, 15;
+  reserved "has_material", "material_type", "scene_xml_path";
+
+  string object_name = 1;                 // Object name/identifier
+  NodeType object_type = 2;                // Type of object (TX, RX, TARGET)
+  bool has_position = 3;                  // Whether position fields are set
+  double x = 4;                            // New X position (used if has_position is true)
+  double y = 5;                            // New Y position (used if has_position is true)
+  double z = 6;                            // New Z position (used if has_position is true)
+  bool has_orientation = 7;                // Whether orientation is set
+  repeated double orientation = 8;         // New orientation [yaw, pitch, roll] in degrees (used if has_orientation is true)
+  bool has_scale = 9;                      // Whether scale is set
+  double scale = 10;                       // New scale factor (used if has_scale is true)
+  bool flush_cache = 13;                  // Whether the client requests cache invalidation
+  string xml_payload = 14;                // Optional full-scene XML payload (preferred approach)
+}
+
+// Cache flush request
+message CacheFlushRequest {
+  bool flush_client = 1;                  // Flush client-side cache
+  bool flush_server = 2;                  // Flush server-side cache
+  string reason = 3;                      // Reason for cache flush (optional, for logging)
+}
+
+// Request for frame information
+message GetFrameInfoRequest {
+  // Empty - gets general frame info
+}
+
+// Response with frame information
+message GetFrameInfoResponse {
+  bool success = 1;               // Whether info was retrieved successfully
+  string message = 2;             // Response message
+  int32 total_frames = 3;         // Total number of available frames
+  double duration = 4;            // Total duration in seconds
+  double frame_rate = 5;          // Frame rate (frames per second)
+  repeated int32 available_frames = 6; // List of available frame indices
+  int64 generation_epoch = 7;     // Current cache-generation epoch
+}
+
+// Request for generator status
+message GetGeneratorStatusRequest {
+  // Empty - gets general status
+}
+
+// Connection metrics for health monitoring
+message ConnectionMetrics {
+  reserved 2;
+  reserved "reconnection_count";
+
+  double connection_uptime = 1;           // Connection uptime in seconds
+  double last_error_timestamp = 3;         // Timestamp of last error (0 if none)
+  string last_error_message = 4;         // Last error message (if any)
+  double average_latency_ms = 5;          // Average round-trip latency in milliseconds
+  int32 request_queue_depth = 6;          // Current request queue depth
+}
+
+// Request history entry
+message RequestHistoryEntry {
+  int32 frame_idx = 1;                    // Frame index requested
+  string request_type = 2;                // Request type (GET_FRAME, OVERRIDE, PARAM_UPDATE, etc.)
+  double request_timestamp = 3;            // Request timestamp
+  bool success = 4;                       // Whether request succeeded
+  double generation_time_ms = 5;          // Generation time in milliseconds (if applicable)
+  string error_message = 6;               // Error message if failed
+}
+
+// Request history
+message RequestHistory {
+  repeated RequestHistoryEntry entries = 1; // History entries (most recent first)
+  int32 total_requests = 2;                // Total number of requests
+  int32 successful_requests = 3;            // Number of successful requests
+  int32 failed_requests = 4;                // Number of failed requests
+  double average_generation_time_ms = 5;   // Average generation time
+  double min_generation_time_ms = 6;       // Minimum generation time
+  double max_generation_time_ms = 7;       // Maximum generation time
+}
+
+// Response with generator status
+message GetGeneratorStatusResponse {
+  bool success = 1;               // Whether status was retrieved successfully
+  string message = 2;             // Response message
+  bool is_ready = 3;              // Whether generator is ready
+  bool is_streaming = 4;          // Whether generator is streaming
+  int32 frames_generated = 5;     // Number of frames generated
+  double uptime = 6;              // Generator uptime in seconds
+  GeneratorConfig config = 7;     // Generator configuration
+  ConnectionMetrics connection_metrics = 8;  // Connection health metrics
+  RequestHistory request_history = 9;         // Request history (optional, may be empty)
+  int64 generation_epoch = 10;                // Current cache-generation epoch
+}
+
+// Frame data structure
+message FrameData {
+  repeated DevicePosition tx_positions = 1;      // Transmitter positions
+  repeated DevicePosition rx_positions = 2;      // Receiver positions
+  repeated TargetData targets = 3;               // Target information
+  PathData paths = 4;                           // Path information
+  SceneInfo scene_info = 5;                     // Scene information
+  StandardMPCFrame standard_mpc_frame = 6;      // Required frame payload for streaming
+}
+
+// Device position information
+message DevicePosition {
+  string name = 1;                // Device name
+  double x = 2;                   // X coordinate
+  double y = 3;                   // Y coordinate
+  double z = 4;                   // Z coordinate
+  repeated double orientation = 5; // Orientation (roll, pitch, yaw)
+  repeated double velocity = 6;    // Velocity (vx, vy, vz) in m/s
+}
+
+// Target information
+message TargetData {
+  string name = 1;                // Target name
+  double x = 2;                   // X coordinate
+  double y = 3;                   // Y coordinate
+  double z = 4;                   // Z coordinate
+  repeated double orientation = 5; // Orientation (roll, pitch, yaw)
+  string mesh_name = 6;           // Current mesh name
+  int32 mesh_index = 7;           // Current mesh index
+  double scale = 8;               // Scale factor
+  string material_type = 9;       // Material type
+  repeated double velocity = 10;   // Velocity (vx, vy, vz) in m/s
+}
+
+// Path information
+message PathData {
+  int32 total_paths = 1;          // Total number of paths
+  int32 valid_paths = 2;          // Number of valid paths
+  repeated PathTypeCount path_types = 3; // Breakdown by path type
+  repeated PathDepthInfo depth_info = 4; // Path depth information
+}
+
+// Path type count
+message PathTypeCount {
+  string path_type = 1;           // Path type name
+  int32 count = 2;                // Number of paths of this type
+  double percentage = 3;          // Percentage of total paths
+}
+
+// Path depth information
+message PathDepthInfo {
+  int32 depth = 1;                // Path depth
+  int32 total_interactions = 2;   // Total interactions at this depth
+  repeated PathTypeCount interactions = 3; // Interaction breakdown
+}
+
+// Scene information
+message SceneInfo {
+  string scene_name = 1;          // Scene name
+  double frequency = 2;           // Scene frequency in Hz
+  string quality = 3;             // Rendering quality
+  string material_type = 4;       // Material type
+  repeated double bounds = 5;     // Scene bounds [min_x, min_y, min_z, max_x, max_y, max_z]
+}
+
+// Generator configuration
+message GeneratorConfig {
+  string data_mode = 1;           // Data mode (cached, live_grpc)
+  string motion_mode = 2;         // Motion mode (cached, step)
+  int32 num_steps = 3;            // Number of steps
+  double duration = 4;            // Duration in seconds
+  string output_mode = 5;         // Output mode (file, grpc, etc.)
+  repeated string enabled_patterns = 6; // List of enabled pattern types
+}
+
+// Streaming statistics
+message StreamStats {
+  int32 frames_generated = 1;     // Frames successfully generated
+  int32 frames_failed = 2;        // Frames that failed to generate
+  double average_generation_time = 3; // Average generation time in ms
+  double total_data_generated = 4; // Total data generated in bytes
+  double average_fps = 5;         // Average frames per second
+  double last_frame_latency = 6;  // Latency of last frame in milliseconds
+}
+
+// StandardMPCFrame - Compact canonical MPC arrays.
+message StandardMPCFrame {
+  // Reserved tags cannot be reused by another canonical field.
+  reserved 1 to 3;
+
+  // Fixed-dtype arrays use contiguous row-major bytes.
+  bytes tx_rx_pairs = 4;                       // int32 array (num_pairs, 2)
+  bytes tx_positions = 5;                      // float64 array (num_tx, 3), meters
+  bytes rx_positions = 6;                      // float64 array (num_rx, 3), meters
+  bytes tx_orientations = 7;                   // float64 array (num_tx, 3), radians
+  bytes rx_orientations = 8;                   // float64 array (num_rx, 3), radians
+  bytes target_positions_m = 9;                // float64 array (num_targets, 3)
+
+  // NumPy-aware JSON preserves arbitrary per-target metadata mappings.
+  string targets_metadata_json = 10;
+
+  // Counts are derived from the canonical arrays.
+  reserved 11 to 13;
+
+  // Source information
+  string provenance_json = 14;                // Small source-neutral metadata
+  int32 frame_idx = 15;                       // Frame index
+  optional double timestamp_s = 16;           // Frame timestamp when known
+
+  reserved 17 to 25;
+
+  // NumPy-aware JSON preserves the complete optional beamforming mapping.
+  string beamforming_json = 26;
+
+  // Frame recomputation metadata
+  bool recomputed_from_stored_positions = 27;  // True if frame was recomputed using stored streaming positions (ray tracing has stochastic components)
+
+  reserved 28 to 31;
+
+  // Stable device labels are part of the StandardMPCFrame contract.
+  repeated string tx_names = 32;
+  repeated string rx_names = 33;
+
+  // Encoder and decoder require an exact wire-contract match.
+  uint32 wire_format_version = 34;
+
+  // Compact pair -> path -> physical-bounce topology.
+  bytes pair_path_offsets = 35;               // int64 array (num_pairs + 1,)
+  bytes bounce_offsets = 36;                  // int64 array (num_paths + 1,)
+  bytes bounce_xyz_m = 37;                    // float32 array (num_bounces, 3)
+  bytes interactions = 38;                    // uint8 array (num_bounces,)
+
+  // One material catalog shared by the frame.
+  bytes material_ids = 39;                    // uint16 array (num_bounces,)
+  repeated string material_names = 40;
+  repeated string material_itu_types = 41;
+
+  // Flat per-path metrics and their explicit validity byte.
+  bytes delays_ns = 42;                       // float32 array (num_paths,)
+  bytes path_loss_db = 43;                    // float32 array (num_paths,)
+  bytes aoa_az_deg = 44;                      // float32 array (num_paths,)
+  bytes aoa_el_deg = 45;                      // float32 array (num_paths,)
+  bytes aod_az_deg = 46;                      // float32 array (num_paths,)
+  bytes aod_el_deg = 47;                      // float32 array (num_paths,)
+  bytes metric_valid_bits = 48;               // uint8 array (num_paths,)
+}
+
+// Health check request
+message HealthCheckRequest {
+  // Empty - gets health status
+}
+
+// Health check response
+message HealthCheckResponse {
+  bool healthy = 1;                           // Whether server is healthy
+  double uptime_seconds = 2;                  // Server uptime in seconds
+  int32 frames_generated = 3;                 // Total frames generated
+  int32 frames_failed = 4;                    // Total frames that failed to generate
+  bool is_streaming = 5;                      // Whether currently streaming
+  bool is_ready = 6;                          // Whether ready to accept requests
+}
+
+// Cache status request
+message CacheStatusRequest {
+  // Empty - gets cache status
+}
+
+// Cache status response
+message CacheStatusResponse {
+  int32 cached_frames = 1;                    // Number of frames currently cached
+  int64 total_size_bytes = 2;                 // Total cache size in bytes
+  double oldest_frame_age_seconds = 3;        // Age of oldest frame in seconds
+  string mode = 4;                            // Cache mode (streaming/batch)
+  int32 max_frames = 5;                       // Maximum frames allowed
+  int64 max_size_bytes = 6;                   // Maximum size in bytes
+  double ttl_seconds = 7;                     // TTL configuration in seconds
+  int32 evictions_count = 8;                  // Count-based evictions
+  int32 evictions_ttl = 9;                    // TTL-based evictions
+  int32 evictions_size = 10;                  // Size-based evictions
+  int64 peak_size_bytes = 11;                 // Peak known retained payload bytes
+  int64 cache_hits = 12;                      // Successful frame lookups
+  int64 cache_misses = 13;                    // Missing or expired frame lookups
+  int64 oversized_bypasses = 14;              // Frames returned without cache admission
+}
+
+// -----------------------------------------------------------------------------
+// FrameFileService Messages (Remote HDF5 Mode)
+// -----------------------------------------------------------------------------
+
+// Request metadata about the file server
+message FileServerMetadataRequest {
+  // Empty - gets general metadata
+}
+
+// Response with file server metadata
+message FileServerMetadataResponse {
+  bool success = 1;                       // Whether metadata was retrieved successfully
+  string message = 2;                     // Response message or error details
+  int32 total_frames = 3;                 // Total number of available frames
+  int32 num_tx = 4;                       // Number of transmitters
+  int32 num_rx = 5;                       // Number of receivers
+  int32 num_targets = 6;                  // Number of targets
+  string scene_name = 7;                  // Scene name (if available)
+  string source_directory = 8;            // Source directory path on server
+  bool is_bulk_format = 9;                // Whether using bulk HDF5 format
+  double server_uptime_seconds = 10;      // Server uptime in seconds
+  string frame_set_id = 11;               // Deterministic snapshot identifier
+  int32 manifest_schema_version = 12;     // frames_manifest.json schema version
+  int32 first_frame_idx = 13;             // First available frame index, or -1
+  int32 last_frame_idx = 14;              // Last available frame index, or -1
+  int32 chunk_size = 15;                  // HDF5 chunk size when known
+  int32 total_files = 16;                 // Number of HDF5 frame files/chunks
+  bool snapshot_valid = 17;               // Whether files still match startup snapshot
+  string snapshot_error = 18;             // Snapshot mismatch details if invalid
+  string git_sha = 19;                    // Source git SHA when manifest recorded it
+  string quality_profile_json = 20;       // JSON-encoded quality profile summary
+  string material_properties_json = 21;   // JSON-encoded resolved RF material properties
+}
+
+// Request to list available frames
+message ListFramesRequest {
+  // Empty - lists all available frames
+}
+
+// Response with list of available frame indices
+message ListFramesResponse {
+  bool success = 1;                       // Whether listing was successful
+  string message = 2;                     // Response message or error details
+  repeated int32 frame_indices = 3;       // Sorted list of available frame indices
+  int32 total_count = 4;                  // Total number of frames
+  string frame_set_id = 5;                // Snapshot identifier for this frame list
+}
+
+// Request a single pre-generated frame
+message PreGeneratedFrameRequest {
+  int32 frame_idx = 1;                    // Frame index to retrieve
+}
+
+// Response with pre-generated frame data
+message PreGeneratedFrameResponse {
+  bool success = 1;                       // Whether frame was retrieved successfully
+  string message = 2;                     // Response message or error details
+  int32 frame_idx = 3;                    // Frame index
+  StandardMPCFrame frame_data = 4;        // Frame data in standard format
+  double load_time_ms = 5;                // Time taken to load frame from disk (ms)
+  string frame_set_id = 6;                // Snapshot identifier for the served frame
+}

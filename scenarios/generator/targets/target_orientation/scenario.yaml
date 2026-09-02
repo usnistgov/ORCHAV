@@ -1,0 +1,101 @@
+# Target Orientation
+# ==================
+# Compact visualizer-oriented target scenario:
+#   - WalkerEast and WalkerWest move linearly and face their travel direction.
+#   - TrackingYawHuman stays in place and tracks WalkerEast with yaw only.
+#   - FollowWalkerEastTX points at WalkerEast.
+#   - FollowWalkerWestRX points at WalkerWest.
+#
+# Run with:
+#   orchav-generator scenarios/generator/targets/target_orientation/
+
+schema_version: 2
+
+scene:
+  id: ground/ground_60x50.xml
+
+raytracing:
+  enabled: true
+  export_path_metrics: true
+  quality:
+    preset: ultra-low
+
+timeline:
+  steps: 37
+  duration_s: 8.0
+
+actors:
+  tx:
+    - name: FollowWalkerEastTX
+      mobility:
+        type: stationary
+        position_m: [-24.0, -14.0, 7.0]
+      orientation:
+        type: look_at
+        actor: WalkerEast
+
+  rx:
+    - name: FollowWalkerWestRX
+      mobility:
+        type: stationary
+        position_m: [24.0, -14.0, 2.0]
+      orientation:
+        type: look_at
+        actor: WalkerWest
+
+  targets:
+    - name: WalkerEast
+      asset:
+        source: directory
+        path: libraries/targets/nist_human_walking
+        pattern: "fitted_*.ply"
+      mobility:
+        type: linear
+        start_m: [-18.0, 8.0, 0.85]
+        end_m: [18.0, 8.0, 0.85]
+      orientation:
+        type: align_motion
+        allow_pitch: false
+
+    - name: WalkerWest
+      asset:
+        source: directory
+        path: libraries/targets/nist_human_walking
+        pattern: "fitted_*.ply"
+        start_index: 4
+      mobility:
+        type: linear
+        start_m: [18.0, -2.0, 0.85]
+        end_m: [-18.0, -2.0, 0.85]
+      orientation:
+        type: align_motion
+        allow_pitch: false
+
+    - name: TrackingYawHuman
+      asset:
+        source: directory
+        path: libraries/targets/nist_human_walking
+        pattern: "fitted_*.ply"
+        start_index: 8
+      mobility:
+        type: stationary
+        position_m: [0.0, -10.0, 0.85]
+      orientation:
+        type: look_at
+        actor: WalkerEast
+        allow_pitch: false
+
+generator_summary:
+  enabled: true
+  create: [scene2d, speed, orientation]
+  visualization:
+    scene2d_mode: auto
+    actor_label_mode: name
+
+visualizer:
+  node_markers:
+    rx:
+      shape: mesh
+      mesh_path: meshes/rx_directional_wedge.obj
+      marker_size: 1.3
+      center: true
