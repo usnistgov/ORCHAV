@@ -61,6 +61,7 @@ class MpcSelectedPathDetails:
     render_status: str
     delay_is_estimated: Optional[bool]
     path_loss_is_estimated: Optional[bool]
+    sensing_points: tuple[tuple[int, str, int], ...] = ()
 
     @property
     def canonical_path_id(self) -> int:
@@ -427,6 +428,9 @@ class MpcSelectionService(QObject):
             ),
             material_ids=material_ids,
             material_names=material_names,
+            sensing_points=(
+                catalog.sensing_sequence(path_id) if hasattr(catalog, "sensing_sequence") else ()
+            ),
             geometric_length_m=snapshot.total_length,
             is_filtered=is_filtered,
             is_rendered=is_rendered,

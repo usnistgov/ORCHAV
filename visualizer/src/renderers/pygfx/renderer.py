@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import numpy as np
 
+from shared.scenarios.paths import find_asset_project_root
+
 from ...backends.pygfx_scene_helpers import _is_pygfx_unlit_mode_enabled
 from ...scene.defaults import DEFAULT_SCENE_BACKGROUND_COLOR_RGBA
 from ...types.camera_state import CameraState
@@ -34,11 +36,16 @@ from .canvas import (
     _AA_MODES,
     _env_flag,
     _env_int,
+    _normalize_aa_mode,
     _parse_env_clipping_planes,
     _refresh_renderer_effect_passes,
     create_wgpu_renderer,
+    retire_canvas_readback,
 )
 from .capture import PygfxCaptureMixin
+from .compass import PygfxCompassMixin
+from .compatibility import volume_unavailable_reason
+from .dusk import PygfxDuskMixin
 from .geometry import PygfxGeometryMixin
 from .labels import PygfxLabelMixin
 from .lighting import PygfxIBLManager
@@ -51,7 +58,11 @@ from .picking import PygfxPickingMixin
 from .rf_xray import PygfxRFXRayMixin
 from .runtime import PygfxRuntimeMixin
 from .scene_controls import PygfxSceneControlsMixin
+from .scene_guides import PygfxSceneGuidesMixin
+from .section_contours import PygfxSectionContoursMixin
+from .shadows import PygfxShadowMixin
 from .surface_overlays import PygfxSurfaceOverlayMixin, _AppliedBeamformingSurface
+from .target_silhouette import PygfxTargetSilhouetteMixin
 from .trajectories import PygfxTrajectoryMixin
 from .transform_gizmo import PygfxTransformGizmoMixin
 
@@ -63,8 +74,8 @@ logger = logging.getLogger(__name__)
 
 
 def _default_ibl_dir() -> Path:
-    """Return the repo-level IBL asset directory shared with Open3D."""
-    return Path(__file__).resolve().parents[4] / "libraries" / "ibl"
+    """Return the project's IBL asset directory shared with Open3D."""
+    return find_asset_project_root(Path(__file__).resolve().parent) / "libraries" / "ibl"
 
 
 class PygfxRenderer(
@@ -74,12 +85,18 @@ class PygfxRenderer(
     PygfxMpcMixin,
     PygfxMpcSelectionMixin,
     PygfxSceneControlsMixin,
+    PygfxSceneGuidesMixin,
+    PygfxCompassMixin,
+    PygfxDuskMixin,
+    PygfxSectionContoursMixin,
+    PygfxShadowMixin,
     PygfxCaptureMixin,
     PygfxGeometryMixin,
     PygfxMaterialMixin,
     PygfxOverlayMixin,
     PygfxLabelMixin,
     PygfxSurfaceOverlayMixin,
+    PygfxTargetSilhouetteMixin,
     PygfxRFXRayMixin,
     PygfxTransformGizmoMixin,
     PygfxTrajectoryMixin,
@@ -94,16 +111,22 @@ class PygfxRenderer(
         material_emissive=True,
         material_normal_map=True,
         clipping_planes=True,
+        dusk_lighting=True,
+        section_contours=True,
         shadow_toggle=True,
+        shadow_quality=True,
         camera_lookat=True,
         transparency=True,
+        volume_rendering=False,  # Enabled per instance after checking the imported pygfx.
         line_width=True,
         ibl=True,
+        hdr_ibl=True,
         fly_mode=True,
         camera_minimap=True,
         trajectories=True,
         screenshot_export=True,
         screen_space_labels=True,
+        label_callouts=True,
         skybox=True,
         axes=True,
         aperture_preview=True,
@@ -113,11 +136,16 @@ class PygfxRenderer(
         rf_xray_overlay=True,
         viewport_hud=True,
         picking=True,
+        target_silhouette=True,
         transform_gizmo=True,
         hover_info=True,
         scenario_authoring=True,
+        depth_precision=True,
+        texture_mipmaps=True,
         antialiasing=True,
         ground_grid=True,
+        scene_guides=True,
+        compass=True,
         direct_lighting=True,
         lighting_profiles=True,
         wireframe=True,
@@ -144,6 +172,7 @@ class PygfxRenderer(
         """Initialize pygfx state without creating the Qt canvas yet."""
         self.visualizer = visualizer
         self.last_frame_packet: Optional[FrameRenderPacket] = None
+        self._target_views: Any = None
 
         try:
             import pygfx as gfx
@@ -162,6 +191,14 @@ class PygfxRenderer(
 
         self._gfx = gfx
         self._WgpuWidget = WgpuWidget
+        volume_reason = volume_unavailable_reason(getattr(gfx, "__version__", ""))
+        self.capabilities = replace(
+            type(self).capabilities,
+            volume_rendering=not volume_reason,
+            volume_rendering_unavailable_reason=volume_reason,
+        )
+        if volume_reason:
+            logger.warning(volume_reason)
 
         self._initialized: bool = False
         self._session_generation: int = 0
@@ -179,6 +216,7 @@ class PygfxRenderer(
         self._scene: Any = None
         self._camera: Any = None
         self._controller: Any = None
+        self._depth_precision_enabled: bool = _env_flag("ORCHAV_PYGFX_DEPTH_PRECISION", False)
         self._clear_color: tuple[float, float, float, float] = tuple(
             DEFAULT_SCENE_BACKGROUND_COLOR_RGBA
         )
@@ -198,6 +236,7 @@ class PygfxRenderer(
         self._hidden: set[str] = set()
         self._edge_geometry_names: set[str] = set()
         self._geometry_color_sources: dict[str, Any] = {}
+        self._texture_mipmaps_enabled: bool = _env_flag("ORCHAV_PYGFX_TEXTURE_MIPMAPS", True)
         self._texture_cache: dict[str, Any] = {}
         self._texture_source_identities: dict[str, str] = {}
         self._materials: dict[str, MaterialPayload] = {}
@@ -219,6 +258,8 @@ class PygfxRenderer(
         self._label_anchor_key_by_name: dict[str, tuple[int, int, int]] = {}
         self._label_anchor_by_name: dict[str, np.ndarray] = {}
         self._label_offset_by_name: dict[str, np.ndarray] = {}
+        self._label_layout_dirty_groups: set[tuple[int, int, int]] = set()
+        self._label_background_layout_key: tuple | None = None
         self._next_handle: int = 1
 
         self._camera_state: Optional[CameraState] = None
@@ -252,6 +293,8 @@ class PygfxRenderer(
         self._render_attempts: int = 0
         self._render_successes: int = 0
         self._render_failures: int = 0
+        self._consecutive_render_failures: int = 0
+        self._last_render_failure_log_at: float | None = None
         self._event_pump_calls: int = 0
         self._redraw_requests: int = 0
         self._last_present_call_at: float = 0.0
@@ -317,9 +360,12 @@ class PygfxRenderer(
 
         # Capture/debug passes. AA is GUI-controlled; depth remains an
         # env-var-only debug path until it has normalized visual output.
-        env_aa_mode = os.environ.get("ORCHAV_PYGFX_AA_MODE", "").strip().lower()
+        env_aa_mode = _normalize_aa_mode(os.environ.get("ORCHAV_PYGFX_AA_MODE", ""))
         self._aa_mode: str = env_aa_mode if env_aa_mode in _AA_MODES else "off"
         self._depth_pass_enabled: bool = _env_flag("ORCHAV_PYGFX_ENABLE_DEPTH_PASS", False)
+        from .canvas import bloom_from_environment
+
+        self._bloom_settings = bloom_from_environment()
         if _env_flag("ORCHAV_PYGFX_MPC_MARKERS", False):
             app_state = getattr(self.visualizer, "app_state", None)
             if app_state is not None and hasattr(app_state, "show_mpc_type_markers"):
@@ -991,11 +1037,19 @@ class PygfxRenderer(
             return None
 
         gfx = self._gfx
+        excluded_camera_state = (
+            {"depth_range"} if getattr(self, "_depth_precision_enabled", False) else set()
+        )
         if not register_events:
             try:
                 if mode == "fly":
-                    return gfx.FlyController(self._camera)
+                    ctrl = gfx.FlyController(self._camera)
+                    ctrl.add_camera(self._camera, exclude_state=excluded_camera_state)
+                    return ctrl
                 ctrl = gfx.OrbitController(self._camera)
+                # With depth correction enabled, clipping belongs to the render
+                # boundary rather than the snapshot retained during a drag.
+                ctrl.add_camera(self._camera, exclude_state=excluded_camera_state)
                 if camera_state is not None and hasattr(ctrl, "target"):
                     ctrl.target = tuple(float(x) for x in camera_state.lookat)
                     distance = float(
@@ -1019,9 +1073,12 @@ class PygfxRenderer(
         for target in self._controller_event_targets():
             try:
                 if mode == "fly":
-                    return gfx.FlyController(self._camera, register_events=target)
+                    ctrl = gfx.FlyController(self._camera, register_events=target)
+                    ctrl.add_camera(self._camera, exclude_state=excluded_camera_state)
+                    return ctrl
 
                 ctrl = gfx.OrbitController(self._camera, register_events=target)
+                ctrl.add_camera(self._camera, exclude_state=excluded_camera_state)
                 if camera_state is not None and hasattr(ctrl, "target"):
                     ctrl.target = tuple(float(x) for x in camera_state.lookat)
                     distance = float(
@@ -1072,6 +1129,8 @@ class PygfxRenderer(
         self._render_attempts = 0
         self._render_successes = 0
         self._render_failures = 0
+        self._consecutive_render_failures = 0
+        self._last_render_failure_log_at = None
         self._event_pump_calls = 0
         self._redraw_requests = 0
         self._last_present_call_at = 0.0
@@ -1294,6 +1353,7 @@ class PygfxRenderer(
             app=app,
             defer_process_events=defer_interactive_boot,
         )
+        self._bind_volume_pick_events()
         self._record_canvas_present_method()
         self._install_qt_lifecycle_hooks()
         _refresh_renderer_effect_passes(
@@ -1302,6 +1362,7 @@ class PygfxRenderer(
             clear_color=self._clear_color,
             aa_mode=self._aa_mode,
             depth_pass_enabled=self._depth_pass_enabled,
+            bloom=self._bloom_settings,
         )
 
         self._scene = gfx.Scene()
@@ -1572,12 +1633,31 @@ class PygfxRenderer(
 
     def close(self) -> None:
         """Release complete or partially initialized renderer resources."""
+        focus = getattr(getattr(self, "visualizer", None), "_evidence_focus", None)
+        if focus is not None and focus.renderer is self:
+            focus.stop()
+        self._clear_dusk()
+        self._dusk_texture_cache = {}
+        self._dusk_candidates = {}
+        self._dusk_recipe = None
+        self._clear_section_contours()
+        self._clear_scene_guides()
+        self._clear_compass()
+        self._clear_target_silhouette()
+        target_views = getattr(self, "_target_views", None)
+        if target_views is not None:
+            target_views.dispose()
+            self._target_views = None
+        tools = getattr(self, "camera_tools", None)
+        if tools is not None:
+            tools.close()
         # Invalidate Qt callbacks before touching native objects. A destroyed
         # signal queued by an older canvas must never close a newer session.
         self._session_generation += 1
         was_initialized = self._initialized
         self._initialized = False
         self.set_mpc_path_selection_callback(None)
+        self.clear_volume_cell_selection_callbacks()
         self._disconnect_screen_refresh_hook()
         self._disconnect_qt_lifecycle_hooks()
 
@@ -1634,6 +1714,10 @@ class PygfxRenderer(
         self._label_anchor_groups.clear()
         self._label_anchor_key_by_name.clear()
         self._label_anchor_by_name.clear()
+        self._label_offset_by_name.clear()
+        self._label_layout_dirty_groups.clear()
+        getattr(self, "_label_backgrounds", {}).clear()
+        self._label_background_layout_key = None
         self._normal_line_overlays.clear()
         try:
             self._dispose_transform_gizmo()
@@ -1642,6 +1726,19 @@ class PygfxRenderer(
         self.last_frame_packet = None
         self._camera_state = None
         self._reset_ibl_session_bindings()
+
+        # A bitmap readback can still be awaiting a native map callback even
+        # after the last draw returned. Retire it while Qt's loop helper lives.
+        try:
+            retire_canvas_readback(self._canvas)
+        except Exception:
+            logger.warning("PygfxRenderer: pending canvas readback cleanup failed", exc_info=True)
+        close_canvas = getattr(self._canvas, "close", None)
+        if callable(close_canvas):
+            try:
+                close_canvas()
+            except (RuntimeError, TypeError, AttributeError):
+                logger.debug("PygfxRenderer: canvas close failed", exc_info=True)
 
         if self._owns_container and self._qt_widget_alive(self._container):
             self._qt_closing_programmatically = True
@@ -1749,6 +1846,20 @@ class PygfxRenderer(
         self._request_canvas_draw()
 
     # Named geometry CRUD
+
+    def get_target_views(self) -> tuple[Any, ...]:
+        """Return existing target docks without creating canvases or scene resources."""
+        return tuple(self._target_views.views) if self._target_views is not None else ()
+
+    def open_target_view(self) -> Any:
+        """Open an optional independent target camera inside the main Qt window."""
+        if not self._initialized:
+            return None
+        from .target_views import TargetViewManager
+
+        if self._target_views is None:
+            self._target_views = TargetViewManager(self)
+        return self._target_views.add()
 
     # Frame-packet application (MPC rendering)
 

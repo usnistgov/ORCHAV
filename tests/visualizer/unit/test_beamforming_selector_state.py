@@ -456,3 +456,87 @@ def test_frame_data_mode_enabled_when_frame_beamforming_metadata_exists():
     assert viz._frame_beamforming_available is True
     assert viz.standalone_mode_frame.enabled is True
     assert "Unavailable" not in viz.standalone_mode_frame.tooltip
+
+
+def test_real_beam_panel_load_enable_and_workspace_restore_use_current_scenario(qtbot):
+    from PySide6.QtWidgets import QWidget
+
+    from visualizer.src.panels.beam_pattern_panel import BeamPatternPanel
+    from visualizer.src.services.session_service import SessionService
+    from visualizer.src.state import get_beamforming_state_defaults
+
+    viz = QWidget()
+    qtbot.addWidget(viz)
+    viz.app_state = create_initial_state()
+    viz.set_state = lambda **kw: setattr(viz, "app_state", update_state(viz.app_state, **kw))
+    viz.renderer = None
+    viz.ui_manager = SimpleNamespace(panels={})
+    panel = BeamPatternPanel(viz)
+    group = panel.create_panel()
+    qtbot.addWidget(group)
+    viz.ui_manager.panels["beam_pattern"] = panel
+    for widget_key, attribute in (
+        ("standalone_rows", "standalone_rows"),
+        ("standalone_cols", "standalone_cols"),
+        ("beam_azimuth_spin", "beam_azimuth_spin"),
+        ("beam_elevation_spin", "beam_elevation_spin"),
+    ):
+        if widget_key in panel.widgets:
+            setattr(viz, attribute, panel.widgets[widget_key])
+    viz.beamforming_ui_controller = BeamformingUIController(viz)
+    viz.session_service = SessionService(viz)
+    configs = [
+        {
+            "raytracing": {
+                "carrier_frequency_hz": 28e9,
+                "antenna": {
+                    "tx": {
+                        "num_rows": 4,
+                        "num_cols": 8,
+                        "pattern": "isotropic",
+                        "horizontal_spacing": 0.5,
+                        "vertical_spacing": 0.5,
+                    },
+                    "rx": {"pattern": "dipole"},
+                },
+            }
+        },
+        {
+            "raytracing": {
+                "carrier_frequency_hz": 60e9,
+                "antenna": {
+                    "tx": {
+                        "num_rows": 2,
+                        "num_cols": 3,
+                        "pattern": "dipole",
+                        "horizontal_spacing": 0.25,
+                        "vertical_spacing": 0.75,
+                    }
+                },
+            }
+        },
+        None,
+    ]
+    controller = UIController.__new__(UIController)
+    controller.visualizer = viz
+    for config in configs:
+        viz.scenario_config = config
+        defaults = get_beamforming_state_defaults(config)
+        viz.set_state(**defaults)
+        viz.beamforming_ui_controller.sync_from_state()
+        w = panel.widgets
+        assert w["standalone_rows"].value() == defaults["standalone_antenna_rows"]
+        assert w["standalone_cols"].value() == defaults["standalone_antenna_cols"]
+        assert (
+            w["beam_rx_element_pattern"].currentText().lower()
+            == defaults["beamforming_rx_element_pattern"]
+        )
+        controller._invalidate_beam_patterns = lambda **kw: None
+        controller.handle_beamforming_toggled(True)
+        assert viz.app_state.standalone_antenna_rows == defaults["standalone_antenna_rows"]
+        # A preflight state must resolve defaults from the source at commit time.
+        prepared = viz.session_service._prepare_app_state_restore(viz.app_state.to_dict())
+        viz.set_state(standalone_antenna_rows=17)
+        viz.session_service._restore_app_state({}, prepared=prepared)
+        viz.beamforming_ui_controller.sync_from_state()
+        assert w["standalone_rows"].value() == defaults["standalone_antenna_rows"]

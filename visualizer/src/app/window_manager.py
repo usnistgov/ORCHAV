@@ -64,8 +64,20 @@ def compute_layout(
 
     logical_capture_w = _physical_to_logical(CAPTURE_FRAME_WIDTH_PX, device_pixel_ratio)
     logical_capture_h = _physical_to_logical(CAPTURE_FRAME_HEIGHT_PX, device_pixel_ratio)
-    usable_w = max(O3D_MIN_WIDTH, screen_w - 2 * MARGIN_PX - GAP_PX)
-    usable_h = max(500, screen_h - 2 * MARGIN_PX)
+    usable_w = max(2, screen_w - 2 * MARGIN_PX - GAP_PX)
+    usable_h = max(1, screen_h - 2 * MARGIN_PX)
+    if usable_w < QT_MIN_WIDTH + O3D_MIN_WIDTH:
+        qt_w = min(usable_w - 1, max(1, round(usable_w * 0.52)))
+        return _make_layout(
+            screen_w,
+            screen_h,
+            screen_x,
+            screen_y,
+            qt_w,
+            usable_h,
+            usable_w - qt_w,
+            device_pixel_ratio,
+        )
 
     if layout_profile == "capture-workspace":
         h = min(logical_capture_h, usable_h)
@@ -146,7 +158,7 @@ def qt_min_width_for_profile(layout_profile: str) -> int:
     """Return the shell minimum width for a launch layout profile."""
     if layout_profile == "capture-workspace":
         return CAPTURE_WORKSPACE_QT_WIDTH
-    return QT_MIN_WIDTH
+    return 420
 
 
 def _make_layout(

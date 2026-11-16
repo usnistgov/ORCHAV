@@ -1,0 +1,276 @@
+{
+  "license_spdx": "GPL-3.0-only",
+  "provenance": "ORCHAV project-generated plots of saved sensing products",
+  "kind": "plot_of_saved_native_products_no_reprocessing",
+  "image": "cube_radar_moving.png",
+  "tutorial_scenario": "scenarios/sensing/cube_radar/moving/scenario.yaml",
+  "tutorial_scenario_sha256": "523463b867f5c9ae245dc4dcd00b46eebce161a5812677e17ccfbd0f7dc5f763",
+  "sha256": "a0c2952caecd8d7bc88c03c6e862603b58e7204c8d255eebcd72fa43e7b8918b",
+  "source_files": {
+    "scenarios/sensing/cube_radar/moving/scenario.yaml": "523463b867f5c9ae245dc4dcd00b46eebce161a5812677e17ccfbd0f7dc5f763",
+    "scenarios/sensing/cube_radar/figures.py": "bdf777f67f45fdb647459782f0f136afad403b549594ea2d7413944841ed1bff",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0",
+    "shared/sensing_loader.py": "f91a2cf0178d018804f29226fd90588f6db0404c7f8137b37788567c7198a341"
+  },
+  "recordings": {
+    "moving": {
+      "source_hashes": {
+        "frames_manifest.json": "19b4e0071fd14d3aa723466f15e8319f3a9731a3719f2d7329375b9916d6971f",
+        "mpc_frames_00000-00062.h5": "e8da4ba6bb4d80c6a6e5ffd4e92f1fde0e9a592173aa28cd7fd27261159a3611",
+        "mpc_frames_00063-00063.h5": "329ff0dfc1724aac30b7de5d7da2e71889ba2894b635a9f6aa5a54c6291b587a",
+        "mpc_frames_00064-00126.h5": "28740f8f0d659668a1f74f979e1da1c2dfe48eb1a709e6b2034df82b0fee8a93",
+        "mpc_frames_00127-00127.h5": "9a41c84f318fe8083f854ca043cbb4950f28a44fc3a472824429c2563e289fe6",
+        "mpc_frames_00128-00190.h5": "5da3b5e9706916a662641a9a82679e86cc1d44262eb090f758f4c1c3125fe76b",
+        "mpc_frames_00191-00191.h5": "5a884502ea7929c676db3ead2ddb4844543ad81f555a9261b97bdcf9493fb930",
+        "mpc_frames_00192-00254.h5": "e694e35da50fc52708ff4bb061abf315bee2e8524d437e3843e2d19d0230ddd6",
+        "mpc_frames_00255-00255.h5": "04af3182b112880fd800ff403a43baebe1a7f0ea337c191c541fb484ba909d93",
+        "mpc_frames_00256-00318.h5": "95cce7e1f009e3b2e1b7bf9a15ed7892e21c15d0886e1cdafb22c94809eee00d",
+        "mpc_frames_00319-00319.h5": "9e6333852a0c56b3a1040dd175ce34c988ca851d1f2f25aa4c9653f3e81cdfc9",
+        "mpc_frames_00320-00382.h5": "1854a35497e7f113336df4dabd3f71ca4b791c5e68744b8b216026ae3c9b9f51",
+        "mpc_frames_00383-00383.h5": "31e626f22439989485612c9ea509ab9ce2761edcf96df65181ab84faaa4ec79c",
+        "mpc_frames_00384-00446.h5": "bb9f384674b47157769b154c1da0743380338c11a3c6b15eface44a582f1f9c0",
+        "mpc_frames_00447-00447.h5": "ce3c0bc22dd7be1b6fc6f54a6842b4cc5713af38ed9d97264ab67c30e24bbc38",
+        "mpc_frames_00448-00510.h5": "405e0fed54f6597332058ff17ea1756e9aa17044bdbfa5bcb929b0859a705cbd",
+        "mpc_frames_00511-00511.h5": "62ab68af1af8250c7342e11fb0379f3d0bc40e5ca6dedee2dc866d0a46d9c3b8",
+        "mpc_frames_00512-00574.h5": "52e0a7d06fc15d94f883125e96aa98d746a92df974b434d408f1f4d91fd16e65",
+        "mpc_frames_00575-00575.h5": "d3ae3c24ebc8d61a5d8e81261c7807de581c048c8b8a6b160fd8c00193b20d2f",
+        "mpc_frames_00576-00638.h5": "3521b3de87ffa93e673125e5e4adc980c7c10754f62078997faaf549ea6bbbaf",
+        "mpc_frames_00639-00639.h5": "ff28f62c3b0de19de77e5287cbe03df155bce8c20cabd93a6b0c8ca09f488cad",
+        "mpc_frames_00640-00702.h5": "e4e3c83e3d02749675bb479d5a71f74fe5b5f65cd702967cc41f0dd149aaaa39",
+        "mpc_frames_00703-00703.h5": "689c95a0670848262b35c5b0f11df95063a93580549f4c96b31a26df0a0e3ed4",
+        "mpc_frames_00704-00766.h5": "665bb610d0c775190741d2adb2c743fba673bcaab2e211d02abbc6e859c0e15e",
+        "mpc_frames_00767-00767.h5": "751d26ab30f18ca1c7293cd0dc1a7517d8319fe06807bee9f465f264dd6693d7",
+        "mpc_frames_00768-00830.h5": "2f038ee8c53fddbc8c3d250a27db0761b33d39caa3d35290a54f15ef04c8adc8",
+        "mpc_frames_00831-00831.h5": "a19c5e80115f9674eac21bed125bc62827132562fef1633d4dffae697c517c5c",
+        "mpc_frames_00832-00894.h5": "82965f7d4979caa6cf4806b208ff592061044aed10693440169a5809e7817867",
+        "mpc_frames_00895-00895.h5": "6807d92b8c57a056275472806fa92d6b24ec27c12924eea3e38ec11a707fcb7e",
+        "mpc_frames_00896-00958.h5": "f0c7074a69c0487e45c0638878b56e3c823193fcd6a09485c4780b3bd0a2aa72",
+        "mpc_frames_00959-00959.h5": "b97b05efd20083fad35cef07c3dd61fef57af6dfc6b66b71da021e14edfd3515",
+        "mpc_frames_00960-01022.h5": "ced8e71785da813dd53f06095ed103833196b0b8030e5ae435f6f95649e7eafd",
+        "mpc_frames_01023-01023.h5": "54d24920fb9037c39478198ddb38a72b4da9ca07cec967f8b853908d36c42668"
+      },
+      "execution_scenario_sha256": "523463b867f5c9ae245dc4dcd00b46eebce161a5812677e17ccfbd0f7dc5f763"
+    }
+  },
+  "command": "python -m scenarios.sensing.cube_radar.figures moving --source scenarios/sensing/cube_radar/moving --output analysis/cube-radar-figures",
+  "limits": "One controlled specular acquisition; no claim of general detection or tracking performance.",
+  "result_count": 16,
+  "result_times_s": [
+    0.0,
+    0.06399999999999999,
+    0.12799999999999997,
+    0.19199999999999995,
+    0.25599999999999995,
+    0.31999999999999995,
+    0.3839999999999999,
+    0.4479999999999999,
+    0.5119999999999999,
+    0.5759999999999998,
+    0.6399999999999999,
+    0.7039999999999998,
+    0.7679999999999998,
+    0.8319999999999999,
+    0.8959999999999998,
+    0.9599999999999999
+  ],
+  "detection_counts": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "reports": [
+    [
+      {
+        "range_m": 4.49688687,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 4.49688687,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 4.49688687,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 4.197094412,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 4.197094412,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 4.197094412,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 4.197094412,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 4.197094412,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 3.897301954,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 3.897301954,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 3.897301954,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 3.897301954,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 3.597509496,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 3.597509496,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 3.597509496,
+        "velocity_m_s": 1.003769390625
+      }
+    ],
+    [
+      {
+        "range_m": 3.597509496,
+        "velocity_m_s": 1.003769390625
+      }
+    ]
+  ],
+  "frame_set_id": "d054224486cfedcffc4f1522328aa609bd17b7c4748328ee5c14741f2e229b81",
+  "generation_id": "5d664f42-b627-4e56-a733-12206b41859b",
+  "processing_recipe": {
+    "aoa_az_max_deg": null,
+    "aoa_az_min_deg": null,
+    "aoa_el_max_deg": null,
+    "aoa_el_min_deg": null,
+    "aoa_filter_enabled": false,
+    "array_detection_mode": "rd",
+    "bandwidth": 500000000.0,
+    "beam_angle_oversampling": 1,
+    "carrier_frequency_hz": 28000000000.0,
+    "cfar_edge_policy": "full_window",
+    "cfar_guard_cells": 4,
+    "cfar_max_dynamic_range_db": 12.0,
+    "cfar_min_snr_db": 3.0,
+    "cfar_os_rank": 0.75,
+    "cfar_rd_guard_cells_doppler": 1,
+    "cfar_rd_guard_cells_range": 2,
+    "cfar_rd_ref_cells_doppler": 4,
+    "cfar_rd_ref_cells_range": 6,
+    "cfar_ref_cells": 16,
+    "cfar_threshold_scale": 2.0,
+    "cfar_type": "ca",
+    "cluster_range_gate_m": 0.5,
+    "cluster_velocity_gate_m_s": 0.3,
+    "clutter_removal_enabled": false,
+    "clutter_removal_window": 8,
+    "coherent_clutter_mode": "none",
+    "eval_association_range_gate_m": 10.0,
+    "eval_association_velocity_gate_m_s": 5.0,
+    "fft_size_doppler": 64,
+    "fft_size_range": 128,
+    "ghost_filter_azimuth_gate_deg": null,
+    "ghost_filter_velocity_gate_m_s": null,
+    "jpda_birth_confirmation_frames": 3,
+    "jpda_birth_separation_chi2": 1.0,
+    "jpda_max_joint_nodes": 100000,
+    "max_detection_range_m": null,
+    "min_detection_range_m": null,
+    "noise_enabled": false,
+    "noise_model": "frequency_observation_complex_awgn",
+    "noise_snr_db": null,
+    "output_detections": true,
+    "output_range_doppler": true,
+    "output_range_profile": true,
+    "persist_detection_stage_artifacts": true,
+    "persist_tracking_diagnostics": false,
+    "pre_cfar_doppler_dc_guard_bins": 0,
+    "pre_cfar_doppler_edge_guard_bins": 2,
+    "prf_hz": 1000.0,
+    "processing_mode": "coherent_cpi",
+    "processing_strategy": "coherent_cpi_fft",
+    "range_mode": "monostatic",
+    "range_response": {
+      "frequency_noise": {
+        "seed": null,
+        "variance": 0.0
+      },
+      "frequency_window": "hann",
+      "model": "cfr_ifft",
+      "num_frequency_bins": 128
+    },
+    "raw_payload_policy": "none",
+    "rd_model": "cfr_ifft_doppler_fft",
+    "rd_source": "fft_cpi",
+    "recording_display": null,
+    "recording_profile": "reprocessing",
+    "rng_seed": 42,
+    "track_association_azimuth_gate_deg": null,
+    "track_association_range_gate_m": 0.6,
+    "track_association_velocity_gate_m_s": 0.3,
+    "track_confirmation_enabled": false,
+    "track_confirmation_m": 2,
+    "track_confirmation_mode": "latched",
+    "track_confirmation_n": 3,
+    "track_max_missed_frames": 1,
+    "track_output_tentative": false,
+    "tracker_type": "m_of_n",
+    "window_doppler": "hann",
+    "window_range": "boxcar"
+  },
+  "path_convention": "Repository-relative source paths and reproducible output-directory names.",
+  "execution_backend": "CPU LLVM"
+}

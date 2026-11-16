@@ -14,6 +14,18 @@ from generator.core.coverage.quality import CoverageQuality
 from shared.coverage.schema import COVERAGE_NO_SERVING_TX
 
 
+def test_explicit_precoding_has_tx_antenna_shape_and_preserves_power():
+    """A 1D backend conversion must not consume shared weights after height one."""
+    mi = SimpleNamespace(TensorXf=lambda values: np.array(values, copy=True))
+    weights = [0.25] * 16
+    real, imag = solver._build_precoding_vec(weights, mi, num_tx=2)
+    assert real.shape == imag.shape == (2, 16)
+    np.testing.assert_allclose(np.sum(real**2 + imag**2, axis=1), 1)
+    np.testing.assert_array_equal(real[0], real[1])
+    np.testing.assert_array_equal(imag, 0)
+    assert weights == [0.25] * 16
+
+
 def test_coverage_public_surface_has_no_legacy_grid_helpers():
     assert coverage_pkg.CoverageBoundsError is coverage_bounds.CoverageBoundsError
     assert coverage_pkg.__all__ == ["CoverageBoundsError", "compute_coverage_map"]
@@ -40,6 +52,27 @@ def test_coverage_metric_tx_power_prefers_dbm_then_power_then_zero():
     assert coverage_metrics._tx_power_dbm(SimpleNamespace(power_dbm="12.5", power=1.0)) == 12.5
     assert coverage_metrics._tx_power_dbm(SimpleNamespace(power="7.0")) == 7.0
     assert coverage_metrics._tx_power_dbm(SimpleNamespace(power_dbm=object(), power="bad")) == 0.0
+
+
+def test_coverage_tx_power_reads_array_scalar_without_silent_zero_dbm():
+    """Backend scalar arrays must keep configured power in RSS metadata."""
+
+    class BackendScalar:
+        def __float__(self):
+            raise TypeError("Backend arrays do not implement scalar conversion")
+
+        def __array__(self, dtype=None, copy=None):
+            return np.asarray([30.0], dtype=dtype)
+
+    tx = SimpleNamespace(power_dbm=BackendScalar())
+    assert coverage_metrics._tx_power_dbm(tx) == 30.0
+    # A malformed multi-transmitter value cannot silently select one entry.
+    assert (
+        coverage_metrics._tx_power_dbm(
+            SimpleNamespace(power_dbm=np.asarray([10.0, 20.0]), power=7.0)
+        )
+        == 7.0
+    )
 
 
 @pytest.mark.parametrize(

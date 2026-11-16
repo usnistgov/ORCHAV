@@ -65,6 +65,7 @@ from shared.scenarios.model import (
     ScenarioModel,
     SceneMaterialsModel,
     SceneModel,
+    SensingModel,
     ViewDefaultsModel,
 )
 
@@ -234,7 +235,7 @@ def test_scenario_schema_version_is_documented_as_an_integer() -> None:
 
     assert (
         "| `schema_version` | integer; `2` | required | Required format identifier for "
-        "`scenario.yaml`. ORCHAV 0.1 accepts only `2`. |"
+        "`scenario.yaml`. ORCHAV accepts only `2`. |"
     ) in text
     assert "## Scenario Schema Version" in text
     assert "[Versions and Compatibility](compatibility.md#scenario-yaml)" in text
@@ -362,4 +363,17 @@ def test_scenario_parameter_reference_keeps_public_release_scope() -> None:
     text = SCENARIO_REFERENCE.read_text(encoding="utf-8")
     generated = text.split("<!-- BEGIN GENERATED: scenario-parameters -->", maxsplit=1)[1]
 
-    assert "`sensing`" not in generated
+    # The sensing configuration has its own reference, but sensing is a valid
+    # summary product and must not disappear from the shared option list.
+    assert "| `sensing` |" not in generated
+    summary = next(
+        line for line in generated.splitlines() if line.startswith("| `generator_summary.create`")
+    )
+    assert "`sensing`" in summary
+
+
+def test_sensing_parameter_reference_mentions_public_yaml_schema_fields() -> None:
+    _assert_model_fields_documented(
+        PROJECT_ROOT / "docs" / "sensing" / "parameters.md",
+        [SensingModel],
+    )

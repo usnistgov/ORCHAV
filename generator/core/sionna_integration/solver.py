@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 import re
+from importlib.metadata import PackageNotFoundError, version
 
 import drjit as dr
 
@@ -19,7 +20,10 @@ except ImportError:  # pragma: no cover - optional dependency at runtime
 
 from sionna.rt import PathSolver
 
-SIONNA_VERSION: str = getattr(sionna, "__version__", "0") if sionna else "0"
+try:
+    SIONNA_VERSION: str = version("sionna-rt")
+except PackageNotFoundError:
+    SIONNA_VERSION = getattr(sionna, "__version__", "0") if sionna else "0"
 
 
 def _version_to_tuple(value: str, max_parts: int = 3) -> tuple[int, ...]:

@@ -589,3 +589,72 @@ def test_mpc_usage_signature_tracks_canonical_usage_arrays_when_render_revision_
     )
 
     assert first_signature != second_signature
+
+
+def test_disabled_snapshot_skips_material_reads_and_has_stable_signature(monkeypatch):
+    from dataclasses import replace
+
+    viz = _visualizer()
+    viz.app_state = replace(viz.app_state, show_rf_xray=False)
+    service = RFXRayAnalysisService(viz)
+
+    def unexpected():
+        raise AssertionError("disabled RF X-Ray must not collect materials")
+
+    monkeypatch.setattr(service, "_collect_scene_materials", unexpected)
+    monkeypatch.setattr(service, "_collect_scenario_material_properties", unexpected)
+    first = service.build_snapshot(None)
+    second = service.build_snapshot(object())
+    assert not first.enabled and not second.enabled
+    assert first.signature == second.signature
+
+
+def test_mpc_usage_does_not_rank_paths_when_top_paths_are_hidden(monkeypatch):
+    service = RFXRayAnalysisService(_visualizer(rf_xray_show_top_paths=False))
+    canon = _canonical_material_frame()
+    packet = _frame_packet(canon, np.ones(len(canon.lines), dtype=bool))
+
+    def unexpected(*args):
+        pytest.fail("Hidden Top Paths must not rank or build line geometry")
+
+    monkeypatch.setattr(service, "_select_top_paths", unexpected)
+    monkeypatch.setattr(service, "_build_top_path_lines", unexpected)
+    snapshot = service.build_snapshot(packet)
+    assert snapshot.usage and snapshot.geometry_colors
+    assert not snapshot.top_paths and snapshot.top_path_points is None
+
+
+def test_enabled_snapshot_without_packet_skips_material_reads(monkeypatch):
+    service = RFXRayAnalysisService(_visualizer())
+    monkeypatch.setattr(service, "_collect_scene_materials", lambda: 1 / 0)
+    assert not service.build_snapshot(None).enabled
+
+
+@pytest.mark.parametrize(
+    "mode", [RFXRAY_MODE_MATERIAL_MAP, RFXRAY_MODE_MATERIAL_PROPERTIES, RFXRAY_MODE_MPC_USAGE]
+)
+def test_texture_map_toggle_preserves_scientific_overlay_colors(mode, tmp_path, monkeypatch):
+    """Map opt-in only changes visual surfaces, never RF legend/geometry colors."""
+    from pathlib import Path
+
+    from visualizer.src.materials import texture_policy
+    from visualizer.src.services.material_pbr_service import MaterialPBRService
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(texture_policy, "_TEXTURE_MAPS_OVERRIDE", None)
+    monkeypatch.delenv("ORCHAV_ENABLE_TEXTURES", raising=False)
+    monkeypatch.delenv("ORCHAV_DISABLE_TEXTURES", raising=False)
+    viz = _visualizer(mode=mode)
+    viz.object_appearance_service = SimpleNamespace(refresh_entry_appearance_batch=lambda _: True)
+    viz.material_pbr_service = MaterialPBRService(viz)
+    packet = _frame_packet(_canonical_material_frame(), np.ones(4, bool))
+    analysis = RFXRayAnalysisService(viz)
+    before = analysis.build_snapshot(packet)
+    mpc_colors = packet.mpc_colors.copy()
+    for enabled in [True, False, True, None]:
+        assert viz.material_pbr_service.set_texture_maps_enabled(enabled)
+        after = analysis.build_snapshot(packet)
+        assert after.geometry_colors == before.geometry_colors
+        assert after.signature == before.signature
+        assert after.overlay_opacity == before.overlay_opacity
+        np.testing.assert_array_equal(packet.mpc_colors, mpc_colors)

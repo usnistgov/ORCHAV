@@ -22,14 +22,17 @@ from visualizer.src.renderers.protocol import RendererCapabilities
 from visualizer.visualizer import OrchavVisualizer
 
 
-def test_feature_gate_requires_exact_one() -> None:
-    assert scenario_builder_enabled({}) is False
+def test_feature_gate_defaults_on_and_preserves_explicit_override() -> None:
+    assert scenario_builder_enabled({}) is True
+    assert scenario_builder_enabled({SCENARIO_BUILDER_ENV: "0"}) is False
     assert scenario_builder_enabled({SCENARIO_BUILDER_ENV: "true"}) is False
     assert scenario_builder_enabled({SCENARIO_BUILDER_ENV: "1"}) is True
 
 
 def test_author_cli_is_gated_and_pygfx_only(monkeypatch) -> None:
     monkeypatch.delenv(SCENARIO_BUILDER_ENV, raising=False)
+    assert startup_workflow.parse_cli_args(["--author"]).author is True
+    monkeypatch.setenv(SCENARIO_BUILDER_ENV, "0")
     with pytest.raises(SystemExit):
         startup_workflow.parse_cli_args(["--author"])
 
@@ -90,8 +93,8 @@ def _menu_window() -> QMainWindow:
     return window
 
 
-def test_scenario_builder_menu_exists_only_behind_gate(qapp, monkeypatch) -> None:
-    monkeypatch.setenv(SCENARIO_BUILDER_ENV, "1")
+def test_scenario_builder_menu_defaults_on_for_capable_renderer(qapp, monkeypatch) -> None:
+    monkeypatch.delenv(SCENARIO_BUILDER_ENV, raising=False)
     window = _menu_window()
     menu_controller = MenuController(
         SimpleNamespace(visualizer=window, toggle_metrics_window=Mock())
@@ -164,7 +167,7 @@ def test_scenario_builder_menu_exists_only_behind_gate(qapp, monkeypatch) -> Non
     assert actions["Save Scenario As..."].shortcut().toString() == "Ctrl+Shift+S"
     window.close()
 
-    monkeypatch.delenv(SCENARIO_BUILDER_ENV, raising=False)
+    monkeypatch.setenv(SCENARIO_BUILDER_ENV, "0")
     disabled = _menu_window()
     disabled_menu_controller = MenuController(
         SimpleNamespace(visualizer=disabled, toggle_metrics_window=Mock())
@@ -320,6 +323,8 @@ class _FakeWorkspace(QWidget):
     save_requested = Signal()
     save_as_requested = Signal()
     leave_authoring_requested = Signal()
+    inspect_recording_requested = Signal()
+    create_variant_requested = Signal()
     preview_generated_requested = Signal(object)
     generate_requested = Signal()
     cancel_generation_requested = Signal()
@@ -333,6 +338,8 @@ class _FakeWorkspace(QWidget):
         self.compilation_lock = object()
         self.closed = False
         self.generation_log = []
+        self.create_variant_button = SimpleNamespace(setEnabled=Mock(), setText=Mock())
+        self.recording_explanation = SimpleNamespace(setText=Mock())
 
     def bind_document(self, document):
         self.document = document
@@ -351,6 +358,60 @@ class _FakeWorkspace(QWidget):
 
     def append_generation_log(self, text):
         self.generation_log.append(text)
+
+
+@pytest.mark.parametrize("switch_document", [False, True])
+def test_recording_variant_opens_only_if_original_document_is_still_active(
+    qapp, tmp_path, monkeypatch, switch_document
+):
+    from dataclasses import replace
+
+    from PySide6.QtCore import QObject, Signal
+
+    from visualizer.src.authoring.document import DocumentOwnership, ScenarioDocument
+
+    class Job(QObject):
+        succeeded = Signal(object)
+        failed = Signal(str)
+
+        def start(self, source, destination):
+            self.arguments = (source, destination)
+
+        def cancel(self):
+            pass
+
+    monkeypatch.setattr(mode_controller_module, "RecordingVariantJob", Job)
+    information = Mock()
+    monkeypatch.setattr(QMessageBox, "information", information)
+    original = ScenarioDocument(
+        replace(ScenarioDocument.new().scenario, recorded_poses=True),
+        path=tmp_path / "profile/scenario.yaml",
+        ownership=DocumentOwnership.READ_ONLY,
+    )
+    visualizer = QMainWindow()
+    visualizer.setCentralWidget(QWidget())
+    visualizer.current_scenario_path = None
+    visualizer.vis_initialized = False
+    controller = WorkspaceModeController(visualizer, workspace_factory=_FakeWorkspace)
+    controller.enter_authoring(original)
+    controller.preview_generated_result = Mock()
+    controller.workspace.inspect_recording_requested.emit()
+    controller.preview_generated_result.assert_called_once_with(original.path.parent)
+    source, destination = tmp_path / "input/scenario.yaml", tmp_path / "variant"
+    assert controller.create_recording_variant(acquisition=source, destination=destination)
+    job = controller._variant_job
+    assert job.arguments == (source, destination)
+    assert not controller.create_recording_variant(acquisition=source, destination=destination)
+    current = ScenarioDocument.new()
+    if switch_document:
+        controller.enter_authoring(current)
+    result = ScenarioDocument(ScenarioDocument.new().scenario, path=destination / "scenario.yaml")
+    job.succeeded.emit(result)
+    assert controller._variant_job is None
+    assert controller.workspace.document is (current if switch_document else result)
+    assert information.called == switch_document
+    controller.leave_authoring(restore_visualization=False)
+    visualizer.close()
 
 
 def test_mode_controller_opens_unmarked_canonical_configuration_in_place_without_copy_dialog(

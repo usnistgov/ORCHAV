@@ -42,6 +42,11 @@ class FormatHandler(ABC):
     def has_frame(self, step: int) -> bool:
         """Return True if ``step`` can be loaded."""
 
+    @property
+    def frame_ids_snapshot(self) -> tuple[int, ...] | None:
+        """Stable immutable inventory when supported; replace it on refresh."""
+        return None
+
     @abstractmethod
     def load_frame(self, step: int) -> StandardMPCFrame:
         """Load ``step`` and return a StandardMPCFrame."""

@@ -5,11 +5,16 @@ The ORCHAV Visualizer can display the same frames with two renderer backends:
 - `pygfx`, built on pygfx and wgpu-py
 - `open3d`, built on Open3D and its Filament renderer
 
-Use `pygfx` for day-to-day desktop work. It is the default, appears inside the
-main Visualizer window, and provides ORCHAV's most complete interactive
-workflow. On Windows and Linux, Open3D/Filament is also available, with its own
-native render window and backend-specific material controls. The
-Open3D/Filament Visualizer renderer is unavailable on macOS in v0.1; an
+Use **pygfx** for new work. It is the default, appears inside the main
+Visualizer window, and receives ORCHAV's renderer development.
+
+Development of **ORCHAV's Open3D/Filament renderer has stopped**. It remains
+available on Windows and Linux for workflows that need its native render
+window or Open3D-specific lighting and material controls. ORCHAV Sensing's 3D
+overlays have not been integrated into this renderer; use pygfx to inspect
+sensing results alongside the scene.
+
+The Open3D/Filament Visualizer renderer is unavailable on macOS; an
 explicit request is rejected before Qt starts. On Apple Silicon, pygfx/wgpu
 renders through Metal, Apple's native graphics API.
 
@@ -23,6 +28,7 @@ the Shared Data Layer and participate in the same Visualizer
 | Use case | Recommended choice | What to expect |
 |----------|--------------------|----------------|
 | First launch and day-to-day scenario inspection | `pygfx` | The renderer is embedded beside the Visualizer controls. |
+| ORCHAV Sensing visualization | `pygfx` | Sensing overlays, target-response cues, and tracking uncertainty are integrated with the scene. |
 | Notebook visualization | `pygfx` | It provides the recommended in-cell and offscreen Jupyter interfaces. |
 | Open3D/Filament material or renderer inspection on Windows or Linux | `open3d` | The scene opens in a separate native render window. |
 | Standalone headless image generation | `pygfx` | The notebook and command-line image interfaces use pygfx and wgpu. |
@@ -39,38 +45,35 @@ differences for ordinary use are:
 The main Visualizer window is used with either backend. With Open3D,
 renderer-specific controls act on the separate native window.
 
+pygfx keeps labels at screen size. Open3D label size depends on view distance;
+adjust **Label font** under **Font and world offset** for the current view.
+
 The normal install retains the Open3D package on macOS because ORCHAV uses its
 geometry utilities outside the renderer.
 
-## Materials, Textures, And Lighting
+On Windows, the package requirements exclude Open3D 0.20.0 because its native
+window can crash when closing. Open3D 0.19.0 supports the separate-window
+workflow. Use pygfx for the main desktop workflow.
 
-Both renderers support physically based material appearance, optional texture
-maps, image-based lighting, and shadows. These controls affect only the visual
-representation. They do not change the radio materials or propagation paths
-computed by [Sionna RT](https://nvlabs.github.io/sionna/).
+<a id="materials-textures-and-lighting"></a>
 
-Texture maps are disabled by default. Enable them for one launch with:
+## Appearance controls
 
-```bash
-orchav-visualizer --scenario path/to/scenario --enable-textures
-```
+Both renderers support visual materials, textures, lighting and shadows.
+These settings change the display, not the radio materials or propagation
+computed by [Sionna RT](https://nvlabs.github.io/sionna/rt/).
 
-Use `--disable-textures` to force scalar material colors when another setting
-enables textures. The Render panel exposes the controls supported by the active
-backend. ORCHAV includes the neutral `neutral_outdoor` environment under
-[`libraries/ibl/`](../../libraries/ibl/README.md).
-
-Large scenes can batch compatible static meshes automatically. Configure
-`view_defaults.merge_scene_meshes` only when a scenario needs to force or
-disable that behavior. See [Visualizer Scenario
-Defaults](scenario_defaults.md#renderer-dependent-defaults).
+Use the [appearance guide](appearance.md) for presets, texture switches,
+lighting, skies and shadow detail in pygfx. Open3D exposes its own material
+and lighting controls in the separate native window. Its texture switch can
+retain already displayed maps after **Off**. Relaunch with `--disable-textures`
+when a scalar-only Open3D view is required.
 
 ## Graphics Environment
 
 pygfx uses wgpu. Open3D desktop rendering uses its native graphics window.
 Test the chosen desktop backend in the graphics environment where it will run.
-On Linux VNC, Open3D may use Mesa llvmpipe. Run Open3D directly; Open3D through
-VirtualGL was not included in v0.1 testing. Prefer pygfx for GPU-backed VNC or
+On Linux VNC, Open3D may use Mesa llvmpipe. Use the graphics adapter reported by the active backend when diagnosing performance. Prefer pygfx for GPU-backed VNC or
 performance work and record the selected graphics adapter.
 The standalone [Headless Rendering](headless_rendering.md) interface uses
 pygfx. See that page and
@@ -84,6 +87,11 @@ the same scenario with each backend:
 
 ```bash
 orchav-visualizer --renderer pygfx --scenario scenarios/getting_started/hello_world
+```
+
+Open the same recording with Open3D:
+
+```bash
 orchav-visualizer --renderer open3d --scenario scenarios/getting_started/hello_world
 ```
 

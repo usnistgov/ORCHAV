@@ -58,6 +58,7 @@ class MenuController:
             and renderer_capabilities(renderer).scenario_authoring
         )
         open_act = QAction("Open Scenario...", parent)
+        open_act.setShortcut(shortcut("open_scenario").key_sequence())
         open_act.triggered.connect(self.open_scenario_dialog)
         file_menu.addAction(open_act)
 
@@ -141,10 +142,16 @@ class MenuController:
 
         view_menu = menubar.addMenu("&View")
         if metrics_available:
-            metrics_act = QAction("&Metrics Window", parent)
+            metrics_act = QAction("&Live Frame Metrics", parent)
             metrics_act.setShortcut(shortcut("toggle_metrics").key_sequence())
             metrics_act.triggered.connect(self._parent.toggle_metrics_window)
             view_menu.addAction(metrics_act)
+
+        find_action = view_menu.addAction("Find a Control…")
+        find_action.setShortcut(shortcut("find_control").key_sequence())
+        find_action.triggered.connect(lambda: self.visualizer.ui_manager.show_control_search())
+        reset_layout = view_menu.addAction("Reset Panel Layout")
+        reset_layout.triggered.connect(lambda: self.visualizer.ui_manager.reset_layout())
 
         display_menu = menubar.addMenu("&Display")
         theme_menu = display_menu.addMenu("&Theme")
@@ -164,6 +171,19 @@ class MenuController:
             theme_group.addAction(action)
             theme_menu.addAction(action)
         parent.theme_action_group = theme_group
+
+        scale_menu = display_menu.addMenu("Interface Size")
+        scale_group = QActionGroup(parent)
+        scale_group.setExclusive(True)
+        for scale, label in ((1.0, "100%"), (1.15, "115%"), (1.3, "130%")):
+            action = scale_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(theme_manager.interface_scale == scale)
+            action.triggered.connect(
+                lambda checked=False, value=scale: theme_manager.set_interface_scale(value)
+            )
+            scale_group.addAction(action)
+        parent.interface_scale_action_group = scale_group
 
         bg_menu = display_menu.addMenu("&Background Color")
         scene_appearance = self.visualizer.scene_appearance_service
@@ -189,6 +209,7 @@ class MenuController:
 
         help_menu = menubar.addMenu("&Help")
         shortcuts_act = QAction("&Keyboard Shortcuts", parent)
+        shortcuts_act.setShortcut(shortcut("help").key_sequence())
         shortcuts_act.triggered.connect(parent._show_help_dialog)
         help_menu.addAction(shortcuts_act)
 
@@ -203,6 +224,13 @@ class MenuController:
         parent.status_progress_bar.setTextVisible(True)
         parent.status_progress_bar.setVisible(False)
         parent.statusBar().addPermanentWidget(parent.status_progress_bar)
+
+        parent.status_time_label = QLabel("")
+        parent.status_time_label.setToolTip(
+            "Recorded scene timestamp; independent of playback speed and sensing result time."
+        )
+        parent.statusBar().addPermanentWidget(parent.status_time_label)
+        parent.status_time_label.setVisible(False)
 
         parent.status_fps_label = QLabel("Playback updates: paused")
         parent.status_fps_label.setProperty("role", "secondary")
@@ -239,9 +267,18 @@ class MenuController:
             return
 
         for idx, file_path in enumerate(recent_files):
-            display_name = Path(file_path).name
+            path = Path(file_path)
+            parts = path.parts
+            depth = min(2, len(parts)) if path.suffix.lower() in {".yaml", ".yml"} else 1
+            while depth < len(parts) and any(
+                other != file_path and Path(other).parts[-depth:] == parts[-depth:]
+                for other in recent_files
+            ):
+                depth += 1
+            display_name = "/".join(parts[-depth:])
             action = QAction(f"{idx+1}. {display_name}", self._menu_parent)
             action.setData(file_path)
+            action.setToolTip(file_path)
             action.triggered.connect(lambda _, path=file_path: self.open_recent_file(path))
             menu.addAction(action)
 
@@ -277,17 +314,17 @@ class MenuController:
             scenario_name = summary.scenario_name.replace("_", " ").replace("-", " ").title()
             saved_at = summary.created_at.strftime("%b %d %H:%M")
             if summary.is_autosave:
-                display_name = f"{scenario_name} — frame {summary.frame} — {saved_at} (Auto)"
+                display_name = f"{scenario_name} — frame {summary.frame + 1} — {saved_at} (Auto)"
             else:
                 snapshot_name = summary.path.stem.replace("_", " ").replace("-", " ").title()
                 display_name = (
-                    f"{snapshot_name} — {scenario_name} — frame {summary.frame} — "
+                    f"{snapshot_name} — {scenario_name} — frame {summary.frame + 1} — "
                     f"{saved_at} (Manual)"
                 )
             action = QAction(f"{idx + 1}. {display_name}", self._menu_parent)
             action.setData(str(summary.path))
             action.setToolTip(
-                f"Scenario: {summary.scenario_root}\n"
+                f"Scenario: {getattr(summary, 'scenario_config_path', None) or summary.scenario_root}\n"
                 f"Saved: {summary.created_at.isoformat(sep=' ', timespec='seconds')}\n"
                 f"Snapshot: {summary.path}"
             )
@@ -343,7 +380,7 @@ class MenuController:
             return
 
         if path_obj.is_file() and path_obj.suffix.lower() in {".yaml", ".yml"}:
-            scenario_dir = path_obj.parent
+            scenario_dir = path_obj
         elif path_obj.is_dir():
             scenario_dir = path_obj
         elif path_obj.is_file() and path_obj.suffix.lower() == ".xml":

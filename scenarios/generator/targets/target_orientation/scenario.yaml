@@ -16,13 +16,12 @@ scene:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
   quality:
     preset: ultra-low
 
 timeline:
-  steps: 37
-  duration_s: 8.0
+  steps: 141
+  duration_s: 20.0
 
 actors:
   tx:
@@ -47,12 +46,13 @@ actors:
     - name: WalkerEast
       asset:
         source: directory
-        path: libraries/targets/nist_human_walking
-        pattern: "fitted_*.ply"
+        path: libraries/targets/digital_twin_update1
+        pattern: "DT_Pjh_02_*.ply"
+        mesh_end_behavior: loop
       mobility:
         type: linear
-        start_m: [-18.0, 8.0, 0.85]
-        end_m: [18.0, 8.0, 0.85]
+        start_m: [-18.0, 8.0, 0.98]
+        end_m: [6.0, 8.0, 0.98]
       orientation:
         type: align_motion
         allow_pitch: false
@@ -60,13 +60,13 @@ actors:
     - name: WalkerWest
       asset:
         source: directory
-        path: libraries/targets/nist_human_walking
-        pattern: "fitted_*.ply"
-        start_index: 4
+        path: libraries/targets/digital_twin_update1
+        pattern: "DT_Pjh_02_*.ply"
+        mesh_end_behavior: loop
       mobility:
         type: linear
-        start_m: [18.0, -2.0, 0.85]
-        end_m: [-18.0, -2.0, 0.85]
+        start_m: [18.0, -2.0, 0.98]
+        end_m: [-6.0, -2.0, 0.98]
       orientation:
         type: align_motion
         allow_pitch: false
@@ -74,12 +74,12 @@ actors:
     - name: TrackingYawHuman
       asset:
         source: directory
-        path: libraries/targets/nist_human_walking
-        pattern: "fitted_*.ply"
-        start_index: 8
+        path: libraries/targets/digital_twin_update1
+        pattern: "DT_Pjh_02_00009.ply"
+        switch_meshes: false
       mobility:
         type: stationary
-        position_m: [0.0, -10.0, 0.85]
+        position_m: [0.0, -10.0, 0.98]
       orientation:
         type: look_at
         actor: WalkerEast
@@ -87,7 +87,7 @@ actors:
 
 generator_summary:
   enabled: true
-  create: [scene2d, speed, orientation]
+  create: [topology, speed, orientation]
   visualization:
     scene2d_mode: auto
     actor_label_mode: name

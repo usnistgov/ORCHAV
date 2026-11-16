@@ -154,7 +154,7 @@ def dummy_visualizer():
     vis.mpc_allowed_materials = None
     vis._ensure_tx_rx_markers_created = lambda tx, rx: setattr(vis, "last_marker_counts", (tx, rx))
     vis.node_service = SimpleNamespace()
-    vis.node_service.ensure_tx_rx_markers_created = lambda tx, rx: setattr(
+    vis.node_service.ensure_tx_rx_markers_created = lambda tx, rx, **kwargs: setattr(
         vis, "last_marker_counts", (tx, rx)
     )
     vis.node_service.update_available_tx_rx_from_frame = lambda tx, rx: None
@@ -304,14 +304,20 @@ def test_mpc_explorer_receives_only_renderer_accepted_frames(dummy_visualizer):
     assert pipeline._mpc_explorer_presented_callback is None
 
 
-def test_paths_type_legend_receives_only_renderer_accepted_frame_codes(dummy_visualizer):
+def test_paths_panel_receives_only_renderer_accepted_frame_data(dummy_visualizer):
     """The shared panel must not publish a frame that submission rejected."""
     deliveries: list[tuple[int, ...]] = []
-    panel = SimpleNamespace(set_present_mpc_type_codes=deliveries.append)
+    angle_frames = []
+    canon = object()
+    panel = SimpleNamespace(
+        set_present_mpc_type_codes=deliveries.append,
+        sync_angle_filter_availability=angle_frames.append,
+    )
     dummy_visualizer.ui_manager = SimpleNamespace(panels={"mpc": panel})
     view_model = _make_view_model(
         mpc_line_itypes=np.array([2, 99], dtype=np.uint8),
         mpc_line_itype_codes=(2, 99),
+        canonical_data=canon,
     )
     empty_view_model = _make_view_model()
     pipeline = FramePipeline(dummy_visualizer)
@@ -327,13 +333,16 @@ def test_paths_type_legend_receives_only_renderer_accepted_frame_codes(dummy_vis
 
     assert pipeline.update(0) is False
     assert deliveries == []
+    assert angle_frames == []
 
     assert pipeline.update(0) is True
     assert deliveries == [(2, 99)]
+    assert angle_frames == [canon]
 
     dummy_visualizer.app_state = replace(dummy_visualizer.app_state, step=1)
     assert pipeline.update(1) is True
     assert deliveries == [(2, 99), ()]
+    assert angle_frames == [canon, None]
 
 
 def test_empty_node_frame_replaces_cached_anchors_and_triggers_sync(dummy_visualizer) -> None:
@@ -420,6 +429,17 @@ def test_rejected_frame_apply_retries_without_committing_app_state(dummy_visuali
     assert pipeline.update(0) is True
     assert len(apply_calls) == 2
     assert dummy_visualizer.last_app_state is dummy_visualizer.app_state
+
+
+def test_last_node_removal_is_retried_without_remaining_markers(dummy_visualizer):
+    pipeline = FramePipeline(dummy_visualizer)
+    view_model = _make_view_model()
+    pipeline.load_frame = lambda _step: {}
+    pipeline._derive_view_model = lambda _step, _frame: view_model
+    calls = []
+    dummy_visualizer.node_service.retry_pending_node_syncs = lambda: calls.append(True) or True
+    assert pipeline.update(0)
+    assert calls == [True]
 
 
 def test_failed_node_entity_sync_retries_without_committing_app_state(dummy_visualizer):

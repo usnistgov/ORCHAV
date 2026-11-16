@@ -14,6 +14,7 @@ from visualizer.src.materials.appearance import (
     VisualMaterialBinding,
     VisualMaterialSource,
 )
+from visualizer.src.materials.presets import BUILTIN_MATERIAL_PRESETS
 from visualizer.src.panels.materials_pbr_panel import MaterialsPanel
 from visualizer.src.renderers.protocol import RendererCapabilities
 from visualizer.src.services.material_modes import MaterialModeService
@@ -22,7 +23,8 @@ from visualizer.src.state import create_initial_state
 _APP = QApplication.instance() or QApplication([])
 
 
-def test_object_color_edit_uses_stable_visual_material_key() -> None:
+@pytest.mark.parametrize("visual_partition", [False, True])
+def test_object_color_edit_uses_stable_visual_material_key(visual_partition) -> None:
     """An EM ID change must not redirect an explicit visual-group color edit."""
     pbr_service = SimpleNamespace(
         get_visual_material_key=Mock(return_value="concrete"),
@@ -46,7 +48,11 @@ def test_object_color_edit_uses_stable_visual_material_key() -> None:
         material_entry_edit_service=None,
         populate_controls=Mock(),
     )
-    entry = {"name": "Wall", "material_type": "glass"}
+    entry = {
+        "name": "Wall",
+        "material_type": "glass",
+        "_visual_surface_partition": visual_partition,
+    }
 
     MaterialUIController(parent).handle_material_color_changed(entry)
 
@@ -56,6 +62,31 @@ def test_object_color_edit_uses_stable_visual_material_key() -> None:
     assert property_name == "color"
     assert color == pytest.approx([0.1, 0.6, 0.9], abs=1 / 255)
     parent.populate_controls.assert_called_once_with()
+
+
+def test_visual_surface_rf_edit_reports_source_restriction_without_refreshing_scene():
+    entry = {
+        "name": "Wall front",
+        "material_id": "concrete",
+        "_visual_surface_partition": True,
+        "_visual_surface_source_name": "Wall",
+    }
+    visualizer = SimpleNamespace(_set_status_message=Mock(), schedule_update=Mock())
+    editor = SimpleNamespace(change_material_id=Mock())
+    parent = SimpleNamespace(
+        visualizer=visualizer,
+        material_entry_edit_service=editor,
+        populate_controls=Mock(),
+    )
+
+    MaterialUIController(parent).handle_material_id_changed(entry, "metal")
+
+    editor.change_material_id.assert_not_called()
+    parent.populate_controls.assert_not_called()
+    visualizer.schedule_update.assert_not_called()
+    message, duration = visualizer._set_status_message.call_args.args
+    assert "'Wall'" in message and "RF material" in message and "reload" in message
+    assert duration > 0
 
 
 def _make_panel_parent(entry: dict, binding_ref: list[VisualMaterialBinding]) -> SimpleNamespace:
@@ -167,3 +198,53 @@ def test_clear_profile_button_uses_clear_visual_assignment() -> None:
     parent.material_pbr_service.clear_visual_assignment.assert_called_once_with("concrete")
     panel.refresh_material_list.assert_called_once_with()
     group.deleteLater()
+
+
+@pytest.mark.parametrize("applied", [True, False])
+def test_builtin_preset_applies_only_on_user_choice_and_shows_applied_values(qtbot, applied):
+    parent = _make_panel_parent(
+        {"name": "Wall", "material_type": "concrete"}, [VisualMaterialBinding()]
+    )
+    properties = {"roughness": 0.5, "metallic": 0.1}
+
+    def apply_preset(name, material):
+        assert material == "concrete"
+        if applied:
+            properties.update(BUILTIN_MATERIAL_PRESETS[name])
+        return applied
+
+    service = parent.material_pbr_service
+    service.apply_preset = Mock(side_effect=apply_preset)
+    service.summarize_material_group = lambda _material: SimpleNamespace(
+        member_count=1,
+        representative_properties=properties,
+        color_edit_note="",
+        color_editable=True,
+    )
+    panel = MaterialsPanel(parent)
+    group = panel.create_panel()
+    qtbot.addWidget(group)
+    panel.refresh_material_list()
+    combo = panel.widgets["preset_combo"]
+    assert combo.currentIndex() == -1
+    assert "apply_preset_btn" not in panel.widgets
+    service.apply_preset.assert_not_called()
+
+    # Workspace/UI synchronization must not be mistaken for a deliberate choice.
+    combo.setCurrentIndex(combo.findData("Matte"))
+    service.apply_preset.assert_not_called()
+    assert panel.widgets["roughness_spin"].value() == 0.5
+    combo.activated.emit(combo.currentIndex())
+    service.apply_preset.assert_called_once_with("Matte", "concrete")
+    expected = BUILTIN_MATERIAL_PRESETS["Matte"]["roughness"] if applied else 0.5
+    assert panel.widgets["roughness_spin"].value() == expected
+    if applied:
+        assert panel.widgets["visual_preset_label"].text() == "Matte (manual)"
+    else:
+        assert panel.widgets["visual_preset_label"].text() == "Follow EM"
+
+    # Choosing the same preset again remains possible after manual edits.
+    combo.activated.emit(combo.currentIndex())
+    assert service.apply_preset.call_count == 2
+    panel._refresh_preset_combo()
+    assert service.apply_preset.call_count == 2

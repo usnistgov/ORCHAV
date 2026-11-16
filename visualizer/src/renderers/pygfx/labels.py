@@ -9,11 +9,74 @@ from __future__ import annotations
 
 import numpy as np
 
+from .callout_cards import card_padding, update_card_shape
+from .callouts import position_callout, reserve_callout_rect, update_callout
+
 __all__ = ["PygfxLabelMixin"]
 
 _LABEL_ANCHOR_GROUP_TOLERANCE_M = 0.08
 _LABEL_GROUP_VERTICAL_STEP_M = 0.34
 _LABEL_GROUP_LATERAL_STEP_M = 0.18
+
+
+def _background_layout_inputs(renderer, cards):
+    """Capture logical inputs, never the callout positions produced by layout.
+
+    One key covers all visible cards because collision placement is coupled.
+    It retains only the current native objects and small presentation values.
+    """
+    result = []
+    for name, (native, plate) in cards:
+        options = getattr(native, "_orchav_callout_options", None)
+        origin = getattr(native, "_orchav_label_connector_origin", None)
+        group_key = getattr(renderer, "_label_anchor_key_by_name", {}).get(name)
+        result.append(
+            (
+                name,
+                native,
+                plate,
+                float(native.font_size),
+                bool(native.screen_space),
+                getattr(native, "_orchav_label_content", None),
+                getattr(native, "_orchav_label_anchor_request", None),
+                None if origin is None else tuple(origin),
+                tuple(sorted(getattr(renderer, "_label_anchor_groups", {}).get(group_key, ()))),
+                (
+                    tuple(
+                        (key, tuple(value) if isinstance(value, list) else value)
+                        for key, value in sorted(options.items())
+                    )
+                    if options is not None
+                    else native.world.matrix.tobytes()
+                ),
+            )
+        )
+    return tuple(result)
+
+
+def text_label_font_size(payload) -> float:
+    """Convert the neutral text scale to native pixels or world units."""
+    if payload.screen_space:
+        return max(10.0, min(48.0, float(payload.font_size) * 60.0))
+    return max(0.05, (float(payload.font_size) / 0.3) * 0.5)
+
+
+def text_label_from_payload(gfx, payload):
+    """Construct the native label used by desktop and notebook adapters."""
+    native = gfx.Text(
+        text=payload.text,
+        font_size=text_label_font_size(payload),
+        screen_space=payload.screen_space,
+        anchor="middle-center",
+        material=gfx.TextMaterial(
+            color=(1.0, 1.0, 1.0),
+            outline_color=payload.outline_color,
+            outline_thickness=payload.outline_thickness,
+            aa=True,
+        ),
+    )
+    native._orchav_label_content = (payload.text, False)
+    return native
 
 
 class PygfxLabelMixin:
@@ -22,6 +85,226 @@ class PygfxLabelMixin:
     NodeService and TargetService own operational labels for the pygfx backend.
     These helpers maintain transform offsets for named native text labels.
     """
+
+    @staticmethod
+    def _set_label_text(native, text: str, bold: bool = False) -> None:
+        """Apply glyph content only when changed, committing after success."""
+        content = (text, bool(bold))
+        if getattr(native, "_orchav_label_content", None) == content:
+            return
+        # A setter can fail after modifying native state. Retrying the old
+        # requested text must repair it too, rather than trusting stale success.
+        native._orchav_label_content = None
+        if bold:
+            native.set_markdown(f"**{text}**")
+        else:
+            native.set_text(text)
+        native._orchav_label_content = content
+
+    def _apply_label_metadata(self, obj, native) -> None:
+        """Apply the shared text, callout, and backplate metadata."""
+        native._orchav_label_card = bool(obj.metadata.get("label_card", False))
+        bold = bool(obj.metadata.get("label_bold", False))
+        PygfxLabelMixin._set_label_text(native, obj.payload.text, bold)
+        native._orchav_label_bold = bold
+        anchor_request = (
+            obj.metadata.get("label_anchor", "middle-center"),
+            obj.metadata.get("label_anchor_offset", 0.0),
+        )
+        if getattr(native, "_orchav_label_anchor_request", None) != anchor_request:
+            native._orchav_label_anchor_request = None
+            native.anchor, native.anchor_offset = anchor_request
+            native._orchav_label_anchor_request = anchor_request
+        from .callouts import sync_callout
+
+        sync_callout(self, obj.id, obj.metadata.get("label_callout"), obj.metadata)
+        PygfxLabelMixin._sync_label_background(
+            self,
+            obj.id,
+            obj.metadata.get("label_background_rgba"),
+            obj.metadata.get("label_connector_origin"),
+        )
+
+    def _sync_label_background(self, name: str, color, connector_origin=None) -> None:
+        """Attach an optional native backplate; ordinary labels remain unchanged."""
+        cards = getattr(self, "_label_backgrounds", None)
+        native = self._objects.get(name)
+        # Hidden street layers retain their native cards outside the active
+        # layout registry. Reconcile that cached card before applying style
+        # changes; the street synchronizer will park it again if still hidden.
+        dormant = getattr(native, "_orchav_street_background", None)
+        if dormant is not None:
+            if cards is None:
+                cards = self._label_backgrounds = {}
+            cards[name] = (native, dormant)
+            native._orchav_street_background = None
+        if color is None and (cards is None or name not in cards):
+            return
+        if cards is None:
+            cards = self._label_backgrounds = {}
+        previous = cards.get(name)
+        if color is None or native is None:
+            if previous is not None:
+                previous[0].remove(previous[1])
+                cards.pop(name, None)
+            return
+        rgba = np.asarray(color, dtype=float)
+        if rgba.shape != (4,) or not np.isfinite(rgba).all() or np.any((rgba < 0) | (rgba > 1)):
+            raise ValueError("Label background must be an RGBA color between zero and one")
+        if not native.screen_space:
+            raise ValueError("Label backplates require screen-space text")
+        if connector_origin is not None:
+            connector_origin = np.asarray(connector_origin, dtype=float)
+            if connector_origin.shape != (3,) or not np.isfinite(connector_origin).all():
+                raise ValueError("Label connector origin must contain three finite coordinates")
+        native._orchav_label_connector_origin = connector_origin
+        if previous is None or previous[0] is not native:
+            if previous is not None:
+                previous[0].remove(previous[1])
+            plate = self._gfx.Mesh(
+                self._gfx.plane_geometry(1, 1),
+                self._gfx.MeshBasicMaterial(
+                    color=tuple(rgba),
+                    side="both",
+                    alpha_mode="blend",
+                    depth_test=False,
+                    depth_write=False,
+                    pick_write=False,
+                ),
+            )
+            native.add(plate)
+            border = self._gfx.Line(
+                self._gfx.Geometry(
+                    positions=np.array(
+                        [
+                            [-0.5, -0.5, 0],
+                            [0.5, -0.5, 0],
+                            [0.5, 0.5, 0],
+                            [-0.5, 0.5, 0],
+                            [-0.5, -0.5, 0],
+                        ],
+                        dtype=np.float32,
+                    )
+                ),
+                self._gfx.LineMaterial(
+                    color=(0.2, 0.2, 0.2, 0.9),
+                    thickness=1.5,
+                    alpha_mode="blend",
+                    depth_test=False,
+                    depth_write=False,
+                    pick_write=False,
+                ),
+            )
+            plate.add(border)
+            cards[name] = (native, plate)
+        else:
+            plate = previous[1]
+            plate.material.color = tuple(rgba)
+        plate.render_order = native.render_order - 2
+        plate.children[0].render_order = native.render_order - 1
+
+    def _update_label_backgrounds(self) -> None:
+        """Billboard backplates at the glyphs' pixel size for drawing and export.
+
+        Text layout supplies the bounds. Projecting the world anchor supplies
+        the pixel-to-world scale, so zoom and viewport size cannot separate a
+        card from its label. Cards are children and follow object visibility.
+        """
+        from .street_labels import update_street_labels
+
+        update_street_labels(self)
+        cards = getattr(self, "_label_backgrounds", None)
+        if not cards:
+            self._label_background_layout_key = None
+            return
+        for name, (native, plate) in tuple(cards.items()):
+            if self._objects.get(name) is not native:
+                cards.pop(name)
+            elif not native.visible:
+                plate.visible = False
+        visible_cards = [(name, pair) for name, pair in sorted(cards.items()) if pair[0].visible]
+        width, height = self._canvas.get_logical_size()
+        if min(width, height) <= 0:
+            return
+        self._camera.set_view_size(width, height)
+        projection = self._camera.projection_matrix
+        camera_matrix = self._camera.world.matrix
+        layout_key = (
+            self._camera,
+            width,
+            height,
+            projection.tobytes(),
+            camera_matrix.tobytes(),
+            _background_layout_inputs(self, visible_cards),
+        )
+        # Direct native annotations have no service-owned text/style revision.
+        # Continue laying those out so native setters cannot leave stale cards.
+        if any(
+            getattr(native, "_orchav_label_content", None) is None
+            or getattr(native, "_orchav_label_anchor_request", None) is None
+            for _, (native, _) in visible_cards
+        ):
+            layout_key = None
+        if (
+            layout_key is not None
+            and getattr(self, "_label_background_layout_key", None) == layout_key
+        ):
+            return
+        # Never cache a partially applied layout, including when the next
+        # request reverts to the last successful camera/actor state.
+        self._label_background_layout_key = None
+        view_projection = projection @ self._camera.world.inverse_matrix
+        size = np.array([width, height])
+        occupied = []
+        # Reserve actor markers before placing cards. Label cards must not hide
+        # another actor's true position, including nearby group members.
+        for _, (native, _) in visible_cards:
+            options = getattr(native, "_orchav_callout_options", None)
+            if options is not None and native.visible:
+                origin = native._orchav_label_connector_origin
+                clip = view_projection @ np.r_[origin, 1]
+                if clip[3] > 0:
+                    pixel = (clip[:2] / clip[3] + 1) * size / 2
+                    half = options["marker_size"] / 2 + 4
+                    occupied.append(np.array([pixel - half, pixel + half]))
+        for name, (native, plate) in visible_cards:
+            request = getattr(native, "_orchav_label_anchor_request", None)
+            if request is not None:
+                native.anchor = request[0]
+            position_callout(self, name, native, projection, camera_matrix, size, view_projection)
+            anchor = native.world.matrix[:3, 3]
+            clip = view_projection @ np.r_[anchor, 1]
+            origin = getattr(native, "_orchav_label_connector_origin", None)
+            if origin is not None and clip[3] > 0:
+                origin_clip = view_projection @ np.r_[origin, 1]
+                if origin_clip[3] > 0:
+                    direction = (clip[:2] / clip[3] - origin_clip[:2] / origin_clip[3]) * [
+                        width,
+                        height,
+                    ]
+                    if np.linalg.norm(direction) > 1e-6:
+                        if abs(direction[0]) > abs(direction[1]):
+                            native.anchor = "middle-left" if direction[0] > 0 else "middle-right"
+                        else:
+                            native.anchor = "bottom-center" if direction[1] > 0 else "top-center"
+            native._update_object()
+            reserve_callout_rect(native, projection, camera_matrix, size, occupied, view_projection)
+            anchor = native.world.matrix[:3, 3]
+            bounds = native._aabb
+            plate.visible = bool(native.visible and clip[3] > 0)
+            if not plate.visible:
+                continue
+            units = 2 * clip[3] / (np.diag(projection)[:2] * [width, height])
+            dimensions_px = bounds[1, :2] - bounds[0, :2] + 2 * card_padding(native)
+            update_card_shape(self, native, plate, dimensions_px)
+            dimensions = dimensions_px * units
+            center = (bounds[1, :2] + bounds[0, :2]) * 0.5 * units
+            world = np.eye(4)
+            world[:3, :3] = camera_matrix[:3, :3] @ np.diag([*dimensions, 1])
+            world[:3, 3] = anchor + camera_matrix[:3, :2] @ center
+            plate.local.matrix = native.world.inverse_matrix @ world
+            update_callout(self, native, plate, projection, size)
+        self._label_background_layout_key = layout_key
 
     @staticmethod
     def _label_anchor_key(anchor: np.ndarray) -> tuple[int, int, int]:

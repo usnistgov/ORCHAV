@@ -405,6 +405,31 @@ class TestMeshEntryToPayload:
 
 @pytest.mark.headless
 class TestTargetMetadataToPayload:
+    def test_shared_asset_keeps_distinct_actor_and_frame_positions(self, tmp_path):
+        from visualizer.src.backends.pygfx_scene_helpers import mesh_payload_to_pygfx_buffers
+
+        _write_target_ply(tmp_path / "target.ply")
+        centers = ([1.5, 4.0, 0.9], [-1.5, 2.0, 0.9], [1.5, 3.0, 0.9])
+        for position in centers:
+            result = target_metadata_to_payload(
+                {
+                    "name": "walker",
+                    "mesh_file": "target.ply",
+                    "mesh_directory": "",
+                    "current_position": position,
+                },
+                tmp_path,
+                tmp_path,
+            )
+            assert result is not None
+            buffers = mesh_payload_to_pygfx_buffers(result[1])
+            vertices = buffers["positions"]
+            np.testing.assert_allclose(
+                (vertices.min(axis=0) + vertices.max(axis=0)) / 2.0,
+                position,
+                atol=1e-6,
+            )
+
     def test_loads_target_mesh_without_renderer_native_objects(self, tmp_path):
         _write_target_ply(tmp_path / "target.ply")
         meta = {
@@ -413,7 +438,7 @@ class TestTargetMetadataToPayload:
             "mesh_directory": "",
             "current_position": [10.0, 20.0, 5.0],
             "scale": 2.0,
-            "orientation": [90.0, 0.0, 0.0],
+            "orientation": [np.pi / 2.0, 0.0, 0.0],
         }
 
         result = target_metadata_to_payload(meta, tmp_path, tmp_path)
@@ -424,6 +449,12 @@ class TestTargetMetadataToPayload:
         assert isinstance(payload, MeshPayload)
         assert isinstance(material, MaterialPayload)
         assert not hasattr(payload, "get_center")
+        # Recorded pi/2 yaw must rotate by 90 degrees, rather than 1.57 degrees.
+        np.testing.assert_allclose(
+            payload.vertices,
+            [[14, 18, -1], [14, 22, -1], [6, 18, -1], [14, 18, 11]],
+            atol=1e-10,
+        )
         np.testing.assert_allclose(
             (payload.vertices.min(axis=0) + payload.vertices.max(axis=0)) / 2.0,
             [10.0, 20.0, 5.0],

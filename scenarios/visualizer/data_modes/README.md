@@ -1,48 +1,105 @@
 # Data Mode Examples
 
-[Scenarios](../../README.md) > [Visualizer](../README.md) > Data Modes
+Compare three ways to load the same moving-receiver scenario: saved local
+frames, frames computed live, or saved frames served over a network.
 
-These three branches use the same Etoile scene, transmitter, receiver route,
-and tracing settings. Only frame production, storage, and delivery change.
+To run it, see [Running](#running).
 
-Use the [Shared Data Layer guide](../../../docs/shared/README.md) to decide
-which mode fits a workflow. The pages here own only the runnable commands and
-configuration for each example.
+## Choose A Mode
 
-Local HDF5 Playback uses the base installation. Live Generator and Remote HDF5
-Playback require the [`grpc` optional
-extra](../../../docs/getting_started/installation.md#optional-extras).
-
-## Choose An Example
-
-| Mode | Example | Choose it to see |
-|---|---|---|
-| `files` | [Local HDF5 Playback](hdf5_files/README.md) | The Generator persists frames once. Local consumers reopen them later. |
-| `live_grpc` | [Live Generator](live_grpc/README.md) | A running Generator produces requested frames and accepts supported session edits over gRPC. |
-| `remote_hdf5` | [Remote HDF5 Playback](remote_hdf5/README.md) | A remote frame server reads a fixed HDF5 frame set for read-only playback over gRPC. |
-
-Local What-if Preview is an optional `files`-mode feature, not another data
-mode. See [Interactive Recomputation](../../../docs/visualizer/interactive_recomputation.md)
-for how its local worker differs from Live Generator editing.
-
-## Shared Scenario
-
-| Element | Value |
+| Mode | Use it to |
 |---|---|
-| Scene | Built-in [Sionna RT](https://nvlabs.github.io/sionna/) `etoile` scene |
-| TX | `BaseStation`, fixed at 30 m altitude |
-| RX | `MobileRx`, 50-frame linear street-level route |
-| Metrics | Delay, path loss, AoA, and AoD |
+| [Local HDF5 Playback](hdf5_files/README.md) (`files`) | Generate once and reopen saved frames. |
+| [Live Generator](live_grpc/README.md) (`live_grpc`) | Request frames from a running Generator and try temporary edits. |
+| [Remote HDF5 Playback](remote_hdf5/README.md) (`remote_hdf5`) | View saved frames while their HDF5 files stay on a server. |
 
-The Generator accepts `files` and `live_grpc`. The Visualizer additionally
-accepts `remote_hdf5`, which reads an already generated frame set through the
-remote frame server.
+All three use the built-in [Sionna RT](https://nvlabs.github.io/sionna/)
+Etoile scene. `BaseStation` stays 30 m above the scene while `MobileRx` follows
+a street-level route over 50 frames and 5 s.
+
+## Running
+
+Run the commands from the repository root. Choose one of the following setups.
+The live and remote setups also need the gRPC extra:
+
+```bash
+python -m pip install -e ".[grpc]"
+```
+
+### Local frames
+
+Generate local HDF5 frames:
+
+```bash
+orchav-generator scenarios/visualizer/data_modes/hdf5_files
+```
+
+Open the local recording:
+
+```bash
+orchav-visualizer --scenario scenarios/visualizer/data_modes/hdf5_files --no-resume
+```
+
+The frames are saved under this scenario's `frames/` directory. On later
+visits, only the Visualizer command is needed.
+
+### Live Generator
+
+In the first terminal, start the Generator and leave it running:
+
+```bash
+orchav-generator scenarios/visualizer/data_modes/live_grpc
+```
+
+In a second terminal, connect the Visualizer:
+
+```bash
+orchav-visualizer --scenario scenarios/visualizer/data_modes/live_grpc --no-resume
+```
+
+The Generator computes requested frames and keeps them in memory. It does not
+save a frame set. The [live walkthrough](live_grpc/README.md#try-a-live-edit)
+shows how to move the receiver and recompute paths.
+
+### Remote saved frames
+
+First generate the recording that the server will read:
+
+```bash
+orchav-generator scenarios/visualizer/data_modes/remote_hdf5/generation
+```
+
+In the same terminal, start the frame server and leave it running:
+
+```bash
+python -m generator.io.grpc.file_server --frames-dir scenarios/visualizer/data_modes/remote_hdf5/generation --port 50052
+```
+
+In a second terminal, connect the Visualizer:
+
+```bash
+orchav-visualizer --scenario scenarios/visualizer/data_modes/remote_hdf5 --no-resume
+```
+
+This first run puts both processes on your machine. The server reads
+`generation/frames/`; playback does not rerun ray tracing. See the
+[remote walkthrough](remote_hdf5/README.md#connect-to-another-machine) to use
+another machine.
+
+## What To Inspect
+
+1. Open **System → Data Source**. Check that the mode matches your setup:
+   **File**, **Live gRPC**, or **Remote HDF5**.
+2. Play or scrub the timeline and watch `MobileRx` move through the scene.
+3. For a live or remote run, keep the server terminal open during playback.
+   When finished, close the Visualizer and stop the server with **Ctrl+C**.
+
+For storage and transport details, see the
+[Shared Data Layer guide](../../../docs/shared/README.md#choose-a-data-mode).
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../README.md) | [Visualizer](../README.md) |
-> Current: **Data Modes**
->
-> Choose: [Local HDF5 Playback](hdf5_files/README.md) |
-> [Live Generator](live_grpc/README.md) |
-> [Remote HDF5 Playback](remote_hdf5/README.md)
+Up: [Visualizer](../README.md) ·
+[Local HDF5 Playback](hdf5_files/README.md) ·
+[Live Generator](live_grpc/README.md) ·
+[Remote HDF5 Playback](remote_hdf5/README.md)

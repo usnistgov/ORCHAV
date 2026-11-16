@@ -25,6 +25,7 @@ from shared.logging import get_current_log_level_name
 
 from ..playback import format_playback_fps
 from .base import BasePanel
+from .ui_theme import configure_label
 
 REFRESH_INTERVAL_MS = 1000
 LOG_LEVEL_OPTIONS = ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG")
@@ -41,6 +42,7 @@ class PerformancePanel(BasePanel):
         self._refresh_timer: Optional[QTimer] = None
         self._deferred_sync_timer: Optional[QTimer] = None
         self._refresh_cache_snapshot: Optional[dict[str, Any]] = None
+        self._cache_debug_window = None
 
     def create_panel(self) -> QGroupBox:
         """Build grouped runtime, cache, preload, and diagnostics controls."""
@@ -67,6 +69,10 @@ class PerformancePanel(BasePanel):
 
     def cleanup(self) -> None:
         """Stop polling and cancel callbacks queued during panel construction."""
+        if self._cache_debug_window is not None:
+            self._cache_debug_window.shutdown()
+            self._cache_debug_window.deleteLater()
+            self._cache_debug_window = None
         deferred = self._deferred_sync_timer
         self._deferred_sync_timer = None
         if deferred is not None:
@@ -144,7 +150,7 @@ class PerformancePanel(BasePanel):
         layout.setContentsMargins(6, 4, 6, 6)
 
         self.widgets["preload_status_label"] = QLabel("Preload: Not started")
-        self.widgets["preload_status_label"].setStyleSheet("font-size: 11px;")
+        configure_label(self.widgets["preload_status_label"], role="secondary", word_wrap=True)
         layout.addWidget(self.widgets["preload_status_label"])
 
         row = QHBoxLayout()
@@ -184,16 +190,31 @@ class PerformancePanel(BasePanel):
             "ERROR and CRITICAL show failures only)"
         )
         layout.addWidget(self.widgets["log_level_combo"])
+        debug_button = QPushButton("Cache and memory…")
+        debug_button.setToolTip("Open optional live diagnostics without changing cache settings")
+        debug_button.clicked.connect(self._open_cache_debug)
+        self.widgets["cache_debug_button"] = debug_button
+        layout.addWidget(debug_button)
         layout.addStretch()
         return group
+
+    def _open_cache_debug(self) -> None:
+        """Create diagnostics only after an explicit request; closing stops sampling."""
+        if self._cache_debug_window is None:
+            from ..diagnostics.cache_debug import CacheDebugWindow
+
+            self._cache_debug_window = CacheDebugWindow(self.parent)
+        self._cache_debug_window.show()
+        self._cache_debug_window.raise_()
+        self._cache_debug_window.activateWindow()
 
     def _add_metric_row(self, layout: QGridLayout, row: int, label: str, key: str) -> None:
         """Register one metric value label under a stable widget key."""
         name = QLabel(label)
-        name.setStyleSheet("font-size: 10px;")
+        configure_label(name, role="secondary")
         layout.addWidget(name, row, 0)
         value = QLabel("--")
-        value.setStyleSheet("font-size: 10px;")
+        value.setWordWrap(True)
         self.widgets[key] = value
         layout.addWidget(value, row, 1)
 

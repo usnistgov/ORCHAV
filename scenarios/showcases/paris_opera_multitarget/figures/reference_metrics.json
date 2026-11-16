@@ -1,0 +1,71 @@
+{
+  "epochs": 80,
+  "observed_duration_s": 5.12,
+  "reports_source": "source HDF5 reports",
+  "gates": {
+    "car_position_m": 3.0,
+    "other_position_m": 1.8,
+    "velocity_m_s": 0.35
+  },
+  "targets": {
+    "Car_Outbound": {
+      "detected_epochs": 80,
+      "total_epochs": 80,
+      "confirmed_epochs": 78,
+      "track_ids": [
+        2,
+        6
+      ],
+      "adjacent_id_changes": 3,
+      "median_position_error_m": 1.3170977623690203,
+      "max_position_error_m": 2.4155187827301248
+    },
+    "Car_Inbound": {
+      "detected_epochs": 80,
+      "total_epochs": 80,
+      "confirmed_epochs": 79,
+      "track_ids": [
+        5
+      ],
+      "adjacent_id_changes": 0,
+      "median_position_error_m": 2.153297228162876,
+      "max_position_error_m": 2.568194345279269
+    },
+    "Scooter": {
+      "detected_epochs": 80,
+      "total_epochs": 80,
+      "confirmed_epochs": 79,
+      "track_ids": [
+        4
+      ],
+      "adjacent_id_changes": 0,
+      "median_position_error_m": 0.5977292430919796,
+      "max_position_error_m": 1.1118212468066535
+    },
+    "Pedestrian": {
+      "detected_epochs": 80,
+      "total_epochs": 80,
+      "confirmed_epochs": 79,
+      "track_ids": [
+        1
+      ],
+      "adjacent_id_changes": 0,
+      "median_position_error_m": 0.43423780839442827,
+      "max_position_error_m": 1.7581244169165136
+    },
+    "Drone": {
+      "detected_epochs": 80,
+      "total_epochs": 80,
+      "confirmed_epochs": 79,
+      "track_ids": [
+        3
+      ],
+      "adjacent_id_changes": 0,
+      "median_position_error_m": 0.472627597842938,
+      "max_position_error_m": 1.3987539230371175
+    }
+  },
+  "total_unmatched_reports": 7,
+  "matched_reports": 400,
+  "target_opportunities": 400
+}

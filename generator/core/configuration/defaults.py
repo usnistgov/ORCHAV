@@ -26,7 +26,7 @@ SCENARIO_HDF5_FILE_FORMAT_ALIAS: Final = "h5"
 DEFAULT_OUTPUT_MODE: Final = "local"
 DEFAULT_GRPC_SERVER_ADDRESS: Final = "localhost:50051"
 DEFAULT_SCENE_MATERIAL_SCATTERING_COEFFICIENT_PRESET: Final = "none"
-DEFAULT_EXPORT_PATH_METRICS: Final = False
+DEFAULT_EXPORT_PATH_METRICS: Final = scenario_defaults.DEFAULT_EXPORT_PATH_METRICS
 
 # RF defaults. ``None`` for temperature leaves Sionna's scene default in force.
 DEFAULT_CARRIER_FREQUENCY_HZ: Final = 28e9
@@ -63,7 +63,6 @@ DEFAULT_COVERAGE_SAVE_COMPRESSION: Final = "lzf"
 # Sensing waveform and processing defaults.
 DEFAULT_SENSING_ENABLED: Final = False
 DEFAULT_SENSING_BANDWIDTH_HZ: Final = 100e6
-DEFAULT_SENSING_CHIRPS_PER_FRAME: Final = 128
 DEFAULT_SENSING_PRF_HZ: Final = 2000.0
 DEFAULT_SENSING_RANGE_MODE: Final = "bistatic"
 VALID_SENSING_RANGE_MODES: Final = frozenset({"bistatic", "monostatic"})
@@ -73,6 +72,7 @@ DEFAULT_SENSING_WINDOW: Final = "hann"
 
 # Sensing detection defaults.
 DEFAULT_SENSING_CFAR_TYPE: Final = "ca"
+DEFAULT_SENSING_CFAR_EDGE_POLICY: Final = "full_window"
 DEFAULT_SENSING_CFAR_GUARD_CELLS: Final = 4
 DEFAULT_SENSING_CFAR_REF_CELLS: Final = 16
 DEFAULT_SENSING_CFAR_THRESHOLD_SCALE: Final = 3.0
@@ -94,7 +94,9 @@ DEFAULT_SENSING_TRACK_ASSOCIATION_RANGE_GATE_M: Final = 0.6
 DEFAULT_SENSING_TRACK_ASSOCIATION_VELOCITY_GATE_M_S: Final = 0.3
 DEFAULT_SENSING_TRACK_OUTPUT_TENTATIVE: Final = False
 DEFAULT_SENSING_TRACKER_TYPE: Final = "m_of_n"
-VALID_SENSING_TRACKER_TYPES: Final = frozenset({"m_of_n", "kalman", "jpdaf"})
+VALID_SENSING_TRACKER_TYPES: Final = frozenset(
+    {"m_of_n", "kalman", "jpdaf", "cartesian", "cartesian3d"}
+)
 DEFAULT_SENSING_EVAL_ASSOCIATION_RANGE_GATE_M: Final = 10.0
 DEFAULT_SENSING_EVAL_ASSOCIATION_VELOCITY_GATE_M_S: Final = 5.0
 
@@ -111,7 +113,7 @@ DEFAULT_SENSING_NOISE_ENABLED: Final = False
 DEFAULT_SENSING_AOA_FILTER_ENABLED: Final = False
 DEFAULT_SENSING_PROCESSING_MODE: Final = "auto"
 VALID_SENSING_PROCESSING_MODES: Final = frozenset(
-    {"auto", "coherent_cpi", "snapshot_direct_rd", "sequential_stft"}
+    {"auto", "coherent_cpi", "sequential_stft", "analytic_path_doppler_oracle"}
 )
 
 # Antenna defaults and values accepted by generator-side Sionna adapters.

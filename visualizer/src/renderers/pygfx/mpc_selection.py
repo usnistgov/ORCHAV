@@ -249,7 +249,9 @@ class PygfxMpcSelectionMixin:
         if direction_positions is not None:
             direction_material = gfx.LineArrowMaterial(
                 color=(red, green, blue, 1.0),
-                thickness=5.0,
+                # The head must extend beyond the 11 px path halo. pygfx's
+                # arrow shader confines the complete head to this thickness.
+                thickness=18.0,
                 thickness_space="screen",
                 aa=True,
                 alpha_mode="blend",

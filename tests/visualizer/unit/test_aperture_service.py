@@ -9,6 +9,7 @@ import numpy as np
 
 from visualizer.src.renderers.protocol import RendererCapabilities
 from visualizer.src.services.aperture_service import ApertureService
+from visualizer.src.types.orientation_reference import OrientationReferenceSettings
 from visualizer.src.types.render_payloads import TextLabelPayload
 
 
@@ -85,6 +86,7 @@ def _make_viz(**state_overrides):
         selected_tx="all",
         selected_rx=0,
         aperture_radius_m=1.0,
+        orientation_reference=OrientationReferenceSettings(actor="tx:0", radius_m=1.0),
         aoa_az_filter_min_deg=-45.0,
         aoa_az_filter_max_deg=45.0,
         aoa_el_filter_min_deg=None,
@@ -104,6 +106,8 @@ def _make_viz(**state_overrides):
         cache_service=_FakeCacheService(),
         current_rx_positions=[np.array([0.0, 0.0, 0.0])],
         current_tx_positions=[np.array([1.0, 0.0, 0.0])],
+        current_tx_orientations=[(0.0, 0.0, 0.0)],
+        current_rx_orientations=[(0.0, 0.0, 0.0)],
     )
 
 
@@ -194,7 +198,7 @@ def test_aperture_service_update_removes_aod_aperture_when_unchecked():
     assert viz.renderer.active_names == set()
 
 
-def test_aperture_service_draws_global_reference_at_selected_nodes():
+def test_reference_uses_one_independent_actor_despite_both_context_nodes_selected():
     viz = _make_viz(
         show_aoa_aperture=False,
         selected_tx=0,
@@ -207,7 +211,7 @@ def test_aperture_service_draws_global_reference_at_selected_nodes():
 
     names = [name for name, _geometry in viz.renderer.added]
     assert "angular_reference_global_tx_0" in names
-    assert "angular_reference_global_rx_0" in names
+    assert "angular_reference_global_rx_0" not in names
 
 
 def test_aperture_reference_labels_use_neutral_object_contract():
@@ -229,13 +233,19 @@ def test_aperture_reference_labels_use_neutral_object_contract():
     assert len(labels) == 6
     assert all(render_object.visible for render_object in labels)
     assert {render_object.payload.text for render_object in labels} == {
-        "G 0",
-        "G 90",
-        "G 180",
-        "G -90",
-        "G +El",
-        "G -El",
+        "Global +X",
+        "Global +Y",
+        "Global -X",
+        "Global -Y",
+        "Global +Z",
+        "Global -Z",
     }
+    assert all(label.payload.screen_space and label.metadata["label_card"] for label in labels)
+    assert all(label.metadata["alpha_mode"] == "blend" for label in labels)
+    assert all(
+        "label_connector_origin" not in label.metadata and "label_callout" not in label.metadata
+        for label in labels
+    )
 
 
 def test_aperture_service_removes_reference_when_unchecked():

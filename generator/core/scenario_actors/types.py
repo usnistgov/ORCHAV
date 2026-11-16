@@ -38,6 +38,7 @@ class Timeline:
 
     steps: int
     duration_s: float
+    sample_rate_hz: float | None = None
     timestamps_s: tuple[float, ...] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -47,13 +48,28 @@ class Timeline:
             raise ValueError("timeline.steps must be at least 1")
         if not math.isfinite(duration) or duration < 0.0:
             raise ValueError("timeline.duration_s must be finite and non-negative")
-        if steps == 1:
-            timestamps: tuple[float, ...] = (0.0,)
+        rate = self.sample_rate_hz
+        timestamps: tuple[float, ...]
+        if rate is not None:
+            if isinstance(rate, bool) or not math.isfinite(float(rate)) or float(rate) <= 0:
+                raise ValueError("timeline.sample_rate_hz must be finite and positive")
+            rate = float(rate)
+            expected_duration = (steps - 1) / rate
+            if not math.isclose(duration, expected_duration, rel_tol=1e-12, abs_tol=0.0):
+                raise ValueError("timeline.duration_s conflicts with sample_rate_hz")
+            # Keep an authored sample clock in its original index/rate form.
+            # Reconstructing interval then multiplying can select the previous
+            # step pose at a source knot by one floating-point rounding unit.
+            duration = expected_duration
+            timestamps = tuple(step / rate for step in range(steps))
+        elif steps == 1:
+            timestamps = (0.0,)
         else:
             interval = duration / (steps - 1)
             timestamps = tuple(interval * step for step in range(steps - 1)) + (duration,)
         object.__setattr__(self, "steps", steps)
         object.__setattr__(self, "duration_s", duration)
+        object.__setattr__(self, "sample_rate_hz", rate)
         object.__setattr__(self, "timestamps_s", timestamps)
 
 

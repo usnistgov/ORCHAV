@@ -7,13 +7,19 @@ contract without exposing backend-named geometry operations to scene code.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from ..model import RenderObjectState
 from ..scene.geometry_payload_factory import merge_mesh_payloads
 from ..services.object_identity import make_target_entry_geometry_name
-from ..types.render_payloads import MaterialPayload, MeshPayload, material_payload_from_mapping
+from ..types.render_payloads import (
+    MaterialPayload,
+    MeshPayload,
+    SurfaceColorSource,
+    material_payload_from_mapping,
+)
 
 if TYPE_CHECKING:
     from ...visualizer import OrchavVisualizer
@@ -71,6 +77,7 @@ class SceneRenderSync:
         effective_visible: bool | None = None,
         material: dict[str, Any] | MaterialPayload | None = None,
         snapshot_material: dict[str, Any] | MaterialPayload | None = None,
+        snapshot_color_source: SurfaceColorSource | None = None,
     ) -> bool:
         """Synchronize one persistent render state through ``ensure_object``."""
         if material is not None and snapshot_material is not None:
@@ -89,6 +96,27 @@ class SceneRenderSync:
                 else material_payload_from_mapping(snapshot_material)
             )
             snapshot = replace(snapshot, material=effective_snapshot_material)
+        payload = snapshot.payload
+        if (
+            isinstance(payload, MeshPayload)
+            and snapshot_color_source is not None
+            and payload.color_source != snapshot_color_source
+        ):
+            # Share geometry arrays and keep wrapper identity stable on repeated
+            # appearance syncs. This must not mutate authored vertex colors.
+            cache = getattr(self, "_color_snapshots", None)
+            if cache is None:
+                self._color_snapshots = cache = OrderedDict()
+            key = (id(payload), snapshot_color_source)
+            cached = cache.get(key)
+            if cached is None or cached[0] is not payload:
+                cached = (payload, replace(payload, color_source=snapshot_color_source))
+                cache[key] = cached
+                if len(cache) > 512:
+                    cache.popitem(last=False)
+            else:
+                cache.move_to_end(key)
+            snapshot = replace(snapshot, payload=cached[1])
         return bool(self.renderer.ensure_object(snapshot))
 
     def set_object_visibility(self, object_id: str, visible: bool) -> bool:
@@ -98,6 +126,12 @@ class SceneRenderSync:
     def remove_object(self, state: RenderObjectState) -> bool:
         """Remove one persistent render state through the common contract."""
         return bool(self.renderer.remove_object(state.id))
+
+    def clear_snapshot_cache(self) -> None:
+        """Release display wrappers when unloading a scene."""
+        cache = getattr(self, "_color_snapshots", None)
+        if cache is not None:
+            cache.clear()
 
     def set_object_material(
         self,

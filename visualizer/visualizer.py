@@ -175,6 +175,7 @@ class OrchavVisualizer(QMainWindow):
         self._last_scenario_attempt: str | None = None
         self._last_scenario_data_mode_override: str | None = None
         self._last_scenario_grpc_port_override: int | None = None
+        self._last_opened_scenario_source: tuple[Path, str | None, int | None] | None = None
         apply_visualizer_shell(
             self,
             layout_profile=layout_profile,
@@ -219,19 +220,9 @@ class OrchavVisualizer(QMainWindow):
         finalize_deferred_setup(self)
         ensure_startup_active()
 
-        from .src.authoring.feature import scenario_builder_enabled
-
-        if scenario_builder_enabled() and renderer_capabilities(self.renderer).scenario_authoring:
-            from .src.authoring.generation_controller import QtGenerationController
-            from .src.authoring.mode_controller import WorkspaceModeController
-
-            self.workspace_mode_controller = WorkspaceModeController(self)
-            self.authoring_generation_controller = QtGenerationController(
-                save_callback=self.workspace_mode_controller.save,
-                workspace_provider=lambda: self.workspace_mode_controller.workspace,
-                parent=self,
-            )
-            self._refresh_authoring_actions()
+        # Menus are available immediately; import and construct the builder
+        # only on an authoring action through _authoring_mode_controller().
+        self._refresh_authoring_actions()
 
     def set_state(self, **changes):
         """Update the authoritative AppState snapshot using state helpers."""
@@ -243,6 +234,9 @@ class OrchavVisualizer(QMainWindow):
         refresh_context = getattr(ui_manager, "refresh_global_context", None)
         if callable(refresh_context):
             refresh_context(self.app_state)
+        refresh_controls = getattr(ui_manager, "refresh_camera_and_coloring", None)
+        if callable(refresh_controls):
+            refresh_controls(self.app_state, previous_state)
 
         prev_fly_mode = bool(getattr(previous_state, "fly_mode", False))
         fly_mode = bool(getattr(self.app_state, "fly_mode", False))
@@ -278,6 +272,8 @@ class OrchavVisualizer(QMainWindow):
 
     def schedule_update(self):
         """Coalesce rapid UI changes into one delayed render request."""
+        if bool(getattr(self, "_shutdown_started", False)):
+            return
         logger.debug(f"Schedule update: update_pending={self.update_pending}")
         if not self.update_pending:
             self.update_pending = True
@@ -364,6 +360,11 @@ class OrchavVisualizer(QMainWindow):
     def _flush_update(self):
         """Process the pending update through the unified pipeline"""
         self.update_pending = False
+        # A queued callback can outlive its stopped timer. Scene-only mode must
+        # not let that callback enter the pipeline while shutdown retires it.
+        if bool(getattr(self, "_shutdown_started", False)):
+            self._frame_retry_pending = False
+            return
 
         # Scene-only scenarios may still own a coverage layer even though no
         # FrameSource will ever become ready. Let those updates reach the
@@ -771,6 +772,13 @@ class OrchavVisualizer(QMainWindow):
 
         def on_frame_count_updated(new_total_steps: int):
             """Commit a pending live-mode slider value after frame-count refresh."""
+            # Discovery describes source inventory, not the active ordinal plan.
+            self.source_animation_steps = new_total_steps
+            plan = getattr(self, "sensing_playback", None)
+            result_plan = getattr(self, "result_playback", None)
+            if result_plan is not None or (plan is not None and plan.steps is not None):
+                self.ui_controller.update_file_source_summary()
+                return
             if new_total_steps != self.total_animation_steps:
                 logger.debug(
                     "Detected %d MPC frames (was %d)", new_total_steps, self.total_animation_steps
@@ -912,6 +920,12 @@ class OrchavVisualizer(QMainWindow):
         display_index = self.get_animation_step_index(step)
 
         self._sync_animation_navigation_widgets(display_index)
+        result_playback = getattr(self, "result_playback", None)
+        if result_playback is not None:
+            completed = result_playback.present(step)
+            if completed:
+                self.animation_controller.record_completed_playback_tick(step)
+            return completed
         self.ui_controller.update_frame_context(step)
 
         # The pipeline updates camera after deriving the ViewModel and before
@@ -931,6 +945,12 @@ class OrchavVisualizer(QMainWindow):
 
     def get_available_animation_steps(self) -> list[int]:
         """Return animation steps in playback order."""
+        result_playback = getattr(self, "result_playback", None)
+        if result_playback is not None:
+            return list(result_playback.steps)
+        sensing_playback = getattr(self, "sensing_playback", None)
+        if sensing_playback is not None and sensing_playback.steps is not None:
+            return list(sensing_playback.steps)
         frame_source = getattr(self, "frame_source", None)
         if frame_source is not None and hasattr(frame_source, "list_frames"):
             try:
@@ -1027,6 +1047,8 @@ class OrchavVisualizer(QMainWindow):
         stride: Optional[int] = None,
         resolution_scale: float = 1.0,
         include_hud: bool = False,
+        camera_sequence: bool = False,
+        camera_hold_frame: bool = True,
     ) -> bool:
         """Export animation as MP4 or GIF video.
 
@@ -1039,6 +1061,9 @@ class OrchavVisualizer(QMainWindow):
             resolution_scale: Post-capture output scale for captured frames
                 (1.0 = native renderer pixels; pygfx uses bilinear resizing).
             include_hud: Composite visible viewport HUD widgets into each frame.
+            camera_sequence: Evaluate the saved pygfx camera sequence at output FPS.
+            camera_hold_frame: Hold the current scientific frame during a sequence;
+                otherwise step through retained frames without interpolation.
 
         Returns:
             True if export succeeded, False otherwise
@@ -1054,17 +1079,30 @@ class OrchavVisualizer(QMainWindow):
         if not renderer_capabilities(getattr(self, "renderer", None)).screenshot_export:
             return fail("Video export is unavailable for the active renderer")
 
+        if not isinstance(fps, int) or fps < 1:
+            return fail("Export FPS must be a positive integer")
+        camera_owner = getattr(self, "camera_controller", None)
+        camera_tools = (
+            camera_owner.presentation()
+            if camera_owner and hasattr(camera_owner, "presentation")
+            else None
+        )
+        camera_snapshot = None
+        hold_camera_sequence = camera_sequence and camera_hold_frame
+
         # Validate frame range
         if end_frame is None:
             end_frame = self.total_animation_steps - 1
 
-        if start_frame < 0 or end_frame >= self.total_animation_steps:
+        if not hold_camera_sequence and (
+            start_frame < 0 or end_frame >= self.total_animation_steps
+        ):
             return fail(
                 "Invalid frame range: "
                 f"{start_frame}-{end_frame} (total frames: {self.total_animation_steps})"
             )
 
-        if start_frame > end_frame:
+        if not hold_camera_sequence and start_frame > end_frame:
             return fail(f"Start frame ({start_frame}) > end frame ({end_frame})")
 
         if stride is None:
@@ -1080,6 +1118,22 @@ class OrchavVisualizer(QMainWindow):
         else:
             frame_indices = list(range(start_frame, end_frame + 1, stride))
         total_frames = len(frame_indices)
+        if camera_sequence:
+            from math import ceil
+
+            if camera_tools is None or camera_tools.sequence_duration() <= 0:
+                return fail("Create a nonempty pygfx camera sequence before exporting")
+            total_frames = max(1, ceil(camera_tools.sequence_duration() * fps))
+            if camera_hold_frame:
+                frame_indices = [int(self.app_state.step)] * total_frames
+            elif frame_indices:
+                source_frames = frame_indices
+                frame_indices = [
+                    source_frames[
+                        min(len(source_frames) - 1, i * len(source_frames) // total_frames)
+                    ]
+                    for i in range(total_frames)
+                ]
         if total_frames == 0:
             return fail(
                 "Export produced no frames for range "
@@ -1115,6 +1169,8 @@ class OrchavVisualizer(QMainWindow):
             # Suspend timer-driven playback before selecting explicit export
             # frames, then restore the user's prior direction and running state
             # in the common finally path.
+            if camera_tools is not None and camera_sequence:
+                camera_snapshot = camera_tools.suspend_for_export()
             if playback_was_running:
                 if not callable(playback_toggle):
                     return fail(
@@ -1142,8 +1198,18 @@ class OrchavVisualizer(QMainWindow):
                     logger.info("Video export canceled by user")
                     return fail("Video export canceled by user.")
 
-                self.update_frame(frame_idx)
+                if not hold_camera_sequence:
+                    # A failed transaction leaves the previous image on screen.
+                    # Never encode that stale image as the requested frame.
+                    if self.update_frame(frame_idx) is False:
+                        return fail(
+                            f"Video export stopped: source step {frame_idx} could not be rendered. "
+                            "The output is incomplete. Retry after the frame is available."
+                        )
                 QApplication.processEvents()  # Allow UI to update
+
+                if camera_sequence:
+                    camera_tools.apply(camera_tools.sequence_pose((progress_idx - 1) / fps))
 
                 image = self.renderer.export_screenshot_to_array(
                     resolution_scale=resolution_scale,
@@ -1168,7 +1234,7 @@ class OrchavVisualizer(QMainWindow):
 
             return True
 
-        except (ImportError, OSError, RuntimeError, ValueError) as exc:
+        except (ImportError, OSError, RuntimeError, ValueError, KeyError) as exc:
             if ext == ".mp4":
                 return fail(
                     "MP4 export failed. Install an MP4 writer backend such as "
@@ -1182,10 +1248,17 @@ class OrchavVisualizer(QMainWindow):
                     writer.close()
                 except (OSError, RuntimeError, ValueError) as exc:
                     logger.warning("Video writer cleanup failed: %s", exc)
+            # Retire the delayed-show timer before a caller opens a result dialog.
+            # A hidden, parent-owned QProgressDialog can otherwise outlive export.
+            progress.reset()
             progress.close()
+            progress.deleteLater()
             try:
-                self.update_frame(original_frame)
+                if not hold_camera_sequence:
+                    self.update_frame(original_frame)
             finally:
+                if camera_snapshot is not None:
+                    camera_tools.resume_after_export(camera_snapshot)
                 if (
                     playback_was_running
                     and callable(playback_toggle)
@@ -1388,6 +1461,12 @@ class OrchavVisualizer(QMainWindow):
         # Only pass AppState fields into set_state
         state_fields = {field.name for field in fields(AppState)}
         state_updates = {k: v for k, v in view_defaults.items() if k in state_fields}
+        if "label_callout" in state_updates:
+            from .src.types.label_style import LabelCalloutStyle
+
+            state_updates["label_callout"] = LabelCalloutStyle.from_dict(
+                state_updates["label_callout"]
+            )
         if state_updates:
             try:
                 self.set_state(**state_updates)
@@ -1395,19 +1474,21 @@ class OrchavVisualizer(QMainWindow):
             except (TypeError, ValueError, AttributeError) as exc:
                 logger.warning("Could not apply AppState view defaults: %s", exc)
 
+        appearance = getattr(self, "scene_appearance_service", None)
+        if appearance is not None:
+            appearance.apply_procedural_defaults(view_defaults)
+
+        from .src.app.scenario_presentation import (
+            apply_camera_defaults,
+            apply_presentation_defaults,
+        )
+
+        apply_presentation_defaults(self, view_defaults)
+
         if skip_camera:
             return
 
-        # Camera view overrides
-        camera_view = view_defaults.get("camera_view")
-        camera_dist = view_defaults.get("camera_dist")
-        camera_fov = view_defaults.get("fov")
-
-        if camera_view:
-            self.default_camera_view = camera_view
-            self.default_camera_dist = camera_dist
-            self.default_camera_fov = camera_fov
-            self.apply_camera_view(camera_view, camera_dist=camera_dist, fov=camera_fov)
+        apply_camera_defaults(self, view_defaults)
 
     def open_scenario(
         self,
@@ -1419,6 +1500,41 @@ class OrchavVisualizer(QMainWindow):
         grpc_port_override: int | None = None,
     ) -> ScenarioOpenOutcome:
         """Open a scenario through the application lifecycle workflow."""
+        if getattr(self, "_scenario_load_in_progress", False):
+            return ScenarioOpenOutcome.cancelled("Another scenario is already loading.")
+
+        def config_reference(value: str) -> Path | None:
+            try:
+                requested = Path(value).expanduser().resolve(strict=False)
+                return requested / "scenario.yaml" if requested.is_dir() else requested
+            except (OSError, RuntimeError):
+                # Identity lookup must not bypass the workflow's path validation.
+                return None
+
+        requested_reference = config_reference(scenario_path)
+        remembered = getattr(self, "_last_opened_scenario_source", None)
+        if remembered is None or remembered[0] != requested_reference:
+            previous_path = getattr(self, "_last_scenario_attempt", None)
+            remembered = (
+                (
+                    config_reference(previous_path),
+                    self._last_scenario_data_mode_override,
+                    self._last_scenario_grpc_port_override,
+                )
+                if previous_path is not None
+                else None
+            )
+        if (
+            requested_reference is not None
+            and remembered is not None
+            and remembered[0] == requested_reference
+        ):
+            # Successful source settings survive failed opens. Retry metadata
+            # separately retains the latest attempt's explicit choices.
+            if data_mode_override is None:
+                data_mode_override = remembered[1]
+            if grpc_port_override is None and data_mode_override != "files":
+                grpc_port_override = remembered[2]
         self._last_scenario_attempt = str(scenario_path)
         self._last_scenario_data_mode_override = data_mode_override
         self._last_scenario_grpc_port_override = grpc_port_override
@@ -1441,20 +1557,29 @@ class OrchavVisualizer(QMainWindow):
             source_overrides["data_mode_override"] = data_mode_override
         if grpc_port_override is not None:
             source_overrides["grpc_port_override"] = grpc_port_override
-        return app_open_scenario(
+        outcome = app_open_scenario(
             self,
             scenario_path,
             pending_camera=pending_camera,
             autorun_initial_frame=autorun_initial_frame,
             **source_overrides,
         )
+        if outcome.succeeded and requested_reference is not None:
+            self._last_opened_scenario_source = (
+                requested_reference,
+                data_mode_override,
+                grpc_port_override,
+            )
+        return outcome
 
     def _authoring_mode_controller(self):
         """Return the gated workspace controller, constructing it lazily."""
         from .src.authoring.feature import scenario_builder_enabled
 
         if not scenario_builder_enabled():
-            raise RuntimeError("Scenario Builder requires ORCHAV_ENABLE_SCENARIO_BUILDER=1")
+            raise RuntimeError(
+                "Scenario Builder is disabled by ORCHAV_ENABLE_SCENARIO_BUILDER. Unset it or set it to 1."
+            )
         if (
             self._renderer_type != "pygfx"
             or not renderer_capabilities(self.renderer).scenario_authoring

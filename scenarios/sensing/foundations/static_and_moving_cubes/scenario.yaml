@@ -1,0 +1,99 @@
+# Mesh-based sensing foundation. See README.md for geometry and expected results.
+schema_version: 2
+scene:
+  id: empty/empty.xml
+data:
+  files:
+    chunk_size: 64
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 28.0e9
+  quality:
+    preset: low
+    custom:
+      diffuse_reflection: false
+      samples_per_src: 10000
+      max_depth: 1
+      specular_reflection: true
+      los: false
+      refraction: false
+      seed: 42
+timeline:
+  steps: 192
+  sample_rate_hz: 1000.0
+actors:
+  tx:
+  - name: RadarTX
+    mobility:
+      type: stationary
+      position_m: [0.0, 0.0, 0.5]
+  rx:
+  - name: RadarRX
+    mobility:
+      type: stationary
+      position_m: [0.0, 0.0, 0.5]
+  targets:
+  - name: MovingCube
+    asset:
+      source: directory
+      path: libraries/targets/cube
+      pattern: cube.ply
+      material_type: metal
+      switch_meshes: false
+    mobility:
+      type: linear
+      start_m: [0.0, 5.0, 0.5]
+      end_m: [0.0, 4.6562, 0.5]
+  - name: StaticCube
+    asset:
+      source: directory
+      path: libraries/targets/cube
+      pattern: cube.ply
+      material_type: metal
+      switch_meshes: false
+    mobility:
+      type: stationary
+      position_m: [7.5, 0.0, 0.5]
+sensing:
+  enabled: true
+  preset: coherent_hann
+  acquisition:
+    bandwidth_hz: 500000000.0
+    frequency_samples: 128
+    sample_rate_hz: 1000.0
+    samples_per_cpi: 64
+  processing:
+    range:
+      interpretation: monostatic
+    clutter:
+      coherent_mode: none
+  detection:
+    cfar:
+      threshold_scale: 2.0
+      range_doppler:
+        reference_range_cells: 6
+    filters:
+      minimum_snr_db: 3.0
+      maximum_dynamic_range_db: 12.0
+    clustering:
+      range_gate_m: 0.5
+      velocity_gate_m_s: 0.3
+  recording:
+    profile: reprocessing
+    detection_stages: true
+view_defaults:
+  camera_view: isometric
+  mpc_visibility:
+    enabled: true
+    paths: true
+    bounce_points: true
+  color_mode: path_loss
+generator_summary:
+  enabled: true
+  create: [topology, speed, sensing]
+  visualization:
+    topology_motion_detail: true
+    topology_fixed_target_orientation: false
+  sensing:
+    figures: [range_profile, range_doppler, doppler, detection, truth]
+    inspection_figures: [detection_stages]

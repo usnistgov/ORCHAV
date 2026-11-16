@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QAbstractItemModelTester
 
@@ -25,6 +26,56 @@ from visualizer.src.model.mpc_explorer_model import (
     MpcExplorerColumn,
     MpcExplorerTableModel,
 )
+
+
+@pytest.mark.parametrize(
+    ("value", "display"),
+    [
+        (4.8854070730089885e-14, "4.8854e-14"),
+        (1.7132514417351642e-10, "1.7133e-10"),
+        (0.0, "0"),
+        (None, "--"),
+        (np.nan, "--"),
+        (np.inf, "--"),
+        (-np.inf, "--"),
+    ],
+)
+def test_relative_power_preserves_small_magnitudes(value, display) -> None:
+    assert MpcExplorerTableModel._display_value(MpcExplorerColumn.RELATIVE_POWER, value) == display
+
+
+@pytest.mark.parametrize("direction", list(SortDirection))
+def test_relative_power_column_keeps_raw_numeric_sorting(qapp, direction) -> None:
+    from visualizer.src.metrics.mpc_path_query import MpcSortClause, MpcSortSpec
+
+    catalog = make_test_catalog()
+    model = MpcExplorerTableModel(columns=(MpcExplorerColumn.RELATIVE_POWER,))
+    model.begin_generation(catalog, generation=1)
+    result = MpcPathQueryEngine(catalog).execute(
+        MpcQuerySpec(
+            grouping=MpcGrouping.NONE,
+            sort=MpcSortSpec(
+                clauses=(
+                    MpcSortClause(MpcSortField.RELATIVE_POWER, direction),
+                    MpcSortClause(MpcSortField.DELAY, SortDirection.ASCENDING),
+                )
+            ),
+            prewarm_columns=("relative_power",),
+        ),
+        generation=1,
+    )
+    assert model.apply_query_result(result)
+    values = catalog.pair_relative.relative_power_proxy[result.path_ids]
+    finite = values[np.isfinite(values)]
+    delta = np.diff(finite)
+    assert np.all(delta >= 0 if direction is SortDirection.ASCENDING else delta <= 0)
+    for row, value in enumerate(values):
+        text = model.data(model.index(row, 0), Qt.DisplayRole)
+        assert (
+            text == "--"
+            if not np.isfinite(value)
+            else float(text) == pytest.approx(value, rel=5e-5)
+        )
 
 
 def _cache_row(model: MpcExplorerTableModel, path_id: int) -> int | None:

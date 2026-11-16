@@ -18,8 +18,11 @@ from uuid import UUID, uuid4
 from shared.scenarios.actors import (
     ActorRole,
     AlignMotionOrientationSpec,
+    AnimatedAssetSpec,
+    AnimatedPlaybackSpec,
     CatalogAssetSpec,
     CircularMobilitySpec,
+    ConstantRCSSpec,
     DirectoryAssetSpec,
     FileAssetSpec,
     FixedOrientationSpec,
@@ -29,13 +32,17 @@ from shared.scenarios.actors import (
     LinearMobilitySpec,
     LookAtOrientationSpec,
     MobilitySpec,
+    NativeTargetGeometrySpec,
     OrientationSpec,
     SpinOrientationSpec,
     StandaloneMobilitySpec,
     StationaryMobilitySpec,
     TargetAssetSpec,
+    TimelineSpec,
+    TR38901RCSSpec,
     WaypointMobilitySpec,
 )
+from shared.scenarios.defaults import DEFAULT_EXPORT_PATH_METRICS
 
 Vector3: TypeAlias = tuple[float, float, float]
 Mobility: TypeAlias = MobilitySpec
@@ -107,10 +114,14 @@ class TimelineSettings:
     steps: int = 30
     duration_s: float = 3.0
     quality: QualityPreset = QualityPreset.ULTRA_LOW
-    export_path_metrics: bool = True
+    export_path_metrics: bool = DEFAULT_EXPORT_PATH_METRICS
+    sample_rate_hz: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "quality", QualityPreset(self.quality))
+        if self.sample_rate_hz is not None:
+            clock = TimelineSpec(steps=self.steps, sample_rate_hz=self.sample_rate_hz)
+            object.__setattr__(self, "duration_s", clock.duration_s)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +131,7 @@ class _FrozenYamlSequence:
 
 @dataclass(frozen=True, slots=True)
 class _FrozenYamlMapping:
-    items: tuple[tuple[str, "_FrozenYamlValue"], ...] = ()
+    items: tuple[tuple[_YamlScalar, "_FrozenYamlValue"], ...] = ()
 
 
 _FrozenYamlValue: TypeAlias = _YamlScalar | _FrozenYamlSequence | _FrozenYamlMapping
@@ -130,10 +141,10 @@ def _freeze_yaml_value(value: object) -> _FrozenYamlValue:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, Mapping):
-        items: list[tuple[str, _FrozenYamlValue]] = []
+        items: list[tuple[_YamlScalar, _FrozenYamlValue]] = []
         for key, nested in value.items():
-            if not isinstance(key, str):
-                raise TypeError("scenario source snapshot keys must be strings")
+            if key is not None and not isinstance(key, (str, int, float, bool)):
+                raise TypeError("scenario source snapshot keys must be YAML scalars")
             items.append((key, _freeze_yaml_value(nested)))
         return _FrozenYamlMapping(tuple(items))
     if isinstance(value, (list, tuple)):
@@ -204,7 +215,7 @@ class ScenarioSourceSnapshot:
 
     @property
     def top_level_keys(self) -> tuple[str, ...]:
-        return tuple(key for key, _value in self._root.items)
+        return tuple(str(key) for key, _value in self._root.items)
 
     def has_path(self, path: str) -> bool:
         """Return whether a dotted mapping path is present."""
@@ -463,7 +474,7 @@ def translate_mobility(mobility: Mobility, offset: Vector3) -> Mobility:
 
 @dataclass(frozen=True, slots=True)
 class TargetAsset:
-    """Shared catalog/file/directory target asset projected for editing."""
+    """Shared target asset with imported playback semantics preserved."""
 
     asset_id: str
     mesh_directory: str
@@ -475,10 +486,12 @@ class TargetAsset:
     path: str | None = None
     start_index: int = 0
     frame_stride: int = 1
+    mesh_end_behavior: str = "loop"
+    playback: AnimatedPlaybackSpec | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "scale", float(self.scale))
-        if self.source not in {"catalog", "file", "directory"}:
+        if self.source not in {"catalog", "file", "directory", "animated_asset"}:
             raise ValueError(f"unsupported target asset source: {self.source!r}")
         if self.source != "catalog" and not self.path:
             object.__setattr__(self, "path", self.asset_id)
@@ -492,6 +505,7 @@ class TargetAsset:
         material: str = "glass",
         scale: float = 1.0,
         mesh_animation: bool = True,
+        mesh_end_behavior: str = "loop",
     ) -> "TargetAsset":
         """Create a target asset rooted in the repository target catalog."""
 
@@ -511,6 +525,7 @@ class TargetAsset:
             material=material,
             scale=scale,
             mesh_animation=mesh_animation,
+            mesh_end_behavior=mesh_end_behavior,
         )
 
     @classmethod
@@ -523,6 +538,7 @@ class TargetAsset:
                 material=spec.material_type,
                 scale=spec.scale,
                 mesh_animation=spec.switch_meshes,
+                mesh_end_behavior=spec.mesh_end_behavior,
             )
         if isinstance(spec, FileAssetSpec):
             path = str(spec.path)
@@ -549,6 +565,16 @@ class TargetAsset:
                 path=path,
                 start_index=spec.start_index,
                 frame_stride=spec.frame_stride,
+                mesh_end_behavior=spec.mesh_end_behavior,
+            )
+        if isinstance(spec, AnimatedAssetSpec):
+            return cls(
+                asset_id=spec.path,
+                mesh_directory=str(PurePosixPath(spec.path).parent),
+                source="animated_asset",
+                path=spec.path,
+                material=spec.material_type,
+                playback=spec.playback,
             )
         raise TypeError(f"unsupported target asset spec: {type(spec).__name__}")
 
@@ -559,6 +585,18 @@ class TargetAsset:
         of letting an invalid in-progress editor value raise during projection.
         """
 
+        if self.source == "animated_asset":
+            return {
+                "source": self.source,
+                "path": str(self.path or self.asset_id),
+                "material_type": self.material,
+                "playback": self.playback.model_dump() if self.playback is not None else None,
+            }
+        end_behavior = (
+            {"mesh_end_behavior": self.mesh_end_behavior}
+            if self.mesh_end_behavior != "loop"
+            else {}
+        )
         if self.source == "catalog":
             return {
                 "source": "catalog",
@@ -566,6 +604,7 @@ class TargetAsset:
                 "material_type": self.material,
                 "scale": self.scale,
                 "switch_meshes": self.mesh_animation,
+                **end_behavior,
             }
         if self.source == "file":
             return {
@@ -583,6 +622,7 @@ class TargetAsset:
             "switch_meshes": self.mesh_animation,
             "start_index": self.start_index,
             "frame_stride": self.frame_stride,
+            **end_behavior,
         }
 
 
@@ -606,6 +646,10 @@ class AuthoringActor:
     target: TargetAsset | None = None
     visible: bool = True
     locked: bool = False
+    representation: str = "mesh_material"
+    geometry: NativeTargetGeometrySpec | None = None
+    constant_rcs: ConstantRCSSpec | None = None
+    tr38901: TR38901RCSSpec | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "id", UUID(str(self.id)))
@@ -640,6 +684,18 @@ class AuthoringActor:
         if "role" in changes and ActorRole(changes["role"]) != self.role:
             raise ValueError("actor role is immutable")
         return cast(AuthoringActor, cast(Any, replace)(self, **changes))
+
+    def target_representation_mapping(self) -> dict[str, Any]:
+        """Project RF configuration without mixing surface and point models."""
+        if self.representation == "mesh_material":
+            return {} if self.target is None else {"asset": self.target.to_mapping()}
+        result: dict[str, Any] = {"representation": self.representation}
+        if self.geometry is not None:
+            result["geometry"] = self.geometry.model_dump(mode="json", exclude_none=True)
+        model = self.constant_rcs if self.representation == "constant_rcs" else self.tr38901
+        if model is not None:
+            result[self.representation] = model.model_dump(mode="json", exclude_none=True)
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -778,6 +834,7 @@ class AuthoringScenario:
     source_snapshot: ScenarioSourceSnapshot = field(default_factory=ScenarioSourceSnapshot)
     facet_capabilities: tuple[FacetCapability, ...] = ()
     dependencies: tuple[ScenarioDependency, ...] = ()
+    recorded_poses: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "document_id", UUID(str(self.document_id)))

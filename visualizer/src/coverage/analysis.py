@@ -181,6 +181,16 @@ class CoverageScalarPlotData:
     qualifying_percent_total: np.ndarray
 
 
+def coverage_quantity_family(metric):
+    """Identify quantities with the same units across named/serving selection."""
+    base, _, _ = str(metric or "").partition("/")
+    return {
+        "best_path_loss_db": "path_loss_db",
+        "best_rss_dbm": "rss_dbm",
+        "serving_path_gain_linear": "path_gain_linear",
+    }.get(base, base)
+
+
 def coverage_metric_label(metric_name: Any) -> tuple[str, str]:
     """Return a human label and unit for a coverage metric key."""
     raw = str(metric_name or "").strip()
@@ -796,3 +806,21 @@ def format_serving_tx_coverage_summary(summary: ServingTxCoverageSummary) -> str
         for index, name in enumerate(summary.tx_names)
     )
     return " | ".join(entries)
+
+
+def coverage_isoline_levels(values_2d, level_count, metric_name):
+    """Levels in the selected metric, shared by height and orthogonal slices."""
+    values = np.asarray(values_2d, dtype=np.float32)
+    valid = values[coverage_metric_valid_mask(values, metric_name)]
+    if valid.size == 0:
+        return []
+    vmin = float(np.min(valid))
+    vmax = float(np.max(valid))
+    if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax == vmin:
+        return []
+    count = max(2, min(int(level_count), 12))
+    if coverage_metric_color_scale(metric_name) == "logarithmic":
+        levels = np.geomspace(vmin, vmax, count + 2)[1:-1]
+    else:
+        levels = np.linspace(vmin, vmax, count + 2)[1:-1]
+    return [float(level) for level in levels]

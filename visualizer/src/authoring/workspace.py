@@ -1,17 +1,18 @@
-"""Single-window Qt workspace for the feature-gated Scenario Builder."""
+"""Single-window Qt workspace for the Scenario Builder."""
 
 from __future__ import annotations
 
 import math
 import threading
+import time
 from contextlib import AbstractContextManager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID
 
 import numpy as np
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -20,30 +21,19 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
-    QFormLayout,
-    QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
-    QPlainTextEdit,
-    QProgressBar,
     QPushButton,
-    QSlider,
     QSpinBox,
-    QSplitter,
     QTableWidget,
-    QTabWidget,
-    QToolBar,
-    QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from generator.core.materials.target_materials import available_target_material_types
 from generator.core.scenario_actors import (
     PreparedMobility,
     Quaternion,
@@ -53,7 +43,6 @@ from generator.core.scenario_actors import (
     prepare_scenario,
 )
 from shared.scenarios.actors import (
-    MAX_RANDOM_SEED,
     CircularMobilitySpec,
     FixedOrientationSpec,
     GroupDeviationSpec,
@@ -69,9 +58,11 @@ from shared.scenarios.actors import (
     WaypointMobilitySpec,
 )
 from shared.scenarios.parsers import available_sionna_scene_ids
+from shared.scenarios.paths import find_project_root
 from shared.scenarios.yaml import validate_scenario_data
 
 from ..scene.target_transforms import sionna_orientation_from_rotation_matrix
+from ..widgets.form_layout import AlignedFormLayout
 from .assets import prepared_actor_pose
 from .compilation_scheduler import AuthoringCompilationScheduler, CompilationFailure
 from .compiler import (
@@ -80,6 +71,7 @@ from .compiler import (
     GroupSamples,
     IssueSeverity,
     ScenarioCompiler,
+    ScenePreviewResult,
     canonical_scenario_mapping,
 )
 from .document import DocumentEvent, DocumentEventKind, ScenarioDocument
@@ -101,10 +93,8 @@ from .mobility_control_rig import (
     mobility_control_rig,
     update_mobility_from_rig_control,
 )
-from .mobility_editor import MobilityEditor
 from .mobility_models import MobilityNeedsContextError, convert_mobility
 from .model_capabilities import mobility_capability
-from .orientation_editor import OrientationEditor
 from .orientation_models import (
     convert_orientation,
     look_at_actor_id,
@@ -113,7 +103,6 @@ from .orientation_models import (
 )
 from .persistence import resolve_authoring_resource
 from .undo import QtUndoStackAdapter
-from .viewport import ScenarioAuthoringViewport
 from .viewport_port import (
     ActorOverlaySnapshot,
     ActorVisualState,
@@ -136,7 +125,23 @@ _QT_TIMER_MAX_INTERVAL_MS = 2_147_483_647
 _PRESERVED_QUALITY_CHOICE = "preserved-imported-quality"
 
 
-class ScenarioAuthoringWorkspace(QWidget):
+from .workspace_ui import AuthoringWorkspaceUI
+
+
+@dataclass(frozen=True)
+class _MotionDraftBaseline:
+    """Editor state restored by Escape without discarding earlier pending edits."""
+
+    scenario: AuthoringScenario
+    subject_id: UUID | None
+    is_group: bool
+    mobility_pending: bool
+    orientation_pending: bool
+    preview_scenario: AuthoringScenario | None
+    preview: CompilationResult | None
+
+
+class ScenarioAuthoringWorkspace(AuthoringWorkspaceUI, QWidget):
     """Integrated actor tree, viewport, inspector, and workflow drawer."""
 
     dirty_changed = Signal(bool)
@@ -147,6 +152,8 @@ class ScenarioAuthoringWorkspace(QWidget):
     cancel_generation_requested = Signal()
     preview_generated_requested = Signal(object)
     leave_authoring_requested = Signal()
+    inspect_recording_requested = Signal()
+    create_variant_requested = Signal()
 
     def __init__(
         self,
@@ -159,9 +166,19 @@ class ScenarioAuthoringWorkspace(QWidget):
     ) -> None:
         super().__init__(parent)
         self.visualizer = visualizer
-        self.compiler = compiler or ScenarioCompiler()
+        if compiler is None:
+            project_root = getattr(visualizer, "current_project_root", None)
+            if document is not None and document.path is not None:
+                document_root = find_project_root(document.path.parent)
+                if (document_root / "libraries").is_dir():
+                    project_root = document_root
+            compiler = ScenarioCompiler(project_root)
+        self.compiler = compiler
         self.document: ScenarioDocument | None = None
         self.compilation: CompilationResult | None = None
+        self._early_scene: ScenePreviewResult | None = None
+        self.camera_controls = None
+        self._compile_progress = "Checking scenario settings and resources"
         self._compiled_scenario: AuthoringScenario | None = None
         self._compiled_directory: Path | None = None
         self._compilation_failure: CompilationFailure | None = None
@@ -178,6 +195,7 @@ class ScenarioAuthoringWorkspace(QWidget):
         self._candidate_scenario: AuthoringScenario | None = None
         self._candidate_compilation: CompilationResult | None = None
         self._candidate_failure: CompilationFailure | None = None
+        self._candidate_requested_scenario: AuthoringScenario | None = None
         self._pending_subject_id: UUID | None = None
         self._pending_subject_is_group = False
         self._mobility_draft_pending = False
@@ -217,11 +235,15 @@ class ScenarioAuthoringWorkspace(QWidget):
         self._transform_actor_id: UUID | None = None
         self._transform_baseline_actor: AuthoringActor | None = None
         self._transform_baseline_position: np.ndarray | None = None
+        self._transform_baseline_rotation: np.ndarray | None = None
         self._transform_baseline_samples: ActorSamples | None = None
         self._transform_preview_samples: ActorSamples | None = None
+        self._motion_draft_baseline: _MotionDraftBaseline | None = None
         self._read_only = False
         self._preview_result_available = False
         self._play_step = 0
+        self._play_origin_step = 0
+        self._play_origin_time = time.monotonic()
         self._prepared_sample_cache: dict[UUID, tuple[tuple[Any, ...], ActorSamples]] = {}
         self._prepared_group_position_cache: dict[
             UUID,
@@ -240,6 +262,10 @@ class ScenarioAuthoringWorkspace(QWidget):
         ] = {}
         self._play_timer = QTimer(self)
         self._play_timer.timeout.connect(self._advance_playback)
+        self._compile_status_timer = QTimer(self)
+        self._compile_status_timer.setInterval(1000)
+        self._compile_status_timer.timeout.connect(self._update_preview_status)
+        self._compile_started_at = time.monotonic()
         self._candidate_compile_timer = QTimer(self)
         self._candidate_compile_timer.setSingleShot(True)
         self._candidate_compile_timer.setInterval(180)
@@ -256,9 +282,10 @@ class ScenarioAuthoringWorkspace(QWidget):
             )
             self._compile_scheduler.succeeded.connect(self._background_compile_succeeded)
             self._compile_scheduler.failed.connect(self._background_compile_failed)
+            self._compile_scheduler.scene_ready.connect(self._background_scene_ready)
+            self._compile_scheduler.progress_changed.connect(self._background_compile_progress)
             self._candidate_compile_scheduler = AuthoringCompilationScheduler(
                 lambda: ScenarioCompiler(project_root),
-                compile_lock=self._compile_lock,
                 parent=self,
             )
             self._candidate_compile_scheduler.succeeded.connect(self._candidate_compile_succeeded)
@@ -298,609 +325,41 @@ class ScenarioAuthoringWorkspace(QWidget):
 
     # -- layout ---------------------------------------------------------
 
-    def _build_ui(
-        self,
-        viewport_factory: Callable[[Any, QWidget | None], QWidget] | None,
-    ) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(4, 4, 4, 4)
-        root.setSpacing(4)
+    def _viewport_appearance_changed(self) -> None:
+        """Change only the authoring display, leaving the scenario draft untouched."""
+        port = getattr(getattr(self, "viewport", None), "port", None)
+        if callable(getattr(port, "set_node_color_mode", None)):
+            port.set_node_color_mode(self.node_color_mode.currentData())
 
-        header = QHBoxLayout()
-        self.document_label = QLabel("Untitled Scenario")
-        self.read_only_label = QLabel("READ ONLY")
-        self.read_only_label.setVisible(False)
-        self.read_only_label.setStyleSheet("font-weight: 700; color: #e0a020;")
-        header.addWidget(self.document_label)
-        header.addWidget(self.read_only_label)
-        header.addStretch()
-        self.leave_authoring_button = QPushButton("Return to Visualization")
-        self.leave_authoring_button.clicked.connect(self.leave_authoring_requested.emit)
-        header.addWidget(self.leave_authoring_button)
-        root.addLayout(header)
+    def _appearance_preset_changed(self, *_args) -> None:
+        port = getattr(getattr(self, "viewport", None), "port", None)
+        apply = getattr(port, "set_appearance_preset", None)
+        if callable(apply):
+            try:
+                if self.appearance_preset.currentText() == "Scenario appearance":
+                    self._presented_document = None
+                    self._apply_scenario_presentation()
+                    notice = ""
+                else:
+                    notice = apply(self.appearance_preset.currentText())
+            except (ValueError, RuntimeError, OSError) as exc:
+                notice = str(exc)
+            self.appearance_preset.setToolTip(notice or "Display preset for the Scenario Builder.")
 
-        body_splitter = QSplitter(Qt.Horizontal, self)
-        body_splitter.setObjectName("authoringBodySplitter")
-        body_splitter.addWidget(self._build_actor_panel())
+    def show_problems(self) -> None:
+        """Reveal the existing diagnostics without changing preview or selection."""
 
-        viewport_column = QWidget(body_splitter)
-        viewport_layout = QVBoxLayout(viewport_column)
-        viewport_layout.setContentsMargins(0, 0, 0, 0)
-        viewport_layout.addWidget(self._build_viewport_toolbar())
-        viewport_layout.addWidget(self._build_waypoint_session_bar())
-        factory = viewport_factory or ScenarioAuthoringViewport
-        self.viewport = factory(self.visualizer, viewport_column)
-        self.camera_mode_combo.setEnabled(
-            callable(getattr(getattr(self.viewport, "port", None), "set_camera_mode", None))
-        )
-        viewport_layout.addWidget(self.viewport, 1)
-        self.coordinate_label = QLabel("X: --   Y: --   Z: --   | Work plane Z=0 m | Snap off")
-        viewport_layout.addWidget(self.coordinate_label)
-        input_signal = getattr(self.viewport, "input_received", None)
-        if input_signal is not None:
-            input_signal.connect(self._on_viewport_input)
-        body_splitter.addWidget(viewport_column)
-        body_splitter.addWidget(self._build_inspector())
-        body_splitter.setStretchFactor(0, 0)
-        body_splitter.setStretchFactor(1, 1)
-        body_splitter.setStretchFactor(2, 0)
-        body_splitter.setSizes((240, 760, 300))
-        root.addWidget(body_splitter, 1)
-
-        self.drawer = self._build_drawer()
-        root.addWidget(self.drawer)
-
-    def _build_actor_panel(self) -> QWidget:
-        panel = QWidget(self)
-        self.actor_panel = panel
-        panel.setObjectName("authoringActorPanel")
-        panel.setMinimumWidth(210)
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(4, 4, 4, 4)
-
-        scene_group = QGroupBox("Scene", panel)
-        scene_form = QFormLayout(scene_group)
-        self.scene_source_combo = QComboBox(scene_group)
-        for label, source in (
-            ("Sionna built-in", "sionna"),
-            ("ORCHAV library", "library"),
-            ("Local XML", "local"),
-        ):
-            self.scene_source_combo.addItem(label, source)
-        self.scene_source_combo.currentIndexChanged.connect(self._scene_source_changed)
-        self.scene_id_combo = QComboBox(scene_group)
-        self.scene_id_combo.setEditable(True)
-        self.scene_id_combo.setInsertPolicy(QComboBox.NoInsert)
-        self.scene_id_combo.setToolTip(
-            "Choose a catalog scene, or enter the exact supported scene identifier."
-        )
-        scene_buttons = QWidget(scene_group)
-        scene_button_layout = QHBoxLayout(scene_buttons)
-        scene_button_layout.setContentsMargins(0, 0, 0, 0)
-        self.scene_browse_button = QPushButton("Browse XML...", scene_buttons)
-        self.scene_browse_button.clicked.connect(self._browse_local_scene)
-        self.scene_apply_button = QPushButton("Apply Scene", scene_buttons)
-        self.scene_apply_button.clicked.connect(self._apply_scene)
-        scene_button_layout.addWidget(self.scene_browse_button)
-        scene_button_layout.addWidget(self.scene_apply_button)
-        scene_form.addRow("Source", self.scene_source_combo)
-        scene_form.addRow("ID / path", self.scene_id_combo)
-        scene_form.addRow(scene_buttons)
-        layout.addWidget(scene_group)
-        self._populate_scene_ids()
-
-        add_row = QHBoxLayout()
-        self._add_actor_buttons: list[QPushButton] = []
-        for label, role in (
-            ("+ TX", ActorRole.TX),
-            ("+ RX", ActorRole.RX),
-            ("+ Target", ActorRole.TARGET),
-        ):
-            button = QPushButton(label)
-            button.clicked.connect(lambda _checked=False, value=role: self._add_actor(value))
-            add_row.addWidget(button)
-            self._add_actor_buttons.append(button)
-        self._form_group_button = QPushButton("Form Group...")
-        self._form_group_button.setToolTip(
-            "Choose two or more actors that should share one motion."
-        )
-        self._form_group_button.clicked.connect(self._form_group)
-        add_row.addWidget(self._form_group_button)
-        layout.addLayout(add_row)
-        self.actor_tree = QTreeWidget(panel)
-        self.actor_tree.setHeaderLabels(("Actor / Group", "Role", "Visible", "Locked", "Status"))
-        self.actor_tree.setSelectionMode(QTreeWidget.SingleSelection)
-        self.actor_tree.itemSelectionChanged.connect(self._tree_selection_changed)
-        self.actor_tree.itemChanged.connect(self._tree_item_changed)
-        layout.addWidget(self.actor_tree, 1)
-        return panel
-
-    def _build_viewport_toolbar(self) -> QToolBar:
-        toolbar = QToolBar("Authoring tools", self)
-        toolbar.setObjectName("authoringViewportToolbar")
-        self._tool_actions: dict[AuthoringTool, QAction] = {}
-        for tool, label in (
-            (AuthoringTool.SELECT, "Select"),
-            (AuthoringTool.MOVE, "Edit Motion"),
-        ):
-            action = toolbar.addAction(label)
-            action.setCheckable(True)
-            action.triggered.connect(lambda _checked=False, value=tool: self.set_tool(value))
-            self._tool_actions[tool] = action
-        self._tool_actions[AuthoringTool.SELECT].setChecked(True)
-        self._tool_actions[AuthoringTool.MOVE].setToolTip(
-            "Use model handles, path dragging, or XYZ arrows to move the motion. "
-            "Rotation rings edit a fixed orientation."
-        )
-        self.tool_hint_label = QLabel("Select an actor", toolbar)
-        toolbar.addWidget(self.tool_hint_label)
-        toolbar.addSeparator()
-        toolbar.addWidget(QLabel("Camera", toolbar))
-        self.camera_mode_combo = QComboBox(toolbar)
-        self.camera_mode_combo.addItem("Orbit", "orbit")
-        self.camera_mode_combo.addItem("Fly", "fly")
-        self.camera_mode_combo.currentIndexChanged.connect(self._camera_mode_changed)
-        toolbar.addWidget(self.camera_mode_combo)
-        toolbar.addSeparator()
-        self.work_plane_check = QCheckBox("Work plane", toolbar)
-        self.work_plane_check.setChecked(True)
-        self.work_plane_check.setToolTip(
-            "Show the horizontal placement plane and allow empty-space placement."
-        )
-        toolbar.addWidget(self.work_plane_check)
-        toolbar.addWidget(QLabel("Z", toolbar))
-        self.work_plane_z_spin = QDoubleSpinBox(toolbar)
-        self.work_plane_z_spin.setRange(-1_000_000.0, 1_000_000.0)
-        self.work_plane_z_spin.setDecimals(3)
-        self.work_plane_z_spin.setSuffix(" m")
-        toolbar.addWidget(self.work_plane_z_spin)
-        self.grid_snap_check = QCheckBox("Grid snap", toolbar)
-        toolbar.addWidget(self.grid_snap_check)
-        self.grid_snap_spacing_spin = QDoubleSpinBox(toolbar)
-        self.grid_snap_spacing_spin.setRange(0.001, 1_000_000.0)
-        self.grid_snap_spacing_spin.setDecimals(3)
-        self.grid_snap_spacing_spin.setValue(1.0)
-        self.grid_snap_spacing_spin.setSuffix(" m")
-        self.grid_snap_spacing_spin.setEnabled(False)
-        toolbar.addWidget(self.grid_snap_spacing_spin)
-        self.work_plane_check.toggled.connect(self._viewport_settings_changed)
-        self.work_plane_z_spin.valueChanged.connect(self._viewport_settings_changed)
-        self.grid_snap_check.toggled.connect(self._viewport_settings_changed)
-        self.grid_snap_spacing_spin.valueChanged.connect(self._viewport_settings_changed)
-        toolbar.addSeparator()
-        toolbar.addWidget(QLabel("Trajectory", toolbar))
-        self.trajectory_visibility_combo = QComboBox(toolbar)
-        for label, value in (
-            ("Off", OverlayVisibility.OFF),
-            ("Selected", OverlayVisibility.SELECTED),
-            ("All", OverlayVisibility.ALL),
-        ):
-            self.trajectory_visibility_combo.addItem(label, value)
-        self.trajectory_visibility_combo.setCurrentIndex(
-            self.trajectory_visibility_combo.findData(OverlayVisibility.ALL)
-        )
-        self.trajectory_visibility_combo.setToolTip(
-            "Show the evaluated route for none, the selected actor, or all actors."
-        )
-        self.trajectory_visibility_combo.currentIndexChanged.connect(
-            self._viewport_settings_changed
-        )
-        toolbar.addWidget(self.trajectory_visibility_combo)
-        toolbar.addWidget(QLabel("Frames", toolbar))
-        self.frame_samples_visibility_combo = QComboBox(toolbar)
-        for label, value in (
-            ("Off", OverlayVisibility.OFF),
-            ("Selected", OverlayVisibility.SELECTED),
-            ("All", OverlayVisibility.ALL),
-        ):
-            self.frame_samples_visibility_combo.addItem(label, value)
-        self.frame_samples_visibility_combo.setCurrentIndex(
-            self.frame_samples_visibility_combo.findData(OverlayVisibility.OFF)
-        )
-        self.frame_samples_visibility_combo.setToolTip(
-            "Show the exact generator frame samples. Selected samples appear automatically "
-            "during playback."
-        )
-        self.frame_samples_visibility_combo.currentIndexChanged.connect(
-            self._viewport_settings_changed
-        )
-        toolbar.addWidget(self.frame_samples_visibility_combo)
-        toolbar.addWidget(QLabel("Controls", toolbar))
-        self.control_rig_visibility_combo = QComboBox(toolbar)
-        for label, value in (
-            ("Off", OverlayVisibility.OFF),
-            ("Selected", OverlayVisibility.SELECTED),
-            ("All", OverlayVisibility.ALL),
-        ):
-            self.control_rig_visibility_combo.addItem(label, value)
-        self.control_rig_visibility_combo.setCurrentIndex(
-            self.control_rig_visibility_combo.findData(OverlayVisibility.SELECTED)
-        )
-        self.control_rig_visibility_combo.setToolTip(
-            "Show model-specific control handles while Edit Motion is active."
-        )
-        self.control_rig_visibility_combo.currentIndexChanged.connect(
-            self._viewport_settings_changed
-        )
-        toolbar.addWidget(self.control_rig_visibility_combo)
-        toolbar.addSeparator()
-        toolbar.addWidget(QLabel("Axes", toolbar))
-        self.orientation_axes_combo = QComboBox(toolbar)
-        for label, value in (
-            ("Off", OverlayVisibility.OFF),
-            ("Selected", OverlayVisibility.SELECTED),
-            ("All", OverlayVisibility.ALL),
-        ):
-            self.orientation_axes_combo.addItem(label, value)
-        self.orientation_axes_combo.setCurrentIndex(
-            self.orientation_axes_combo.findData(OverlayVisibility.SELECTED)
-        )
-        self.orientation_axes_combo.setToolTip(
-            "Show prepared orientation axes for none, the selected actor, or all actors. "
-            "Derived modes appear once generator preparation succeeds."
-        )
-        self.orientation_axes_combo.currentIndexChanged.connect(self._viewport_settings_changed)
-        toolbar.addWidget(self.orientation_axes_combo)
-        toolbar.addWidget(QLabel("Look-at rays", toolbar))
-        self.look_at_rays_combo = QComboBox(toolbar)
-        for label, value in (
-            ("Off", OverlayVisibility.OFF),
-            ("Selected", OverlayVisibility.SELECTED),
-            ("All", OverlayVisibility.ALL),
-        ):
-            self.look_at_rays_combo.addItem(label, value)
-        self.look_at_rays_combo.setCurrentIndex(
-            self.look_at_rays_combo.findData(OverlayVisibility.SELECTED)
-        )
-        self.look_at_rays_combo.setToolTip(
-            "Show look-at relationship rays for none, the selected actor, or all actors."
-        )
-        self.look_at_rays_combo.currentIndexChanged.connect(self._viewport_settings_changed)
-        toolbar.addWidget(self.look_at_rays_combo)
-        toolbar.addSeparator()
-        focus_action = toolbar.addAction("Focus Selection")
-        focus_action.triggered.connect(self.focus_selection)
-        fit_action = toolbar.addAction("Fit All")
-        fit_action.triggered.connect(self.fit_all)
-        return toolbar
-
-    def _build_waypoint_session_bar(self) -> QWidget:
-        """Build the persistent command surface for modal waypoint drawing."""
-
-        bar = QWidget(self)
-        bar.setObjectName("waypointDrawingSessionBar")
-        bar.setStyleSheet(
-            "#waypointDrawingSessionBar {"
-            " background: #28445c; border: 1px solid #5d9bc8; border-radius: 3px;"
-            "}"
-        )
-        layout = QHBoxLayout(bar)
-        layout.setContentsMargins(8, 4, 8, 4)
-        self.waypoint_session_label = QLabel("Drawing waypoints", bar)
-        self.waypoint_session_label.setObjectName("waypointDrawingSessionLabel")
-        layout.addWidget(self.waypoint_session_label, 1)
-        self.waypoint_remove_last_button = QPushButton("Remove last", bar)
-        self.waypoint_remove_last_button.setObjectName("waypointDrawingRemoveLastButton")
-        self.waypoint_finish_button = QPushButton("Finish", bar)
-        self.waypoint_finish_button.setObjectName("waypointDrawingFinishButton")
-        self.waypoint_cancel_button = QPushButton("Cancel", bar)
-        self.waypoint_cancel_button.setObjectName("waypointDrawingCancelButton")
-        self.waypoint_remove_last_button.clicked.connect(self._remove_last_waypoint)
-        self.waypoint_finish_button.clicked.connect(self._finish_waypoint_session)
-        self.waypoint_cancel_button.clicked.connect(self._cancel_waypoint_session_and_exit)
-        layout.addWidget(self.waypoint_remove_last_button)
-        layout.addWidget(self.waypoint_finish_button)
-        layout.addWidget(self.waypoint_cancel_button)
-        bar.setVisible(False)
-        self.waypoint_session_bar = bar
-        return bar
-
-    def _build_inspector(self) -> QWidget:
-        panel = QWidget(self)
-        self.inspector_panel = panel
-        panel.setObjectName("authoringInspector")
-        panel.setMinimumWidth(270)
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(6, 4, 6, 4)
-        layout.addWidget(QLabel("Inspector"))
-
-        self.pending_inspector_banner = QWidget(panel)
-        self.pending_inspector_banner.setObjectName("pendingInspectorBanner")
-        self.pending_inspector_banner.setAccessibleName("Pending inspector edits")
-        self.pending_inspector_banner.setStyleSheet(
-            "#pendingInspectorBanner {"
-            " background: #243f50; border: 1px solid #38bfd1; border-radius: 3px;"
-            "}"
-        )
-        pending_layout = QVBoxLayout(self.pending_inspector_banner)
-        pending_layout.setContentsMargins(7, 5, 7, 5)
-        self.pending_inspector_label = QLabel("", self.pending_inspector_banner)
-        self.pending_inspector_label.setObjectName("pendingInspectorLabel")
-        self.pending_inspector_label.setWordWrap(True)
-        pending_layout.addWidget(self.pending_inspector_label)
-        pending_actions = QHBoxLayout()
-        self.pending_apply_button = QPushButton(
-            "Apply pending",
-            self.pending_inspector_banner,
-        )
-        self.pending_apply_button.setObjectName("pendingInspectorApplyButton")
-        self.pending_apply_button.clicked.connect(self._apply_all_pending_inspector_edits)
-        self.pending_reset_button = QPushButton(
-            "Reset pending",
-            self.pending_inspector_banner,
-        )
-        self.pending_reset_button.setObjectName("pendingInspectorResetButton")
-        self.pending_reset_button.clicked.connect(self._reset_all_pending_inspector_edits)
-        pending_actions.addWidget(self.pending_apply_button)
-        pending_actions.addWidget(self.pending_reset_button)
-        pending_layout.addLayout(pending_actions)
-        self.pending_inspector_banner.setVisible(False)
-        layout.addWidget(self.pending_inspector_banner)
-
-        identity = QGroupBox("Identity", panel)
-        identity_form = QFormLayout(identity)
-        self.name_edit = QLineEdit(identity)
-        self.name_edit.editingFinished.connect(self._apply_name)
-        self.role_label = QLabel("—", identity)
-        identity_form.addRow("Name", self.name_edit)
-        identity_form.addRow("Role", self.role_label)
-        layout.addWidget(identity)
-
-        mobility = QGroupBox("Mobility", panel)
-        self.mobility_group = mobility
-        mobility_layout = QVBoxLayout(mobility)
-        self.mobility_editor = MobilityEditor(mobility)
-        self.mobility_editor.mobility_type_changed.connect(self._mobility_type_changed)
-        self.mobility_editor.apply_requested.connect(self._apply_mobility)
-        self.mobility_editor.draw_waypoints_requested.connect(self._start_waypoint_rebuild)
-        mobility_layout.addWidget(self.mobility_editor)
-        self.mobility_reset_button = QPushButton("Reset Mobility", mobility)
-        self.mobility_reset_button.setObjectName("mobilityResetButton")
-        self.mobility_reset_button.clicked.connect(self._reset_pending_mobility)
-        self.mobility_reset_button.setVisible(False)
-        mobility_layout.addWidget(self.mobility_reset_button)
-        layout.addWidget(mobility)
-
-        self.group_settings = QGroupBox("Group Random Jitter", panel)
-        group_form = QFormLayout(self.group_settings)
-        self.group_deviation_enabled = QCheckBox("Enabled", self.group_settings)
-        group_form.addRow("Seeded per-frame jitter", self.group_deviation_enabled)
-        self.group_deviation_spins: list[QDoubleSpinBox] = []
-        for label, object_name in (
-            ("Maximum right jitter", "groupDeviationRightSpin"),
-            ("Maximum forward jitter", "groupDeviationForwardSpin"),
-            ("Maximum up jitter", "groupDeviationUpSpin"),
-        ):
-            spin = QDoubleSpinBox(self.group_settings)
-            spin.setObjectName(object_name)
-            spin.setRange(0.0, 1_000_000_000.0)
-            spin.setDecimals(6)
-            spin.setStepType(QDoubleSpinBox.AdaptiveDecimalStepType)
-            spin.setSuffix(" m")
-            group_form.addRow(label, spin)
-            self.group_deviation_spins.append(spin)
-        self.group_deviation_seed = QSpinBox(self.group_settings)
-        self.group_deviation_seed.setRange(0, MAX_RANDOM_SEED)
-        group_form.addRow("Seed", self.group_deviation_seed)
-        self.group_settings_apply_button = QPushButton(
-            "Apply Group Settings",
-            self.group_settings,
-        )
-        self.group_settings_apply_button.setObjectName("groupSettingsApplyButton")
-        self.group_settings_apply_button.clicked.connect(self._apply_group_settings)
-        self.group_settings_reset_button = QPushButton(
-            "Reset Group Settings",
-            self.group_settings,
-        )
-        self.group_settings_reset_button.setObjectName("groupSettingsResetButton")
-        self.group_settings_reset_button.clicked.connect(self._reset_pending_group_settings)
-        self.group_settings_reset_button.setVisible(False)
-        group_form.addRow(self.group_settings_apply_button)
-        group_form.addRow(self.group_settings_reset_button)
-        layout.addWidget(self.group_settings)
-
-        orientation = QGroupBox("Orientation", panel)
-        self.orientation_group = orientation
-        orientation_layout = QVBoxLayout(orientation)
-        self.orientation_editor = OrientationEditor(orientation)
-        self.orientation_editor.orientation_type_changed.connect(self._orientation_type_changed)
-        self.orientation_editor.apply_requested.connect(self._apply_orientation)
-        orientation_layout.addWidget(self.orientation_editor)
-        self.orientation_reset_button = QPushButton("Reset Orientation", orientation)
-        self.orientation_reset_button.setObjectName("orientationResetButton")
-        self.orientation_reset_button.clicked.connect(self._reset_pending_orientation)
-        self.orientation_reset_button.setVisible(False)
-        orientation_layout.addWidget(self.orientation_reset_button)
-        layout.addWidget(orientation)
-
-        self.target_group = QGroupBox("Target", panel)
-        target_form = QFormLayout(self.target_group)
-        self.target_asset_combo = QComboBox(self.target_group)
-        self.target_asset_combo.addItem("Select catalog asset...", "")
-        for asset_id in self._catalog_target_ids():
-            self.target_asset_combo.addItem(asset_id, asset_id)
-        self.target_material_combo = QComboBox(self.target_group)
-        for material_type in available_target_material_types():
-            self.target_material_combo.addItem(material_type, material_type)
-        self.target_material_combo.setCurrentIndex(self.target_material_combo.findData("glass"))
-        self.target_scale_spin = QDoubleSpinBox(self.target_group)
-        self.target_scale_spin.setRange(0.001, 1_000.0)
-        self.target_scale_spin.setValue(1.0)
-        self.target_mesh_animation = QCheckBox("Enabled", self.target_group)
-        self.target_mesh_animation.setChecked(True)
-        self.target_apply_button = QPushButton("Apply Target", self.target_group)
-        self.target_apply_button.setObjectName("targetApplyButton")
-        self.target_apply_button.clicked.connect(self._apply_target)
-        self.target_reset_button = QPushButton("Reset Target", self.target_group)
-        self.target_reset_button.setObjectName("targetResetButton")
-        self.target_reset_button.clicked.connect(self._reset_pending_target)
-        self.target_reset_button.setVisible(False)
-        target_form.addRow("Catalog asset", self.target_asset_combo)
-        target_form.addRow("Material", self.target_material_combo)
-        target_form.addRow("Uniform scale", self.target_scale_spin)
-        target_form.addRow("Mesh animation", self.target_mesh_animation)
-        target_form.addRow(self.target_apply_button)
-        target_form.addRow(self.target_reset_button)
-        self.target_group.setVisible(False)
-        self.group_settings.setVisible(False)
-        layout.addWidget(self.target_group)
-
-        self.inline_errors = QLabel("", panel)
-        self.inline_errors.setWordWrap(True)
-        self.inline_errors.setStyleSheet("color: #df5c5c;")
-        layout.addWidget(self.inline_errors)
-        layout.addStretch()
-        self._connect_editor_draft_signals(self.mobility_editor, "mobility")
-        self._connect_editor_draft_signals(self.orientation_editor, "orientation")
-        self.group_deviation_enabled.toggled.connect(
-            lambda _checked: self._mark_inspector_draft("group_settings")
-        )
-        for spin in self.group_deviation_spins:
-            spin.valueChanged.connect(lambda _value: self._mark_inspector_draft("group_settings"))
-        self.group_deviation_seed.valueChanged.connect(
-            lambda _value: self._mark_inspector_draft("group_settings")
-        )
-        self.target_asset_combo.currentIndexChanged.connect(
-            lambda _index: self._mark_inspector_draft("target")
-        )
-        self.target_material_combo.currentIndexChanged.connect(
-            lambda _index: self._mark_inspector_draft("target")
-        )
-        self.target_scale_spin.valueChanged.connect(
-            lambda _value: self._mark_inspector_draft("target")
-        )
-        self.target_mesh_animation.toggled.connect(
-            lambda _checked: self._mark_inspector_draft("target")
-        )
-        return panel
-
-    def _build_drawer(self) -> QTabWidget:
-        drawer = QTabWidget(self)
-        drawer.setObjectName("authoringDrawer")
-        drawer.setMinimumHeight(190)
-
-        timeline_page = QWidget(drawer)
-        timeline_form = QFormLayout(timeline_page)
-        self.timeline_slider = QSlider(Qt.Horizontal, timeline_page)
-        self.timeline_slider.setRange(0, 29)
-        self.timeline_slider.valueChanged.connect(self._timeline_scrubbed)
-        playback_row = QWidget(timeline_page)
-        playback_layout = QHBoxLayout(playback_row)
-        playback_layout.setContentsMargins(0, 0, 0, 0)
-        self.play_button = QPushButton("Play", playback_row)
-        self.play_button.clicked.connect(self._toggle_playback)
-        playback_layout.addWidget(self.play_button)
-        self.steps_spin = QSpinBox(timeline_page)
-        self.steps_spin.setRange(1, 1_000_000)
-        self.duration_spin = QDoubleSpinBox(timeline_page)
-        self.duration_spin.setRange(0.0, 1_000_000.0)
-        self.duration_spin.setDecimals(3)
-        self.quality_combo = QComboBox(timeline_page)
-        for value in QualityPreset:
-            if value is QualityPreset.CUSTOM:
-                continue
-            self.quality_combo.addItem(value.value, value)
-        self.path_metrics_check = QCheckBox("Export path metrics", timeline_page)
-        self.sampling_summary_label = QLabel("", timeline_page)
-        self.sampling_summary_label.setObjectName("authoringSamplingSummary")
-        self.sampling_summary_label.setWordWrap(True)
-        self.preserved_settings_label = QLabel("", timeline_page)
-        self.preserved_settings_label.setObjectName("authoringPreservedSettings")
-        self.preserved_settings_label.setWordWrap(True)
-        self.preserved_settings_label.setStyleSheet("color: #d6a34a;")
-        self.preserved_settings_label.setVisible(False)
-        self.apply_timeline_button = QPushButton("Apply Timeline", timeline_page)
-        self.apply_timeline_button.clicked.connect(self._apply_timeline)
-        self.reset_timeline_button = QPushButton("Reset", timeline_page)
-        self.reset_timeline_button.clicked.connect(self._reset_pending_timeline)
-        self.timeline_pending_label = QLabel("", timeline_page)
-        self.timeline_pending_label.setObjectName("authoringTimelinePending")
-        self.timeline_pending_label.setWordWrap(True)
-        self.timeline_pending_label.setStyleSheet("color: #d6a34a;")
-        timeline_actions = QWidget(timeline_page)
-        timeline_actions_layout = QHBoxLayout(timeline_actions)
-        timeline_actions_layout.setContentsMargins(0, 0, 0, 0)
-        timeline_actions_layout.addWidget(self.apply_timeline_button)
-        timeline_actions_layout.addWidget(self.reset_timeline_button)
-        timeline_actions_layout.addStretch()
-        timeline_form.addRow("Preview", self.timeline_slider)
-        timeline_form.addRow(playback_row)
-        timeline_form.addRow("Steps", self.steps_spin)
-        timeline_form.addRow("Duration (s)", self.duration_spin)
-        timeline_form.addRow("Quality", self.quality_combo)
-        timeline_form.addRow(self.path_metrics_check)
-        timeline_form.addRow("Sampling", self.sampling_summary_label)
-        timeline_form.addRow(self.preserved_settings_label)
-        timeline_form.addRow(self.timeline_pending_label)
-        timeline_form.addRow(timeline_actions)
-        self.steps_spin.valueChanged.connect(self._mark_timeline_draft)
-        self.duration_spin.valueChanged.connect(self._mark_timeline_draft)
-        self.quality_combo.currentIndexChanged.connect(self._mark_timeline_draft)
-        self.path_metrics_check.toggled.connect(self._mark_timeline_draft)
-        self._update_timeline_pending_ui()
-        drawer.addTab(timeline_page, "Timeline")
-
-        self.problems_tree = QTreeWidget(drawer)
-        self.problems_tree.setHeaderLabels(("Severity", "Path", "Problem"))
-        drawer.addTab(self.problems_tree, "Problems")
-        self.yaml_preview = QPlainTextEdit(drawer)
-        self.yaml_preview.setReadOnly(True)
-        drawer.addTab(self.yaml_preview, "YAML Preview")
-        self.generation_log = QPlainTextEdit(drawer)
-        self.generation_log.setReadOnly(True)
-        drawer.addTab(self.generation_log, "Generation Log")
-
-        generation_page = QWidget(drawer)
-        generation_layout = QVBoxLayout(generation_page)
-        self.validation_status = QLabel(
-            "Validation pending for the current draft.",
-            generation_page,
-        )
-        self.validation_status.setObjectName("authoringValidationStatus")
-        self.validation_status.setWordWrap(True)
-        self.generation_status = QLabel("No generation has been launched.", generation_page)
-        self.generation_progress = QProgressBar(generation_page)
-        self.generation_progress.setRange(0, 100)
-        self.generation_progress.setValue(0)
-        generation_layout.addWidget(self.validation_status)
-        generation_layout.addWidget(self.generation_status)
-        generation_layout.addWidget(self.generation_progress)
-        generation_buttons = QHBoxLayout()
-        self.validate_button = QPushButton("Validate", generation_page)
-        self.validate_button.setObjectName("authoringValidateButton")
-        self.validate_button.clicked.connect(self.validate_current_draft)
-        self.save_button = QPushButton("Save", generation_page)
-        self.save_button.clicked.connect(self.save_requested.emit)
-        self.save_as_button = QPushButton("Save As...", generation_page)
-        self.save_as_button.clicked.connect(self.save_as_requested.emit)
-        self.generate_button = QPushButton("Generate", generation_page)
-        self.generate_button.clicked.connect(self.generate_requested.emit)
-        self.cancel_generation_button = QPushButton("Cancel", generation_page)
-        self.cancel_generation_button.setEnabled(False)
-        self.cancel_generation_button.clicked.connect(self.cancel_generation_requested.emit)
-        self.preview_result_button = QPushButton("Preview Generated Result", generation_page)
-        self.preview_result_button.setEnabled(False)
-        self.preview_result_button.clicked.connect(
-            lambda: self.preview_generated_requested.emit(None)
-        )
-        for button in (
-            self.validate_button,
-            self.save_button,
-            self.save_as_button,
-            self.generate_button,
-            self.cancel_generation_button,
-            self.preview_result_button,
-        ):
-            generation_buttons.addWidget(button)
-        generation_buttons.addStretch()
-        generation_layout.addLayout(generation_buttons)
-        drawer.addTab(generation_page, "Generation")
-        return drawer
+        self.details_toggle.setChecked(True)
+        self.drawer.setCurrentWidget(self.problems_tree)
+        self.problems_tree.setFocus(Qt.OtherFocusReason)
 
     def _connect_editor_draft_signals(self, editor: QWidget, kind: str) -> None:
         """Aggregate editor-owned controls into one workspace draft signal."""
 
-        def mark(*_args: object) -> None:
+        def mark(widget, *_args: object) -> None:
+            if not self._syncing:
+                widget.setProperty("pendingChange", True)
+                widget.setStyleSheet("border-left: 2px solid #32c8bc;")
             self._mark_inspector_draft(kind)
 
         for widget_type, signal_name in (
@@ -915,7 +374,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                 property_name = f"orchavDraftSignal:{kind}"
                 if widget.property(property_name):
                     continue
-                getattr(widget, signal_name).connect(mark)
+                getattr(widget, signal_name).connect(lambda *args, field=widget: mark(field, *args))
                 widget.setProperty(property_name, True)
         for button in editor.findChildren(QPushButton):
             property_name = f"orchavDraftButton:{kind}"
@@ -990,6 +449,10 @@ class ScenarioAuthoringWorkspace(QWidget):
         self._pending_subject_is_group = is_group
         if kind == "mobility":
             self._mobility_draft_pending = True
+            try:
+                self._pending_mobility_value = self.mobility_editor.mobility()
+            except (TypeError, ValueError):
+                pass
         elif kind == "orientation":
             self._orientation_draft_pending = True
         elif kind == "target":
@@ -998,21 +461,31 @@ class ScenarioAuthoringWorkspace(QWidget):
             self._group_settings_draft_pending = True
         else:
             raise ValueError(f"unknown inspector draft kind: {kind}")
-        self._candidate_scenario = None
-        self._candidate_compilation = None
+        token = self._next_candidate_token()
+        if self._candidate_compile_scheduler is not None:
+            self._candidate_compile_scheduler.invalidate(token)
         self._candidate_failure = None
+        self._candidate_requested_scenario = None
         self._candidate_compile_timer.start()
         self._update_pending_inspector_ui()
+        self._sync_motion_edit_action()
         self._refresh_viewport()
 
     def _update_pending_inspector_ui(self) -> None:
         pending = self.has_pending_inspector_edits
         self.pending_inspector_banner.setVisible(pending)
-        self.mobility_reset_button.setVisible(self._mobility_draft_pending)
-        self.orientation_reset_button.setVisible(self._orientation_draft_pending)
-        self.target_reset_button.setVisible(self._target_draft_pending)
-        self.group_settings_reset_button.setVisible(self._group_settings_draft_pending)
+        for group, title, changed in (
+            (self.mobility_group, "Trajectory", self._mobility_draft_pending),
+            (self.orientation_group, "Orientation", self._orientation_draft_pending),
+            (self.target_group, "Target", self._target_draft_pending),
+            (self.group_settings, "Group jitter", self._group_settings_draft_pending),
+        ):
+            group.setTitle(title + (" *" if changed else ""))
         if not pending:
+            for widget in self.inspector_panel.findChildren(QWidget):
+                if widget.property("pendingChange"):
+                    widget.setProperty("pendingChange", False)
+                    widget.setStyleSheet("")
             self.pending_inspector_label.clear()
             return
         kinds = []
@@ -1021,7 +494,7 @@ class ScenarioAuthoringWorkspace(QWidget):
         if self._orientation_draft_pending:
             kinds.append("orientation")
         if self._target_draft_pending:
-            kinds.append("target appearance")
+            kinds.append("target configuration")
         if self._group_settings_draft_pending:
             kinds.append("group jitter")
         subject = None
@@ -1034,7 +507,16 @@ class ScenarioAuthoringWorkspace(QWidget):
         label = " and ".join(kinds).capitalize()
         subject_name = getattr(subject, "name", "selected subject")
         if self._candidate_failure is not None:
-            detail = f" Preview failed: {self._candidate_failure.message}"
+            detail = f" {self._candidate_failure.message} · Last valid preview retained."
+        elif (
+            self._candidate_compile_timer.isActive()
+            or self._candidate_requested_scenario != self._candidate_scenario
+        ):
+            detail = (
+                " Preparing preview; last valid preview retained."
+                if self._candidate_compilation
+                else " Preparing canonical candidate preview..."
+            )
         elif self._candidate_compilation is not None:
             errors = tuple(
                 issue
@@ -1047,8 +529,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                 )
             )
             detail = (
-                f" Candidate has {len(errors)} validation error"
-                f"{'s' if len(errors) != 1 else ''}."
+                f" Candidate has {len(errors)} validation error{'s' if len(errors) != 1 else ''}."
                 if errors
                 else " Canonical candidate preview is ready."
             )
@@ -1056,9 +537,7 @@ class ScenarioAuthoringWorkspace(QWidget):
             detail = " Preparing canonical candidate preview..."
         else:
             detail = " Enter valid values to preview the candidate."
-        self.pending_inspector_label.setText(
-            f"{label} for {subject_name} is pending. Apply or reset before leaving." f"{detail}"
-        )
+        self.pending_inspector_label.setText(f"{label} for {subject_name} has changed.{detail}")
 
     def _candidate_scenario_from_editors(self) -> AuthoringScenario:
         document = self.document
@@ -1104,8 +583,7 @@ class ScenarioAuthoringWorkspace(QWidget):
             if self._orientation_draft_pending:
                 actor = actor.with_changes(orientation=self.orientation_editor.orientation())
             if self._target_draft_pending:
-                target = self._target_from_controls(actor)
-                actor = actor.with_changes(target=target)
+                actor = actor.with_changes(**self._target_changes_from_controls(actor))
             scenario = scenario.replace_actor(actor)
         if resources:
             by_path = {resource.relative_path: resource for resource in resources}
@@ -1116,7 +594,7 @@ class ScenarioAuthoringWorkspace(QWidget):
         self._candidate_request_token += 1
         return self._candidate_request_token
 
-    def _compile_candidate_draft(self) -> None:
+    def _compile_candidate_draft(self, *, immediate: bool = False) -> None:
         """Compile the editor candidate without mutating document or undo state."""
 
         if not self.has_pending_inspector_edits or not self._pending_matches_current_subject():
@@ -1124,27 +602,36 @@ class ScenarioAuthoringWorkspace(QWidget):
         try:
             scenario = self._candidate_scenario_from_editors()
         except (RuntimeError, TypeError, ValueError) as exc:
-            self._candidate_scenario = None
-            self._candidate_compilation = None
             self._candidate_failure = CompilationFailure.from_exception(exc)
             self._update_pending_inspector_ui()
             self._refresh_viewport()
             return
-        self._candidate_scenario = scenario
-        self._candidate_compilation = None
+        self._candidate_requested_scenario = scenario
         self._candidate_failure = None
         token = self._next_candidate_token()
         scheduler = self._candidate_compile_scheduler
-        if scheduler is not None:
-            scheduler.request(scenario, self._current_scenario_directory(), token)
+        if scheduler is not None and not immediate:
+            scheduler.request(
+                scenario,
+                self._current_scenario_directory(),
+                token,
+                subject_id=self._pending_subject_id,
+            )
             self._update_pending_inspector_ui()
             return
         try:
             with self._compile_lock:
-                result = self.compiler.compile(
-                    scenario,
-                    scenario_directory=self._current_scenario_directory(),
-                )
+                if isinstance(self.compiler, ScenarioCompiler):
+                    result = self.compiler.prepare_actor_preview(
+                        scenario,
+                        self._pending_subject_id,
+                        scenario_directory=self._current_scenario_directory(),
+                    )
+                else:
+                    result = self.compiler.compile(
+                        scenario,
+                        scenario_directory=self._current_scenario_directory(),
+                    )
         except Exception as exc:  # noqa: BLE001 - compiler boundary
             self._candidate_compile_failed(token, CompilationFailure.from_exception(exc))
         else:
@@ -1157,9 +644,17 @@ class ScenarioAuthoringWorkspace(QWidget):
             or not self.has_pending_inspector_edits
         ):
             return
-        self._candidate_compilation = result
-        self._candidate_failure = None
+        if result.valid:
+            self._candidate_scenario = self._candidate_requested_scenario
+            self._candidate_compilation = result
+            self._candidate_failure = None
+        else:
+            self._candidate_failure = CompilationFailure(
+                "ValidationError",
+                "; ".join(i.message for i in result.issues if i.severity is IssueSeverity.ERROR),
+            )
         self._update_pending_inspector_ui()
+        self._sync_motion_edit_action()
         self._refresh_viewport()
 
     def _candidate_compile_failed(self, token: object, failure: object) -> None:
@@ -1169,10 +664,138 @@ class ScenarioAuthoringWorkspace(QWidget):
             or not self.has_pending_inspector_edits
         ):
             return
-        self._candidate_compilation = None
         self._candidate_failure = failure
         self._update_pending_inspector_ui()
         self._refresh_viewport()
+
+    def _begin_motion_draft(self, subject_id: UUID) -> AuthoringScenario | None:
+        """Continue the inspector transaction without applying it on pointer-down."""
+        document = self.document
+        if document is None:
+            return None
+        if (
+            self.has_pending_inspector_edits
+            and subject_id != self._pending_subject_id
+            and not self._resolve_pending_inspector_edits()
+        ):
+            return None
+        if self.has_pending_inspector_edits:
+            self._candidate_compile_timer.stop()
+            try:
+                scenario = self._candidate_scenario_from_editors()
+            except (RuntimeError, TypeError, ValueError) as exc:
+                self._candidate_failure = CompilationFailure.from_exception(exc)
+                self._update_pending_inspector_ui()
+                return None
+            if scenario != self._candidate_scenario:
+                self._compile_candidate_draft(immediate=True)
+            if self._candidate_failure is not None:
+                return None
+        else:
+            scenario = document.scenario
+        self._motion_draft_baseline = _MotionDraftBaseline(
+            scenario,
+            self._pending_subject_id,
+            self._pending_subject_is_group,
+            self._mobility_draft_pending,
+            self._orientation_draft_pending,
+            self._candidate_scenario,
+            self._candidate_compilation,
+        )
+        return scenario
+
+    def _stage_motion_draft(self, subject: AuthoringActor | AuthoringGroup) -> None:
+        """Publish direct manipulation to the same draft as typed inspector edits."""
+        self._syncing = True
+        try:
+            self.mobility_editor.set_mobility(subject.mobility)
+            if isinstance(subject, AuthoringActor):
+                self.orientation_editor.set_orientation(subject.orientation)
+        finally:
+            self._syncing = False
+        self._connect_editor_draft_signals(self.mobility_editor, "mobility")
+        self._mark_inspector_draft("mobility")
+        if isinstance(subject, AuthoringActor):
+            committed = self.document.scenario.actor(subject.id)
+            self._orientation_draft_pending = (
+                self._orientation_draft_pending or subject.orientation != committed.orientation
+            )
+        self._candidate_compile_timer.stop()
+        scenario = self._candidate_scenario_from_editors()
+        previous = self._candidate_compilation or self.compilation
+        samples = dict(previous.samples) if previous is not None else {}
+        groups = dict(previous.group_samples) if previous is not None else {}
+        samples.update(self._dependent_drag_preview_samples)
+        if isinstance(subject, AuthoringGroup):
+            if self._mobility_drag_preview_group_samples is not None:
+                groups[subject.id] = self._mobility_drag_preview_group_samples
+        else:
+            preview = self._transform_preview_samples or self._mobility_drag_preview_samples
+            if preview is not None and subject.id not in self._dependent_drag_preview_samples:
+                samples[subject.id] = preview
+            elif subject.id not in samples:
+                try:
+                    prepared, prepared_groups = self._prepare_transient_pose_samples(scenario)
+                except (KeyError, RuntimeError, TypeError, ValueError):
+                    # Incomplete actors (for example a target awaiting an asset)
+                    # still expose their authored handles and pose.
+                    pass
+                else:
+                    samples.update(prepared)
+                    groups.update(prepared_groups)
+        self._candidate_requested_scenario = scenario
+        self._candidate_scenario = scenario
+        self._candidate_compilation = CompilationResult(
+            mapping=canonical_scenario_mapping(scenario),
+            yaml_text="",
+            issues=(),
+            samples=samples,
+            group_samples=groups,
+            target_assets=previous.target_assets if previous is not None else {},
+            fully_validated=False,
+        )
+        self._update_pending_inspector_ui()
+        self._refresh_viewport()
+
+    def _finish_motion_draft(self, *, accept: bool) -> None:
+        """End a gesture; Apply remains the only document/undo commit boundary."""
+        baseline = self._motion_draft_baseline
+        self._motion_draft_baseline = None
+        if baseline is None or accept:
+            return
+        self._invalidate_candidate_preview()
+        scenario = baseline.scenario
+        self._pending_subject_id = baseline.subject_id
+        self._pending_subject_is_group = baseline.is_group
+        self._mobility_draft_pending = baseline.mobility_pending
+        self._orientation_draft_pending = baseline.orientation_pending
+        self._candidate_scenario = baseline.preview_scenario
+        self._candidate_compilation = baseline.preview
+        self._candidate_requested_scenario = self._candidate_scenario
+        selected = self._selected_subject()
+        subject = (
+            (scenario.group(selected[0]) if selected[1] else scenario.actor(selected[0]))
+            if selected is not None
+            else None
+        )
+        if subject is not None:
+            self._pending_mobility_value = subject.mobility
+            self._syncing = True
+            try:
+                self.mobility_editor.set_mobility(subject.mobility)
+                if isinstance(subject, AuthoringActor):
+                    self.orientation_editor.set_orientation(subject.orientation)
+            finally:
+                self._syncing = False
+            self._connect_editor_draft_signals(self.mobility_editor, "mobility")
+        self._update_pending_inspector_ui()
+
+    def _draft_samples(self, actor: AuthoringActor) -> ActorSamples | None:
+        if self._candidate_compilation is not None:
+            samples = self._candidate_compilation.samples.get(actor.id)
+            if samples is not None:
+                return samples
+        return self._prepared_samples(actor)
 
     def _invalidate_candidate_preview(self) -> None:
         self._candidate_compile_timer.stop()
@@ -1261,8 +884,31 @@ class ScenarioAuthoringWorkspace(QWidget):
         subject_id = self._pending_subject_id
         if document is None or subject_id is None or document.read_only:
             return False
+        if self._candidate_failure is not None:
+            self._update_pending_inspector_ui()
+            return False
         try:
             candidate = self._candidate_scenario_from_editors()
+            # Applying before the debounce completes still crosses the canonical
+            # preparation boundary. Only the edited reference component is built.
+            result = self._candidate_compilation
+            if isinstance(self.compiler, ScenarioCompiler):
+                result = self.compiler.prepare_actor_preview(
+                    candidate,
+                    subject_id,
+                    scenario_directory=self._current_scenario_directory(),
+                )
+                if not result.valid:
+                    self._candidate_failure = CompilationFailure(
+                        "ValidationError",
+                        "; ".join(
+                            issue.message
+                            for issue in result.issues
+                            if issue.severity is IssueSeverity.ERROR
+                        ),
+                    )
+                    self._update_pending_inspector_ui()
+                    return False
             if self._pending_subject_is_group:
                 replacement = candidate.group(subject_id)
                 if replacement is None:
@@ -1291,6 +937,24 @@ class ScenarioAuthoringWorkspace(QWidget):
         self._pending_subject_id = None
         self._pending_subject_is_group = False
         self._invalidate_candidate_preview()
+        if result is not None:
+            for actor_id, samples in result.samples.items():
+                actor = document.scenario.actor(actor_id)
+                if actor is not None:
+                    self._prepared_sample_cache[actor_id] = (
+                        self._orientation_cache_key(actor),
+                        samples,
+                    )
+            for group_id, samples in result.group_samples.items():
+                group = document.scenario.group(group_id)
+                if group is not None:
+                    key = self._group_position_cache_key(group, document.scenario)
+                    self._prepared_group_position_cache[group_id] = (key, samples.positions)
+                    self._prepared_group_sample_cache[group_id] = (key, samples)
+                    self._prepared_group_physical_cache[group_id] = (
+                        key,
+                        samples.has_physical_velocity,
+                    )
         self._update_pending_inspector_ui()
         self._sync_document_controls()
         self._refresh_viewport()
@@ -1325,6 +989,9 @@ class ScenarioAuthoringWorkspace(QWidget):
                 return
             if not self._resolve_pending_timeline_edits():
                 return
+        if hasattr(self, "osm_panel") and self.document is not document:
+            self.osm_panel.reset()
+            self._osm_build_context = None
         self._finish_target_transform(commit=False)
         self._finish_mobility_drag(commit=False)
         self._cancel_waypoint_session()
@@ -1333,7 +1000,15 @@ class ScenarioAuthoringWorkspace(QWidget):
         if self._unsubscribe_document is not None:
             self._unsubscribe_document()
         self.document = document
+        self._stop_playback(refresh=False)
+        self._play_step = 0
+        self.timeline_slider.setValue(0)
+        self._osm_fit_pending = True
+        self.sensing_inspector.set_mapping(document.scenario.source_snapshot.to_mapping())
+        if self.compilation is not None and self.compilation.recording is not None:
+            self.compilation.recording.close()
         self.compilation = None
+        self._early_scene = None
         self._compiled_scenario = None
         self._compiled_directory = None
         self._compilation_failure = None
@@ -1352,6 +1027,8 @@ class ScenarioAuthoringWorkspace(QWidget):
             return
         if not self._resolve_pending_timeline_edits():
             return
+        self.osm_panel.reset()
+        self._osm_build_context = None
         previous_document = self.document
         if self._compile_scheduler is not None:
             self._compile_scheduler.invalidate(self._next_compile_token())
@@ -1364,14 +1041,20 @@ class ScenarioAuthoringWorkspace(QWidget):
         self._prepared_group_position_cache.clear()
         self._prepared_group_physical_cache.clear()
         self._prepared_group_sample_cache.clear()
+        if self.compilation is not None and self.compilation.recording is not None:
+            self.compilation.recording.close()
         self.compilation = None
+        self._early_scene = None
         self._compiled_scenario = None
         self._compiled_directory = None
         self._compilation_failure = None
         self._read_only = True
         self.read_only_label.setVisible(True)
+        self.read_only_label.setText("READ ONLY")
+        self.recording_banner.hide()
         self.validation_status.setText("Validation unavailable: no editable draft is open.")
         self.document = None
+        self._update_preview_status()
         self.preserved_settings_label.clear()
         self.preserved_settings_label.setVisible(False)
         self._update_timeline_pending_ui()
@@ -1395,6 +1078,7 @@ class ScenarioAuthoringWorkspace(QWidget):
             except Exception:
                 raw_text = str(getattr(result, "raw_mapping", {}))
         self.yaml_preview.setPlainText(raw_text)
+        self.sensing_inspector.set_mapping(getattr(result, "raw_mapping", {}))
         self.document_label.setText(Path(getattr(result, "source_path", "scenario.yaml")).name)
         self._set_editing_enabled(False)
         port = getattr(self.viewport, "port", None)
@@ -1427,6 +1111,10 @@ class ScenarioAuthoringWorkspace(QWidget):
         self.title_changed.emit(name + suffix)
         self.dirty_changed.emit(document.dirty)
         self.read_only_label.setVisible(document.read_only)
+        self.read_only_label.setText(
+            "RECORDING" if document.scenario.recorded_poses else "READ ONLY"
+        )
+        self.recording_banner.setVisible(document.scenario.recorded_poses)
         self._set_editing_enabled(not self.document.read_only)
         self._sync_document_controls()
         self._update_waypoint_session_ui()
@@ -1441,6 +1129,11 @@ class ScenarioAuthoringWorkspace(QWidget):
             self._candidate_compile_timer.start()
             self._update_pending_inspector_ui()
         if not needs_compilation:
+            if self.camera_controls is not None and document.selected_subject is not None:
+                subject_id = document.selected_subject.id
+                # The viewport's pointer event must finish before starting a
+                # transition; otherwise its input handler cancels that new move.
+                QTimer.singleShot(0, lambda: self._sync_selection_camera(document, subject_id))
             return
         if self._compile_scheduler is not None:
             self._schedule_background_compile()
@@ -1492,10 +1185,12 @@ class ScenarioAuthoringWorkspace(QWidget):
 
         self._explicit_validation_running = True
         self.validation_status.setText("Validating current draft...")
+        self._update_preview_status(pending=True)
         self.validate_button.setEnabled(False)
         # Explicit validation is synchronous. Repaint these two small controls
         # before compilation so a slow generator-backed check has visible state.
         self.validation_status.repaint()
+        self.preview_status_label.repaint()
         self.validate_button.repaint()
         try:
             self.refresh_now()
@@ -1516,6 +1211,14 @@ class ScenarioAuthoringWorkspace(QWidget):
     def _explicit_validation_summary(result: CompilationResult) -> str:
         """Return a compact pass/fail summary for one explicit validation."""
 
+        if not result.fully_validated:
+            if result.recording is not None:
+                return "Saved recording: inspect its results or create an editable variant from the acquisition inputs."
+            return (
+                "Preview ready. Full validation runs before saving or generation."
+                if result.valid
+                else "Preview has problems; see the Problems drawer."
+            )
         errors = sum(issue.severity is IssueSeverity.ERROR for issue in result.issues)
         warnings = sum(issue.severity is IssueSeverity.WARNING for issue in result.issues)
         generation_problems = len(result.generation_issues)
@@ -1554,6 +1257,8 @@ class ScenarioAuthoringWorkspace(QWidget):
         directory = (
             document.path.parent if document.path is not None else Path(self.compiler.project_root)
         )
+        # Texture policy must be in place before the worker resolves materials.
+        self._apply_scenario_presentation()
         scheduler.request(document.scenario, directory, self._next_compile_token())
 
     def _background_compile_succeeded(
@@ -1570,6 +1275,24 @@ class ScenarioAuthoringWorkspace(QWidget):
         ):
             return
         self._apply_compilation(result)
+
+    def _background_scene_ready(self, token: object, preview: object) -> None:
+        """Show cached environment geometry while actor validation continues."""
+        if (
+            token != self._compile_request_token
+            or not isinstance(preview, ScenePreviewResult)
+            or self.document is None
+        ):
+            return
+        self._early_scene = preview
+        self._refresh_viewport()
+        self._apply_scenario_presentation()
+        self._update_preview_status(pending=True)
+
+    def _background_compile_progress(self, token: object, message: object) -> None:
+        if token == self._compile_request_token and self.document is not None:
+            self._compile_progress = str(message)
+            self._update_preview_status(pending=True)
 
     def _background_compile_failed(
         self,
@@ -1607,10 +1330,35 @@ class ScenarioAuthoringWorkspace(QWidget):
         )
         self.problems_tree.resizeColumnToContents(0)
         self.problems_tree.resizeColumnToContents(1)
+        self._update_preview_status()
         self._refresh_tree()
         self._refresh_viewport()
         self._refresh_inline_errors()
         self._set_editing_enabled(not self.document.read_only)
+
+    def _apply_scenario_presentation(self) -> None:
+        document = self.document
+        if (
+            document is None
+            or getattr(self, "_presented_document", None) == document.scenario.document_id
+        ):
+            return
+        apply = getattr(getattr(self.viewport, "port", None), "apply_scenario_defaults", None)
+        if not callable(apply):
+            return
+        defaults = document.scenario.source_snapshot.to_mapping().get("view_defaults") or {}
+        if defaults.get("camera_pose"):
+            self._osm_fit_pending = False
+        try:
+            apply(defaults, self._current_scenario_directory())
+        except (OSError, ValueError, RuntimeError) as exc:
+            self.append_generation_log(f"Scenario presentation: {exc}")
+        self._presented_document = document.scenario.document_id
+        if defaults.get("appearance_recipe"):
+            with QSignalBlocker(self.appearance_preset):
+                if self.appearance_preset.findText("Scenario appearance") < 0:
+                    self.appearance_preset.addItem("Scenario appearance")
+                self.appearance_preset.setCurrentText("Scenario appearance")
 
     def _apply_compilation(self, result: CompilationResult) -> None:
         """Apply canonical compiler evidence to the current document and viewport."""
@@ -1618,7 +1366,15 @@ class ScenarioAuthoringWorkspace(QWidget):
         document = self.document
         if document is None:
             return
+        previous = self.compilation
         self.compilation = result
+        if (
+            previous is not None
+            and previous.recording is not None
+            and previous.recording is not result.recording
+        ):
+            previous.recording.close()
+        self._early_scene = None
         self._compiled_scenario = document.scenario
         self._compiled_directory = self._current_scenario_directory()
         self._compilation_failure = None
@@ -1645,11 +1401,25 @@ class ScenarioAuthoringWorkspace(QWidget):
                     samples,
                 )
         self.yaml_preview.setPlainText(result.yaml_text)
+        self.validation_status.setText(self._explicit_validation_summary(result))
         self._refresh_problems()
         self._refresh_tree()
         self._refresh_viewport()
+        self._apply_scenario_presentation()
         self._refresh_inline_errors()
         self._set_editing_enabled(not document.read_only)
+
+        if result.recording is not None:
+            result.recording.start_trajectories(
+                lambda: self._recorded_trajectories_changed(result.recording)
+            )
+
+    def _recorded_trajectories_changed(self, recording) -> None:
+        """Ignore retired recordings and use one path snapshot in both views."""
+        if self.compilation is None or self.compilation.recording is not recording:
+            return
+        self._refresh_viewport()
+        self._update_preview_status()
 
     def _refresh_problems(self) -> None:
         self.problems_tree.clear()
@@ -1665,15 +1435,82 @@ class ScenarioAuthoringWorkspace(QWidget):
             )
         self.problems_tree.resizeColumnToContents(0)
         self.problems_tree.resizeColumnToContents(1)
+        self._update_preview_status()
+
+    def _update_preview_status(self, *, pending: bool = False) -> None:
+        """Summarize current compiler evidence without promising a rendered scene."""
+
+        document = self.document
+        if document is None:
+            state = "read_only" if self._read_only else "unavailable"
+            text = (
+                "Read only · Preview validation unavailable" if self._read_only else "No draft open"
+            )
+        elif pending or (self._compilation_failure is None and not self._compilation_is_current()):
+            state, text = "pending", f"Validating preview… · {self._compile_progress}"
+            elapsed = time.monotonic() - self._compile_started_at
+            if self._early_scene is not None and self._early_scene.scene_assets:
+                text = f"Environment ready · {self._compile_progress}"
+            if elapsed >= 1:
+                text += f" · {elapsed:.0f} s"
+            if self.compilation is not None:
+                text += " · Previous geometry may still be shown"
+        elif self._compilation_failure is not None:
+            state, text = "error", "Preview validation failed · See Problems"
+        else:
+            result = self.compilation
+            assert result is not None
+            errors = sum(issue.severity is IssueSeverity.ERROR for issue in result.issues)
+            warnings = sum(issue.severity is IssueSeverity.WARNING for issue in result.issues)
+            if errors:
+                state, text = "error", f"Preview has {errors} error{'s' if errors != 1 else ''}"
+            elif document.scenario.recorded_poses:
+                state, text = "read_only", "Recording ready"
+                recording = result.recording
+                loader = recording.trajectory_loader if recording is not None else None
+                if recording is not None and recording.trajectory_error:
+                    text += f" · Trajectory loading failed: {recording.trajectory_error}"
+                elif loader is not None and loader.is_loading:
+                    loaded, total = loader.progress
+                    text += f" · Loading trajectories {loaded:,}/{total:,} frames"
+            elif result.generation_issues:
+                state, text = "generation_limited", "Preview ready · Generation limited"
+            elif warnings:
+                state, text = (
+                    "warning",
+                    f"Preview has {warnings} warning{'s' if warnings != 1 else ''}",
+                )
+            else:
+                state, text = "valid", "Draft valid" if result.fully_validated else "Preview ready"
+            prepared = len(result.samples)
+            text += f" · {prepared}/{len(document.actors)} actors prepared"
+            text += (
+                f" · {len(result.scene_assets)} scene meshes"
+                if result.scene_assets
+                else " · No scene meshes loaded"
+            )
+        if document is not None and document.read_only:
+            state, text = "read_only", f"Read only · {text}"
+        if getattr(self.viewport, "initialization_error", None) is not None:
+            state, text = "error", f"Viewport unavailable · {text}"
+        self.preview_status_label.setProperty("validationState", state)
+        self.preview_status_label.setText(text)
+        self.preview_status_label.setToolTip(text)
+        if state != "pending":
+            self._compile_status_timer.stop()
 
     def _show_compilation_pending(self) -> None:
         """Replace superseded compiler evidence with an explicit pending state."""
 
+        self._compile_started_at = time.monotonic()
+        self._compile_progress = "Checking scenario settings and resources"
+        self._compile_status_timer.start()
         if not self._explicit_validation_running:
             self.validation_status.setText("Validation pending for the current draft.")
         self.yaml_preview.setPlainText("# Validating the current draft...\n")
         self.problems_tree.clear()
         self.problems_tree.addTopLevelItem(QTreeWidgetItem(("Info", "", "Validation in progress")))
+        self._update_preview_status(pending=True)
 
     def _refresh_tree(self) -> None:
         document = self.document
@@ -1814,6 +1651,10 @@ class ScenarioAuthoringWorkspace(QWidget):
             actor.mobility,
             actor.orientation,
             actor.target,
+            actor.representation,
+            actor.geometry,
+            actor.constant_rcs,
+            actor.tr38901,
             scenario.resources,
             tuple(dependencies),
         )
@@ -1821,23 +1662,19 @@ class ScenarioAuthoringWorkspace(QWidget):
     def _prepared_samples(self, actor: AuthoringActor) -> ActorSamples | None:
         """Return current samples or a still-semantic last valid preparation."""
 
-        dependent_preview = self._dependent_drag_preview_samples.get(actor.id)
-        if dependent_preview is not None:
-            return dependent_preview
-        if (
-            actor.id == self._transform_actor_id
-            and self._transform_baseline_actor is not None
-            and self._transform_baseline_actor.id == actor.id
-            and self._transform_preview_samples is not None
+        if self.compilation is not None and actor.id in getattr(
+            self.compilation, "pose_sources", {}
         ):
-            return self._transform_preview_samples
+            return self.compilation.pose_sources[actor.id].sample(self._play_step)
         if (
-            actor.id == self._mobility_drag_actor_id
-            and isinstance(self._mobility_drag_baseline_actor, AuthoringActor)
-            and self._mobility_drag_baseline_actor.id == actor.id
-            and self._mobility_drag_preview_samples is not None
+            self.compilation is not None
+            and getattr(self.compilation, "recording", None) is not None
         ):
-            return self._mobility_drag_preview_samples
+            try:
+                return self.compilation.recording.sample(actor, self._play_step)
+            except (OSError, ValueError, KeyError):
+                return None
+
         expected_key = self._orientation_cache_key(actor)
         current = self.compilation.samples.get(actor.id) if self.compilation else None
         compiled_scenario = self._compiled_scenario
@@ -1883,13 +1720,6 @@ class ScenarioAuthoringWorkspace(QWidget):
     ) -> tuple[tuple[float, float, float], ...] | None:
         """Return current, active-preview, or exact cached group positions."""
 
-        if (
-            group.id == self._mobility_drag_actor_id
-            and isinstance(self._mobility_drag_baseline_actor, AuthoringGroup)
-            and self._mobility_drag_baseline_actor.id == group.id
-            and self._mobility_drag_preview_group_positions is not None
-        ):
-            return self._mobility_drag_preview_group_positions
         document = self.document
         if document is None:
             return None
@@ -1921,12 +1751,6 @@ class ScenarioAuthoringWorkspace(QWidget):
     def _prepared_group_samples(self, group: AuthoringGroup) -> Any | None:
         """Return canonical group samples when they match the current draft."""
 
-        if (
-            group.id == self._mobility_drag_actor_id
-            and isinstance(self._mobility_drag_baseline_actor, AuthoringGroup)
-            and self._mobility_drag_preview_group_samples is not None
-        ):
-            return self._mobility_drag_preview_group_samples
         document = self.document
         if document is None:
             return None
@@ -1961,12 +1785,6 @@ class ScenarioAuthoringWorkspace(QWidget):
     ) -> bool | None:
         """Return cached canonical path semantics for one group."""
 
-        if (
-            group.id == self._mobility_drag_actor_id
-            and isinstance(self._mobility_drag_baseline_actor, AuthoringGroup)
-            and self._mobility_drag_baseline_group_physical is not None
-        ):
-            return self._mobility_drag_baseline_group_physical
         samples = self._prepared_group_samples(group)
         if samples is not None:
             return samples.has_physical_velocity
@@ -2062,7 +1880,7 @@ class ScenarioAuthoringWorkspace(QWidget):
             if override is not None:
                 sample_by_id[actor.id] = override
                 continue
-            samples = self._prepared_samples(actor)
+            samples = self._draft_samples(actor)
             if samples is not None:
                 sample_by_id[actor.id] = samples
         references = {
@@ -2124,6 +1942,19 @@ class ScenarioAuthoringWorkspace(QWidget):
     ) -> tuple[dict[UUID, ActorSamples], dict[UUID, GroupSamples]]:
         """Prepare a pure pose snapshot for direct-manipulation feedback."""
 
+        if isinstance(self.compiler, ScenarioCompiler):
+            subject_id = self._mobility_drag_actor_id or self._transform_actor_id
+            if subject_id is not None:
+                with self._compile_lock:
+                    result = self.compiler.prepare_actor_preview(
+                        scenario,
+                        subject_id,
+                        scenario_directory=self._current_scenario_directory(),
+                    )
+                if not result.valid:
+                    raise ValueError("; ".join(issue.message for issue in result.issues))
+                return dict(result.samples), dict(result.group_samples)
+
         alignments = {
             actor.name: (self._target_front_yaw_offset(actor.name), 0.0, 0.0)
             for actor in scenario.actors
@@ -2182,24 +2013,68 @@ class ScenarioAuthoringWorkspace(QWidget):
         port = getattr(self.viewport, "port", None)
         if document is None or port is None:
             return
+        self.osm_map_credit.setVisible(
+            self.osm_panel.active
+            or bool(document.scenario.scene and document.scenario.scene.source == "osm")
+        )
+        if self.osm_panel.active:
+            port.clear_transform_gizmo()
+            port.reconcile(
+                OverlaySnapshot(
+                    document_id=document.scenario.document_id,
+                    revision=document.revision,
+                    scene_assets=self.osm_panel.assets(),
+                    work_plane_visible=False,
+                )
+            )
+            return
         overlays = []
         compiled_scenario = self._compiled_scenario
+        preview = self._early_scene
+        if (
+            preview is not None
+            and preview.scenario_directory == self._current_scenario_directory()
+            and preview.scenario.scene == document.scenario.scene
+        ):
+            compiled_scenario = preview.scenario
+            available_scene_assets = preview.scene_assets
+        elif (
+            self.compilation is not None
+            and compiled_scenario is not None
+            and self._compiled_directory == self._current_scenario_directory()
+            and compiled_scenario.scene == document.scenario.scene
+        ):
+            available_scene_assets = self.compilation.scene_assets
+        else:
+            available_scene_assets = ()
         scene_assets = tuple(
             SceneOverlayAsset(
                 cache_key=asset.cache_key,
                 name=asset.name,
                 payload=asset.mesh,
                 material=asset.material,
+                material_type=asset.material_type,
+                ground=asset.ground,
             )
-            for asset in (
-                self.compilation.scene_assets
-                if self.compilation is not None
-                and compiled_scenario is not None
-                and self._compiled_directory == self._current_scenario_directory()
-                and compiled_scenario.scene == document.scenario.scene
-                else ()
-            )
+            for asset in available_scene_assets
         )
+        from .map_overlay import MAP_NAME
+
+        has_map = any(asset.name == MAP_NAME for asset in scene_assets)
+        if has_map:
+            attribution = next(
+                (asset.attribution for asset in available_scene_assets if asset.name == MAP_NAME),
+                None,
+            )
+            if attribution:
+                self.osm_map_credit.setText(attribution)
+        self.map_overlay_check.setEnabled(has_map)
+        self.map_overlay_check.setVisible(has_map)
+        self.osm_map_credit.setVisible(
+            has_map or bool(document.scenario.scene and document.scenario.scene.source == "osm")
+        )
+        if not self.map_overlay_check.isChecked():
+            scene_assets = tuple(asset for asset in scene_assets if asset.name != MAP_NAME)
         pending_motion_actor_ids: set[UUID] = set()
         if self._pending_subject_id is not None and (
             self._mobility_draft_pending or self._group_settings_draft_pending
@@ -2219,12 +2094,31 @@ class ScenarioAuthoringWorkspace(QWidget):
             else:
                 pending_motion_actor_ids.add(self._pending_subject_id)
         for actor in document.actors:
+            if document.scenario.recorded_poses and (
+                self.compilation is None or self.compilation.recording is None
+            ):
+                continue
             sample = self._prepared_samples(actor)
             frame_positions = tuple(sample.positions) if sample is not None else ()
             trajectory_positions = self._trajectory_positions(
                 actor.mobility,
                 frame_positions,
             )
+            if document.scenario.recorded_poses:
+                if not frame_positions:
+                    continue
+                trajectory_positions = self.compilation.recording.trajectory_positions.get(
+                    actor.id, frame_positions
+                )
+            if (
+                frame_positions
+                and actor.target is not None
+                and actor.target.source == "animated_asset"
+            ):
+                provider = self.compilation.pose_sources.get(actor.id)
+                trajectory_positions = (
+                    provider.trajectory_positions if provider is not None else frame_positions
+                )
             pose_positions = frame_positions or trajectory_positions
             step = min(self._play_step, max(len(pose_positions) - 1, 0))
             current_position = pose_positions[step]
@@ -2276,6 +2170,13 @@ class ScenarioAuthoringWorkspace(QWidget):
                 )
                 else ()
             )
+            if (
+                not pending_positions
+                and direct_candidate_actor
+                and candidate_actor is not None
+                and self._mobility_draft_pending
+            ):
+                pending_positions = self._trajectory_positions(candidate_actor.mobility, ())
             pending_step = min(self._play_step, max(len(pending_positions) - 1, 0))
             pending_current_position = (
                 pending_positions[pending_step] if pending_positions else None
@@ -2303,6 +2204,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                 and not self._play_timer.isActive()
                 and not actor.locked
                 and not document.read_only
+                and document.scenario.capability("mobility", actor.id).editable
                 and self._overlay_scope_applies(
                     OverlayVisibility(self.control_rig_visibility_combo.currentData()),
                     selected,
@@ -2310,7 +2212,7 @@ class ScenarioAuthoringWorkspace(QWidget):
             )
             if control_rig_visible:
                 try:
-                    control_rig = mobility_control_rig(actor.mobility)
+                    control_rig = mobility_control_rig((candidate_actor or actor).mobility)
                 except TypeError:
                     control_rig = None
             else:
@@ -2372,15 +2274,25 @@ class ScenarioAuthoringWorkspace(QWidget):
                 and self._compiled_directory == self._current_scenario_directory()
                 and compiled_actor is not None
                 and compiled_actor.target == actor.target
+                and compiled_actor.target_representation_mapping()
+                == actor.target_representation_mapping()
                 and compiled_scenario.timeline == document.scenario.timeline
                 else ()
             )
             if target_frames:
-                frame = target_frames[min(step, len(target_frames) - 1)]
+                try:
+                    frame = target_frames[min(self._play_step, len(target_frames) - 1)]
+                except (OSError, ValueError, KeyError) as exc:
+                    self.inline_errors.setText(f"{actor.name}: frame {self._play_step}: {exc}")
+                    continue
                 target_asset = TargetOverlayAsset(
                     cache_key=frame.cache_key,
                     payload=frame.mesh,
                     material=frame.material,
+                    scattering_points_local_m=frame.scattering_points_local_m,
+                    scattering_point_ids=frame.scattering_point_ids,
+                    representation=frame.representation,
+                    metadata_source=frame.metadata_source,
                     local_to_actor=tuple(
                         tuple(float(value) for value in row) for row in frame.local_to_actor
                     ),
@@ -2401,6 +2313,10 @@ class ScenarioAuthoringWorkspace(QWidget):
                     cache_key=candidate_frame.cache_key,
                     payload=candidate_frame.mesh,
                     material=candidate_frame.material,
+                    scattering_points_local_m=candidate_frame.scattering_points_local_m,
+                    scattering_point_ids=candidate_frame.scattering_point_ids,
+                    representation=candidate_frame.representation,
+                    metadata_source=candidate_frame.metadata_source,
                     local_to_actor=tuple(
                         tuple(float(value) for value in row)
                         for row in candidate_frame.local_to_actor
@@ -2492,7 +2408,10 @@ class ScenarioAuthoringWorkspace(QWidget):
                     locked=actor.locked,
                     trajectory_visible=trajectory_visible,
                     frame_samples_visible=frame_samples_visible,
-                    closed_trajectory=isinstance(actor.mobility, CircularMobilitySpec),
+                    closed_trajectory=(
+                        isinstance(actor.mobility, CircularMobilitySpec)
+                        and not document.scenario.recorded_poses
+                    ),
                     trajectory_hovered=(
                         actor.id == self._hovered_actor_id
                         and self._hovered_component == "trajectory_hit"
@@ -2506,17 +2425,25 @@ class ScenarioAuthoringWorkspace(QWidget):
                         else None
                     ),
                     preview_provenance=(
-                        PreviewProvenance.GENERATOR_PREPARED
-                        if sample is not None
-                        else PreviewProvenance.AUTHORED_DRAFT
+                        PreviewProvenance.RECORDED_FRAMES
+                        if document.scenario.recorded_poses
+                        else (
+                            PreviewProvenance.GENERATOR_PREPARED
+                            if sample is not None
+                            else PreviewProvenance.AUTHORED_DRAFT
+                        )
                     ),
                     trajectory_display=(
                         TrajectoryDisplayMode.OBSERVATIONS
-                        if sample is not None and not sample.has_physical_velocity
+                        if sample is not None
+                        and not sample.has_physical_velocity
+                        and not document.scenario.recorded_poses
                         else TrajectoryDisplayMode.PATH
                     ),
                     trajectory_geometry_key=(
-                        f"{repr(actor.mobility)}:{id(sample.positions) if sample else 'draft'}"
+                        f"recorded:{id(trajectory_positions)}"
+                        if document.scenario.recorded_poses
+                        else f"{repr(actor.mobility)}:{id(sample.positions) if sample else 'draft'}"
                     ),
                     frame_samples_geometry_key=(
                         str(id(sample.positions)) if sample is not None else ""
@@ -2608,7 +2535,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                 )
             ):
                 try:
-                    control_rig = mobility_control_rig(group.mobility)
+                    control_rig = mobility_control_rig((candidate_group or group).mobility)
                 except TypeError:
                     pass
             issues = (
@@ -2724,6 +2651,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                 revision=document.revision,
                 scene_assets=scene_assets,
                 actors=tuple(overlays),
+                guides=self.builder_tools.guides(overlays),
                 work_plane_z=self.work_plane_z_spin.value(),
                 work_plane_visible=self.work_plane_check.isChecked(),
                 grid_snap_m=(
@@ -2739,7 +2667,36 @@ class ScenarioAuthoringWorkspace(QWidget):
                 look_at_visibility=OverlayVisibility(self.look_at_rays_combo.currentData()),
             )
         )
+        if (
+            self._osm_fit_pending
+            and scene_assets
+            and compiled_scenario is not None
+            and compiled_scenario.source_snapshot == document.scenario.source_snapshot
+        ):
+            port.fit_all()
+            self._osm_fit_pending = False
         self._sync_transform_gizmo()
+
+        if self.camera_controls is not None:
+            self.camera_controls.sync(port.current_snapshot())
+        selected_overlay = next((actor for actor in overlays if actor.selected), None)
+        self.trajectory_preview.setVisible(selected_overlay is not None)
+        if selected_overlay is not None:
+            context_key = (document.scenario.scene, id(available_scene_assets))
+            if context_key != self.trajectory_preview.context_key:
+                from .street_routes import scenario_graph
+
+                graph = scenario_graph(document.scenario, self._current_scenario_directory())
+                self.trajectory_preview.set_context(available_scene_assets, key=context_key)
+                self.trajectory_preview.load_streets(graph)
+            self.trajectory_preview.set_paths(
+                selected_overlay.positions,
+                selected_overlay.pending_positions,
+                current=selected_overlay.current_position,
+                proposed_current=selected_overlay.pending_current_position,
+                last_valid=self._candidate_failure is not None,
+            )
+        self.frame_label.setText(f"{self._play_step + 1} / {document.scenario.timeline.steps}")
 
     @staticmethod
     def _overlay_scope_applies(scope: OverlayVisibility, selected: bool) -> bool:
@@ -2753,12 +2710,15 @@ class ScenarioAuthoringWorkspace(QWidget):
         if document is None or port is None:
             return
         actor = document.selected_actor
+        if actor is not None and self._candidate_scenario is not None:
+            actor = self._candidate_scenario.actor(actor.id) or actor
         show = getattr(port, "show_transform_gizmo", None)
         if (
             self._tool is AuthoringTool.MOVE
             and actor is not None
             and actor.visible
             and not actor.locked
+            and document.scenario.capability("mobility", actor.id).editable
             and self._mobility_translation_supported(actor.mobility)
             and not document.read_only
             and callable(show)
@@ -2808,6 +2768,9 @@ class ScenarioAuthoringWorkspace(QWidget):
             and self._resolve_pending_inspector_edits()
         ):
             self.document.add_default_actor(role)
+            if role is ActorRole.TARGET:
+                self.inspector_scroll.verticalScrollBar().setValue(0)
+                self.target_asset_combo.setFocus(Qt.OtherFocusReason)
             # The newly selected actor consumes the very next primary click;
             # no modifier or secondary "Add Point" action is required.
             self.set_tool(AuthoringTool.PLACE)
@@ -2847,7 +2810,7 @@ class ScenarioAuthoringWorkspace(QWidget):
             actor_list.addItem(item)
         layout.addWidget(actor_list)
 
-        options = QFormLayout()
+        options = AlignedFormLayout()
         primary_combo = QComboBox(dialog)
         for actor in document.actors:
             primary_combo.addItem(actor.name, str(actor.id))
@@ -3053,11 +3016,22 @@ class ScenarioAuthoringWorkspace(QWidget):
             if preserve_imported_quality
             else QualityPreset(selected_quality)
         )
+        sample_rate = self.sample_rate_spin.value() if self.sample_rate_check.isChecked() else None
+        imported_rate = document.scenario.timeline.sample_rate_hz
+        if (
+            sample_rate is not None
+            and imported_rate is not None
+            and sample_rate == round(imported_rate, self.sample_rate_spin.decimals())
+        ):
+            # A count/quality edit must not round an untouched imported clock
+            # to the widget's display precision (for example 30000 / 1001 Hz).
+            sample_rate = imported_rate
         timeline = TimelineSettings(
             steps=self.steps_spin.value(),
             duration_s=self.duration_spin.value(),
             quality=quality,
             export_path_metrics=self.path_metrics_check.isChecked(),
+            sample_rate_hz=sample_rate,
         )
         replace_imported_quality = (
             self._has_imported_quality(document.scenario) and not preserve_imported_quality
@@ -3068,11 +3042,18 @@ class ScenarioAuthoringWorkspace(QWidget):
         document = self.document
         if self._syncing or document is None or document.read_only:
             return
+        use_rate = self.sample_rate_check.isChecked()
+        self.duration_spin.setEnabled(self.steps_spin.isEnabled() and not use_rate)
+        self.sample_rate_spin.setEnabled(self.steps_spin.isEnabled() and use_rate)
         try:
             timeline, replace_imported_quality = self._timeline_editor_state()
         except (TypeError, ValueError):
             self._timeline_draft_pending = True
         else:
+            if use_rate:
+                with QSignalBlocker(self.duration_spin):
+                    self.duration_spin.setMaximum(max(1_000_000.0, timeline.duration_s))
+                    self.duration_spin.setValue(timeline.duration_s)
             self._timeline_draft_pending = (
                 timeline != document.scenario.timeline or replace_imported_quality
             )
@@ -3133,7 +3114,14 @@ class ScenarioAuthoringWorkspace(QWidget):
             timeline = document.scenario.timeline
             if not self._timeline_draft_pending:
                 self.steps_spin.setValue(timeline.steps)
+                self.duration_spin.setMaximum(max(1_000_000.0, timeline.duration_s))
                 self.duration_spin.setValue(timeline.duration_s)
+                self.sample_rate_check.setChecked(timeline.sample_rate_hz is not None)
+                if timeline.sample_rate_hz is not None:
+                    self.sample_rate_spin.setRange(
+                        min(1e-12, timeline.sample_rate_hz), max(1e15, timeline.sample_rate_hz)
+                    )
+                    self.sample_rate_spin.setValue(timeline.sample_rate_hz)
                 self._sync_quality_controls(document.scenario)
                 self.path_metrics_check.setChecked(timeline.export_path_metrics)
             else:
@@ -3141,14 +3129,37 @@ class ScenarioAuthoringWorkspace(QWidget):
             self.timeline_slider.setMaximum(max(timeline.steps - 1, 0))
             self._update_playback_timing(timeline)
             scene = document.scenario.scene
-            source = scene.source if scene is not None else "sionna"
-            source_index = self.scene_source_combo.findData(source)
-            if source_index < 0:
-                self.scene_source_combo.addItem(f"{source} (preserved)", source)
-                source_index = self.scene_source_combo.count() - 1
-            self.scene_source_combo.setCurrentIndex(source_index)
-            self._populate_scene_ids(scene.id if scene is not None else "")
+            if not (self.osm_panel.active or self.osm_panel.building):
+                source = scene.source if scene is not None else "sionna"
+                source_index = self.scene_source_combo.findData(source)
+                if source_index < 0:
+                    self.scene_source_combo.addItem(f"{source} (preserved)", source)
+                    source_index = self.scene_source_combo.count() - 1
+                self.scene_source_combo.setCurrentIndex(source_index)
+                self._populate_scene_ids(scene.id if scene is not None else "")
+                if source == "osm":
+                    self.osm_panel.sync_config(
+                        document.scenario.source_snapshot.to_mapping()
+                        .get("scene", {})
+                        .get("osm", {})
+                    )
             actor = document.selected_actor
+            self.animation_notice.setVisible(
+                document.scenario.recorded_poses
+                or bool(actor and actor.target and actor.target.source == "animated_asset")
+            )
+            if document.scenario.recorded_poses:
+                self.animation_notice.setText(
+                    "Saved frames own these poses. Playback is read-only; use the acquisition inputs to author new motion."
+                )
+            elif actor and actor.target and actor.target.source == "animated_asset":
+                self.animation_notice.setText(
+                    "Animation trajectory (read-only). The path, heading and scale come from "
+                    "the animation asset. Route editing is not supported for imported animations. "
+                    "To change the route, prepare a new asset from the original poses and update "
+                    "its path in the scenario YAML. Playback settings are preserved on save."
+                )
+                self.animation_notice.setToolTip(str(actor.target.path))
             group = document.selected_group
             self._update_sampling_summary(actor, timeline)
             enabled = (actor is not None or group is not None) and not document.read_only
@@ -3256,7 +3267,7 @@ class ScenarioAuthoringWorkspace(QWidget):
             self.mobility_editor.set_editing_enabled(enabled and mobility_editable)
             self.orientation_editor.set_editing_enabled(enabled and orientation_editable)
             self.name_edit.setText(actor.name)
-            self.role_label.setText(actor.role.value.upper() + " (immutable)")
+            self.role_label.setText(actor.role.value.upper())
             if not preserve_mobility_draft:
                 self.mobility_editor.set_mobility(actor.mobility)
             samples = self._prepared_samples(actor)
@@ -3287,11 +3298,24 @@ class ScenarioAuthoringWorkspace(QWidget):
             self.group_settings.setVisible(False)
             self.orientation_group.setVisible(True)
             self.target_group.setVisible(actor.role is ActorRole.TARGET)
+            animated = actor.target is not None and actor.target.source == "animated_asset"
+            self.mobility_group.setVisible(not animated and not document.scenario.recorded_poses)
+            self.orientation_group.setVisible(not animated and not document.scenario.recorded_poses)
+            self._set_target_editing_enabled(actor, enabled)
+            if not preserve_target_draft:
+                self.target_representation_editor.set_actor(actor)
+                self._populate_target_asset_choices()
+            self._update_target_asset_controls()
             if actor.target is not None and not preserve_target_draft:
                 target_index = self.target_asset_combo.findData(actor.target.asset_id)
                 if target_index < 0:
                     self.target_asset_combo.addItem(
-                        f"{actor.target.asset_id} (unresolved)", actor.target.asset_id
+                        (
+                            f"{actor.target.asset_id} (imported)"
+                            if actor.target.source != "catalog"
+                            else f"{actor.target.asset_id} (unresolved)"
+                        ),
+                        actor.target.asset_id,
                     )
                     target_index = self.target_asset_combo.count() - 1
                 self.target_asset_combo.setCurrentIndex(target_index)
@@ -3304,14 +3328,15 @@ class ScenarioAuthoringWorkspace(QWidget):
                 self.target_material_combo.setCurrentIndex(material_index)
                 self.target_scale_spin.setValue(actor.target.scale)
                 self.target_mesh_animation.setChecked(actor.target.mesh_animation)
-                locator_editable = document.scenario.capability(
-                    "target_asset",
-                    actor.id,
-                ).editable
-                self.target_asset_combo.setEnabled(enabled and locator_editable)
-                self.target_mesh_animation.setEnabled(enabled and actor.target.source != "file")
+                if animated:
+                    self.role_label.setText("TARGET (animated asset)")
             elif not preserve_target_draft:
                 self.target_asset_combo.setCurrentIndex(0)
+                self.target_material_combo.setCurrentIndex(
+                    self.target_material_combo.findData("glass")
+                )
+                self.target_scale_spin.setValue(1.0)
+                self.target_mesh_animation.setChecked(True)
         finally:
             # Waypoint/keyframe table cell editors are recreated by set_*()
             # during selection sync, so discover the new widgets before
@@ -3320,6 +3345,8 @@ class ScenarioAuthoringWorkspace(QWidget):
             self._connect_editor_draft_signals(self.orientation_editor, "orientation")
             self._syncing = False
             self._update_timeline_pending_ui()
+            self._sync_motion_edit_action()
+            self._update_tool_hint()
 
     def _clear_actor_inspector(self) -> None:
         """Reset actor-specific widgets without changing the document."""
@@ -3380,6 +3407,14 @@ class ScenarioAuthoringWorkspace(QWidget):
         document = self.document
         actor = document.selected_actor if document is not None else None
         group = document.selected_group if document is not None else None
+        if self._candidate_compilation is not None and self._pending_matches_current_subject():
+            samples = (
+                self._candidate_compilation.group_samples.get(group.id)
+                if group is not None
+                else self._candidate_compilation.samples.get(actor.id)
+            )
+            if samples is not None and samples.positions:
+                return samples.positions[min(self._play_step, len(samples.positions) - 1)]
         if group is not None:
             positions = self._prepared_group_positions(group)
             if positions:
@@ -3404,6 +3439,8 @@ class ScenarioAuthoringWorkspace(QWidget):
         current = (
             actor.mobility if actor is not None else group.mobility if group is not None else None
         )
+        if self._mobility_draft_pending and self._pending_matches_current_subject():
+            current = getattr(self, "_pending_mobility_value", current)
         if current is None:
             return
         try:
@@ -3619,14 +3656,57 @@ class ScenarioAuthoringWorkspace(QWidget):
         if actor.role is not ActorRole.TARGET:
             return False
         try:
-            target = self._target_from_controls(actor)
+            changes = self._target_changes_from_controls(actor)
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid target", str(exc))
             return False
-        self.document.replace_actor(actor.with_changes(target=target), text=f"Edit {actor.name}")
+        self.document.replace_actor(actor.with_changes(**changes), text=f"Edit {actor.name}")
         if self._target_draft_pending:
             self._clear_pending_kind("target", resync=True)
         return True
+
+    def _target_representation_changed(self) -> None:
+        self._update_target_asset_controls()
+        self._mark_inspector_draft("target")
+
+    def _set_target_editing_enabled(self, actor: AuthoringActor, enabled: bool) -> None:
+        """Derive every target control's state from the selected actor."""
+
+        editable = enabled and actor.role is ActorRole.TARGET
+        source = actor.target.source if actor.target is not None else "catalog"
+        capability = self.document.scenario.capability("target_asset", actor.id)
+        self.target_asset_combo.setEnabled(editable and capability.editable)
+        self.target_asset_combo.setToolTip(
+            capability.reason
+            if not capability.editable
+            else "Choose a target from the project asset catalog."
+        )
+        label = self.target_group.layout().labelForField(self.target_asset_combo)
+        label.setText("Catalog asset" if source == "catalog" else "Imported asset")
+        self.target_material_combo.setEnabled(editable)
+        self.target_scale_spin.setEnabled(editable and source != "animated_asset")
+        self.target_mesh_animation.setEnabled(editable and source not in {"file", "animated_asset"})
+        self.target_representation_editor.setEnabled(editable and source != "animated_asset")
+
+    def _update_target_asset_controls(self) -> None:
+        mesh = self.target_representation_editor.representation.currentData() == "mesh_material"
+        form = self.target_group.layout()
+        for control in (
+            self.target_asset_combo,
+            self.target_material_combo,
+            self.target_scale_spin,
+            self.target_mesh_animation,
+        ):
+            control.setVisible(mesh)
+            label = form.labelForField(control)
+            if label is not None:
+                label.setVisible(mesh)
+
+    def _target_changes_from_controls(self, actor: AuthoringActor) -> dict[str, Any]:
+        changes = self.target_representation_editor.actor_changes()
+        if changes["representation"] == "mesh_material":
+            changes["target"] = self._target_from_controls(actor)
+        return changes
 
     def _target_from_controls(self, actor: AuthoringActor) -> TargetAsset | None:
         """Apply editable appearance without replacing an imported locator."""
@@ -3636,6 +3716,8 @@ class ScenarioAuthoringWorkspace(QWidget):
         scale = self.target_scale_spin.value()
         mesh_animation = self.target_mesh_animation.isChecked()
         if current is not None and current.source != "catalog":
+            if current.source == "animated_asset":
+                return replace(current, material=material)
             return replace(
                 current,
                 material=material,
@@ -3653,6 +3735,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                 material=material,
                 scale=scale,
                 mesh_animation=mesh_animation,
+                mesh_end_behavior=current.mesh_end_behavior if current is not None else "loop",
             )
         )
 
@@ -3699,6 +3782,16 @@ class ScenarioAuthoringWorkspace(QWidget):
             return tuple(sorted(path.name for path in target_root.iterdir() if path.is_dir()))
         except OSError:
             return ()
+
+    def _populate_target_asset_choices(self) -> None:
+        """Rebuild catalog choices without carrying another actor's imported locator."""
+        self.target_asset_combo.clear()
+        assets = self._catalog_target_ids()
+        self.target_asset_combo.addItem(
+            "Select catalog asset..." if assets else "No catalog assets found", ""
+        )
+        for asset_id in assets:
+            self.target_asset_combo.addItem(asset_id, asset_id)
 
     def _scene_suggestions(self, source: str) -> tuple[str, ...]:
         if source == "library":
@@ -3749,11 +3842,78 @@ class ScenarioAuthoringWorkspace(QWidget):
 
     def _scene_source_changed(self) -> None:
         source = str(self.scene_source_combo.currentData() or "")
+        osm = source == "osm"
+        self.osm_panel.setVisible(osm)
+        self._osm_scroll.setVisible(osm)
+        self.scene_id_combo.setVisible(not osm)
+        self._scene_id_label.setVisible(not osm)
+        self._scene_buttons.setVisible(not osm)
         preserved_extension = source not in {"sionna", "library", "local"}
         self.scene_id_combo.setEnabled(not preserved_extension)
         self.scene_apply_button.setEnabled(not preserved_extension)
         if not self._syncing:
             self._populate_scene_ids("")
+
+    def _osm_view_changed(self) -> None:
+        self._refresh_viewport()
+        if self.document is not None:
+            self._set_editing_enabled(not self.document.read_only)
+
+    def _enter_osm_map(self, bounds) -> None:
+        self._finish_target_transform(commit=False)
+        self._finish_mobility_drag(commit=False)
+        port = getattr(self.viewport, "port", None)
+        if port is not None:
+            port.set_tool(AuthoringTool.OSM_REGION)
+            show = getattr(port, "show_ground_map", None)
+            if callable(show):
+                show(bounds)
+
+    def _leave_osm_map(self) -> None:
+        port = getattr(getattr(self, "viewport", None), "port", None)
+        if port is not None:
+            leave = getattr(port, "leave_ground_map", None)
+            if callable(leave):
+                leave()
+            port.set_tool(self._tool)
+        if self.document is not None and not self.osm_panel.building:
+            self._sync_document_controls()
+
+    def _osm_build_started(self) -> None:
+        document = self.document
+        self._osm_build_context = (
+            (
+                document,
+                document.scenario.scene,
+                document.scenario.source_snapshot.to_mapping().get("scene"),
+            )
+            if document is not None
+            else None
+        )
+
+    def _install_osm_scene(self, config, scene_root) -> None:
+        context = self._osm_build_context
+        self._osm_build_context = None
+        document = self.document
+        if (
+            context is None
+            or document is not context[0]
+            or document.read_only
+            or document.scenario.scene != context[1]
+            or document.scenario.source_snapshot.to_mapping().get("scene") != context[2]
+        ):
+            self.osm_panel.status.setText(
+                "The active scene changed during the build. The result was not applied."
+            )
+            return
+        try:
+            self._osm_fit_pending = True
+            document.install_osm_scene(config, scene_root, project_root=self._project_root())
+        except (OSError, ValueError, PermissionError) as exc:
+            self._osm_fit_pending = False
+            self.osm_panel.status.setText(f"Could not apply scene: {exc}")
+            return
+        self.osm_panel.leave_map()
 
     def _browse_local_scene(self) -> None:
         path, _selected_filter = QFileDialog.getOpenFileName(
@@ -3789,6 +3949,11 @@ class ScenarioAuthoringWorkspace(QWidget):
         self._refresh_viewport()
 
     def _camera_mode_changed(self, *_args: Any) -> None:
+        if self.camera_controls is not None:
+            self.camera_controls.ui_controller.handle_fly_mode_toggled(
+                self.camera_mode_combo.currentData() == "fly"
+            )
+            return
         setter = getattr(getattr(self.viewport, "port", None), "set_camera_mode", None)
         if callable(setter):
             setter(str(self.camera_mode_combo.currentData()))
@@ -3797,6 +3962,8 @@ class ScenarioAuthoringWorkspace(QWidget):
         """Activate a tool while preserving explicit waypoint transactions."""
 
         next_tool = AuthoringTool(tool)
+        if next_tool is AuthoringTool.MOVE and not self._tool_actions[next_tool].isEnabled():
+            return
         if self._waypoint_session_actor_id is not None and next_tool is not AuthoringTool.WAYPOINT:
             # A tool change must never decide the fate of a pending waypoint
             # transaction. Finish and Cancel are explicit session commands.
@@ -3818,20 +3985,83 @@ class ScenarioAuthoringWorkspace(QWidget):
         port = getattr(self.viewport, "port", None)
         if port is not None:
             port.set_tool(self._tool)
-        self.tool_hint_label.setText(
-            {
-                AuthoringTool.SELECT: "Select an actor",
-                AuthoringTool.PLACE: "Click once to place the new actor",
-                AuthoringTool.MOVE: (
-                    "Edit handles or drag the path/XYZ gizmo arrows; "
-                    "rings edit fixed orientation"
-                ),
-                AuthoringTool.WAYPOINT: "Click to add points; Enter finishes; Esc cancels",
-            }[self._tool]
-        )
+        self._update_tool_hint()
         self._refresh_viewport()
 
+    def _update_tool_hint(self) -> None:
+        """Explain the active tool for the actual selection, including restrictions."""
+        document = self.document
+        subject = (document.selected_actor or document.selected_group) if document else None
+        if self._tool is AuthoringTool.PLACE:
+            hint = "Click once to place the new actor"
+        elif self._tool is AuthoringTool.WAYPOINT:
+            hint = "Click to add points; Enter finishes; Esc cancels"
+        elif subject is None:
+            hint = "Select an actor in the list or viewport"
+        elif document.scenario.recorded_poses:
+            hint = f"{subject.name} · Recorded motion"
+        elif document.read_only:
+            hint = f"{subject.name} · Read-only document"
+        elif subject.locked:
+            hint = f"{subject.name} · Unlock to edit motion"
+        elif (
+            isinstance(subject, AuthoringActor)
+            and subject.target is not None
+            and subject.target.source == "animated_asset"
+        ):
+            hint = f"{subject.name} · Animation owns motion"
+        elif self._tool is AuthoringTool.SELECT or not self._mobility_translation_supported(
+            subject.mobility
+        ):
+            hint = f"{subject.name} · Edit Mobility in the inspector"
+        else:
+            hint = f"{subject.name} · Edit handles, path or XYZ gizmo"
+        self.tool_hint_label.setText(hint)
+
+    def _sync_motion_edit_action(self) -> None:
+        """Keep the inspector's viewport action consistent with motion capabilities."""
+        document = self.document
+        subject = (document.selected_actor or document.selected_group) if document else None
+        if subject is not None and self._mobility_draft_pending:
+            try:
+                subject = subject.with_changes(mobility=self.mobility_editor.mobility())
+            except (TypeError, ValueError):
+                pass
+        reason = ""
+        if subject is None:
+            reason = "Select an actor to edit its motion."
+        elif document.read_only:
+            reason = "This document is read-only."
+        elif subject.locked:
+            reason = "Unlock this actor in the list to edit its motion."
+        else:
+            facet = "mobility" if isinstance(subject, AuthoringActor) else "group"
+            capability = document.scenario.capability(facet, subject.id)
+            if not capability.editable:
+                reason = capability.reason
+            elif not self._mobility_translation_supported(subject.mobility):
+                reason = (
+                    "Edit route endpoints and speed in Mobility below; this route cannot be dragged."
+                    if isinstance(subject.mobility, NetworkRouteMobilitySpec)
+                    else "This motion has no viewport handles. Use the Mobility settings below."
+                )
+        busy = (
+            self._waypoint_session_actor_id is not None
+            or self.osm_panel.active
+            or self.osm_panel.building
+        )
+        action = self._tool_actions[AuthoringTool.MOVE]
+        action.setEnabled(not reason and not busy)
+        action.setToolTip(reason or "Edit motion using handles, path dragging or the XYZ gizmo.")
+        self.motion_edit_hint.setText(reason)
+        self.motion_edit_hint.setVisible(bool(reason))
+        if self._tool is AuthoringTool.MOVE and not action.isEnabled():
+            self.set_tool(AuthoringTool.SELECT)
+
     def _on_viewport_input(self, value: Any) -> None:
+        port = getattr(self.viewport, "port", None)
+        if port is not None and self.osm_panel.handle_input(value, port):
+            return
         if isinstance(value, TransformInput):
             self._handle_target_transform(value)
             return
@@ -4132,6 +4362,9 @@ class ScenarioAuthoringWorkspace(QWidget):
         component = hit.component or ""
         actor = document.scenario.actor(hit.actor_id) if document and hit.actor_id else None
         group = document.scenario.group(hit.actor_id) if document and hit.actor_id else None
+        if self._candidate_scenario is not None and hit.actor_id is not None:
+            actor = self._candidate_scenario.actor(hit.actor_id) or actor
+            group = self._candidate_scenario.group(hit.actor_id) or group
         subject = actor or group
         next_actor_id: UUID | None = None
         next_component: str | None = None
@@ -4206,9 +4439,7 @@ class ScenarioAuthoringWorkspace(QWidget):
         if viewport is not None:
             viewport.unsetCursor()
         if self._tool is AuthoringTool.MOVE and hasattr(self, "tool_hint_label"):
-            self.tool_hint_label.setText(
-                "Edit handles or drag the path/XYZ gizmo arrows; rings edit fixed orientation"
-            )
+            self._update_tool_hint()
         if changed and refresh:
             self._refresh_viewport()
 
@@ -4281,12 +4512,14 @@ class ScenarioAuthoringWorkspace(QWidget):
         if phase is PointerPhase.DOWN:
             if hit.actor_id is None:
                 return
-            actor = document.scenario.actor(hit.actor_id)
-            group = document.scenario.group(hit.actor_id)
+            self._finish_mobility_drag(commit=False)
+            scenario = self._begin_motion_draft(hit.actor_id)
+            if scenario is None:
+                return
+            actor = scenario.actor(hit.actor_id)
+            group = scenario.group(hit.actor_id)
             subject = actor or group
             if subject is None or subject.locked or document.read_only:
-                return
-            if self.has_pending_inspector_edits and not self._resolve_pending_inspector_edits():
                 return
             component = hit.component or ""
             control: MobilityControlDescriptor | None = None
@@ -4319,9 +4552,8 @@ class ScenarioAuthoringWorkspace(QWidget):
                     document.select(subject.id)
                 return
 
-            self._finish_mobility_drag(commit=False)
             self._stop_playback(refresh=False)
-            baseline_samples = self._prepared_samples(actor) if actor is not None else None
+            baseline_samples = self._draft_samples(actor) if actor is not None else None
             self._dependent_drag_preview_samples.clear()
             baseline_group_positions = (
                 self._prepared_group_positions(group) if group is not None else None
@@ -4332,6 +4564,12 @@ class ScenarioAuthoringWorkspace(QWidget):
             baseline_group_samples = (
                 self._prepared_group_samples(group) if group is not None else None
             )
+            if group is not None and self._candidate_compilation is not None:
+                candidate_samples = self._candidate_compilation.group_samples.get(group.id)
+                if candidate_samples is not None:
+                    baseline_group_samples = candidate_samples
+                    baseline_group_positions = candidate_samples.positions
+                    baseline_group_physical = candidate_samples.has_physical_velocity
             baseline_group_member_samples: dict[UUID, ActorSamples] = {}
             if group is not None:
                 for candidate in document.actors:
@@ -4343,14 +4581,13 @@ class ScenarioAuthoringWorkspace(QWidget):
                         belongs_to_group = False
                     if not belongs_to_group:
                         continue
-                    candidate_samples = self._prepared_samples(candidate)
+                    candidate_samples = self._draft_samples(candidate)
                     if candidate_samples is not None:
                         baseline_group_member_samples[candidate.id] = candidate_samples
             if group is not None:
                 document.select_group(group.id)
             else:
                 document.select(subject.id)
-            document.begin_transient_edit(f"Edit {subject.name} mobility")
             self._mobility_drag_actor_id = subject.id
             self._mobility_drag_control = control
             self._mobility_drag_baseline_actor = subject
@@ -4474,7 +4711,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                         for actor_id, samples in member_previews.items()
                     }
                 self._dependent_drag_preview_samples.clear()
-                candidate_scenario = document.scenario.replace_group(updated)
+                candidate_scenario = self._motion_draft_baseline.scenario.replace_group(updated)
                 if translation is None:
                     try:
                         (
@@ -4497,7 +4734,6 @@ class ScenarioAuthoringWorkspace(QWidget):
                         candidate_scenario,
                         member_previews,
                     )
-                document.update_transient_group(updated)
             else:
                 baseline_samples = self._mobility_drag_baseline_samples
                 if baseline_samples is not None and translation is not None:
@@ -4506,7 +4742,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                         translation=translation,
                     )
                 self._dependent_drag_preview_samples.clear()
-                candidate_scenario = document.scenario.replace_actor(updated)
+                candidate_scenario = self._motion_draft_baseline.scenario.replace_actor(updated)
                 if translation is None:
                     try:
                         transient_actor_samples, _groups = self._prepare_transient_pose_samples(
@@ -4522,7 +4758,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                         updated.id,
                         self._mobility_drag_preview_samples,
                     )
-                document.update_transient_actor(updated)
+            self._stage_motion_draft(updated)
         except (IndexError, KeyError, RuntimeError, TypeError, ValueError):
             self._finish_mobility_drag(commit=False)
             return
@@ -4530,70 +4766,11 @@ class ScenarioAuthoringWorkspace(QWidget):
             self._finish_mobility_drag(commit=True)
 
     def _finish_mobility_drag(self, *, commit: bool) -> None:
-        """Commit or cancel the active semantic mobility edit."""
+        """End the handle gesture, retaining accepted changes until Apply."""
 
         active = self._mobility_drag_actor_id is not None
-        actor_id = self._mobility_drag_actor_id
-        preview = self._mobility_drag_preview_samples
-        actor_cacheable = isinstance(
-            self._mobility_drag_baseline_actor,
-            AuthoringActor,
-        )
-        group_preview = self._mobility_drag_preview_group_positions
-        group_sample_preview = self._mobility_drag_preview_group_samples
-        group_cacheable = isinstance(
-            self._mobility_drag_baseline_actor,
-            AuthoringGroup,
-        )
-        if self.document is not None and active:
-            if commit:
-                self.document.commit_transient_edit()
-                actor = self.document.scenario.actor(actor_id) if actor_id is not None else None
-                cached_actor_preview = (
-                    self._dependent_drag_preview_samples.get(actor.id)
-                    if actor is not None
-                    else None
-                ) or preview
-                if actor_cacheable and actor is not None and cached_actor_preview is not None:
-                    self._prepared_sample_cache[actor.id] = (
-                        self._orientation_cache_key(actor),
-                        cached_actor_preview,
-                    )
-                for dependent_id, dependent_samples in self._dependent_drag_preview_samples.items():
-                    dependent_actor = self.document.scenario.actor(dependent_id)
-                    if dependent_actor is not None:
-                        self._prepared_sample_cache[dependent_id] = (
-                            self._orientation_cache_key(dependent_actor),
-                            dependent_samples,
-                        )
-                group = self.document.scenario.group(actor_id) if actor_id is not None else None
-                if group_cacheable and group is not None and group_preview is not None:
-                    group_key = self._group_position_cache_key(
-                        group,
-                        self.document.scenario,
-                    )
-                    self._prepared_group_position_cache[group.id] = (
-                        group_key,
-                        group_preview,
-                    )
-                    if self._mobility_drag_baseline_group_physical is not None:
-                        self._prepared_group_physical_cache[group.id] = (
-                            group_key,
-                            self._mobility_drag_baseline_group_physical,
-                        )
-                    if group_sample_preview is not None:
-                        self._prepared_group_sample_cache[group.id] = (
-                            group_key,
-                            group_sample_preview,
-                        )
-            else:
-                # Let the synchronous cancellation refresh resolve the exact
-                # baseline samples instead of the last moved preview.
-                self._mobility_drag_preview_samples = None
-                self._mobility_drag_preview_group_positions = None
-                self._mobility_drag_preview_group_samples = None
-                self._dependent_drag_preview_samples.clear()
-                self.document.cancel_transient_edit()
+        if active:
+            self._finish_motion_draft(accept=commit)
         port = getattr(getattr(self, "viewport", None), "port", None)
         end_drag = getattr(port, "end_drag", None)
         if callable(end_drag):
@@ -4612,9 +4789,11 @@ class ScenarioAuthoringWorkspace(QWidget):
         self._mobility_drag_baseline_group_samples = None
         self._mobility_drag_preview_group_samples = None
         self._dependent_drag_preview_samples.clear()
+        if active:
+            self._refresh_viewport()
 
     def _handle_target_transform(self, event: TransformInput) -> None:
-        """Apply one semantic actor-gizmo gesture as one undoable command."""
+        """Update the shared pending draft from an actor-gizmo gesture."""
 
         document = self.document
         if document is None or document.read_only:
@@ -4627,16 +4806,17 @@ class ScenarioAuthoringWorkspace(QWidget):
             # incoming gesture before its UPDATE/COMMIT phases can arrive.
             if self._transform_actor_id is not None:
                 self._finish_target_transform(commit=False, clear_gizmo=False)
-            actor = document.scenario.actor(event.actor_id)
+            scenario = self._begin_motion_draft(event.actor_id)
+            if scenario is None:
+                return
+            actor = scenario.actor(event.actor_id)
             if actor is None or actor.locked:
                 return
-            if self.has_pending_inspector_edits and not self._resolve_pending_inspector_edits():
-                return
-            baseline_samples = self._prepared_samples(actor)
-            document.begin_transient_edit(f"Transform {actor.name}")
+            baseline_samples = self._draft_samples(actor)
             self._transform_actor_id = actor.id
             self._transform_baseline_actor = actor
             self._transform_baseline_position = matrix[:3, 3].copy()
+            self._transform_baseline_rotation = matrix[:3, :3].copy()
             self._transform_baseline_samples = baseline_samples
             self._transform_preview_samples = baseline_samples
             return
@@ -4654,7 +4834,9 @@ class ScenarioAuthoringWorkspace(QWidget):
             return
         delta = matrix[:3, 3] - baseline_position
         next_orientation = baseline.orientation
-        if isinstance(baseline.orientation, FixedOrientationSpec):
+        if isinstance(baseline.orientation, FixedOrientationSpec) and not np.allclose(
+            matrix[:3, :3], self._transform_baseline_rotation, rtol=0.0, atol=1e-10
+        ):
             orientation = sionna_orientation_from_rotation_matrix(matrix[:3, :3])
             if orientation is None:
                 self._finish_target_transform(commit=False)
@@ -4705,13 +4887,13 @@ class ScenarioAuthoringWorkspace(QWidget):
                 fixed_orientation=fixed_orientation,
             )
         self._dependent_drag_preview_samples.clear()
-        candidate_scenario = document.scenario.replace_actor(updated)
+        candidate_scenario = self._motion_draft_baseline.scenario.replace_actor(updated)
         self._dependent_drag_preview_samples = self._look_at_drag_previews(
             candidate_scenario,
             updated.id,
             self._transform_preview_samples,
         )
-        document.update_transient_actor(updated)
+        self._stage_motion_draft(updated)
         if event.phase is TransformPhase.COMMIT:
             self._finish_target_transform(commit=True)
 
@@ -4783,41 +4965,15 @@ class ScenarioAuthoringWorkspace(QWidget):
         commit: bool,
         clear_gizmo: bool = True,
     ) -> None:
-        """Commit or roll back an active semantic-gizmo transient edit."""
+        """End the gizmo gesture, retaining accepted changes until Apply."""
 
         active = self._transform_actor_id is not None
-        actor_id = self._transform_actor_id
-        preview = self._transform_preview_samples
-        if self.document is not None and active:
-            if commit:
-                self.document.commit_transient_edit()
-                actor = self.document.scenario.actor(actor_id) if actor_id is not None else None
-                cached_actor_preview = (
-                    self._dependent_drag_preview_samples.get(actor.id)
-                    if actor is not None
-                    else None
-                ) or preview
-                if actor is not None and cached_actor_preview is not None:
-                    self._prepared_sample_cache[actor.id] = (
-                        self._orientation_cache_key(actor),
-                        cached_actor_preview,
-                    )
-                for dependent_id, dependent_samples in self._dependent_drag_preview_samples.items():
-                    dependent_actor = self.document.scenario.actor(dependent_id)
-                    if dependent_actor is not None:
-                        self._prepared_sample_cache[dependent_id] = (
-                            self._orientation_cache_key(dependent_actor),
-                            dependent_samples,
-                        )
-            else:
-                # Cancellation restores the pre-gesture actor synchronously.
-                # Do not let that refresh see the moved/rotated preview.
-                self._transform_preview_samples = None
-                self._dependent_drag_preview_samples.clear()
-                self.document.cancel_transient_edit()
+        if active:
+            self._finish_motion_draft(accept=commit)
         self._transform_actor_id = None
         self._transform_baseline_actor = None
         self._transform_baseline_position = None
+        self._transform_baseline_rotation = None
         self._transform_baseline_samples = None
         self._transform_preview_samples = None
         self._dependent_drag_preview_samples.clear()
@@ -4830,8 +4986,13 @@ class ScenarioAuthoringWorkspace(QWidget):
             if callable(clear_viewport_gizmo):
                 clear_viewport_gizmo()
 
+        if active:
+            self._refresh_viewport()
+
     def _timeline_scrubbed(self, value: int) -> None:
         self._play_step = int(value)
+        self._play_origin_step = self._play_step
+        self._play_origin_time = time.monotonic()
         self._refresh_viewport()
 
     @staticmethod
@@ -4862,7 +5023,7 @@ class ScenarioAuthoringWorkspace(QWidget):
             self.play_button.setText("Play")
             self.play_button.setEnabled(False)
             return
-        self._play_timer.setInterval(interval_ms)
+        self._play_timer.setInterval(max(16, interval_ms))
         self.play_button.setEnabled(True)
 
     def _toggle_playback(self) -> None:
@@ -4877,6 +5038,8 @@ class ScenarioAuthoringWorkspace(QWidget):
             self._update_playback_timing(document.scenario.timeline)
             if not self.play_button.isEnabled():
                 return
+            self._play_origin_step = self._play_step
+            self._play_origin_time = time.monotonic()
             self._play_timer.start()
             self.play_button.setText("Pause")
             self._refresh_viewport()
@@ -4894,19 +5057,61 @@ class ScenarioAuthoringWorkspace(QWidget):
             self._play_timer.stop()
             self.play_button.setText("Play")
             return
-        self.timeline_slider.setValue(
-            0 if self.timeline_slider.value() >= maximum else self.timeline_slider.value() + 1
+        timeline = self.document.scenario.timeline if self.document is not None else None
+        if timeline is None or timeline.duration_s <= 0:
+            return
+        elapsed = time.monotonic() - self._play_origin_time
+        step = (self._play_origin_step + round(elapsed * maximum / timeline.duration_s)) % (
+            maximum + 1
         )
+        # Preserve the wall-clock anchor: scrubbing manually establishes a new
+        # one, while timer delivery may skip samples to keep physical time.
+        with QSignalBlocker(self.timeline_slider):
+            self.timeline_slider.setValue(step)
+        self._play_step = step
+        self._refresh_viewport()
 
     def focus_selection(self) -> bool:
         if self.document is None or self.document.selected_subject is None:
             return False
         port = getattr(self.viewport, "port", None)
+        if self.camera_controls is not None:
+            self.camera_controls.select(self.document.selected_subject.id)
+            return self.camera_controls.focus()
         return bool(port is not None and port.focus_actor(self.document.selected_subject.id))
+
+    def _show_camera_controls(self) -> None:
+        if self.camera_controls is not None:
+            self.details_toggle.setChecked(True)
+            self.drawer.setCurrentWidget(self.camera_scroll)
+
+    def _sync_selection_camera(self, document, subject_id) -> None:
+        if (
+            self.camera_controls is not None
+            and self.document is document
+            and document.selected_subject is not None
+            and document.selected_subject.id == subject_id
+        ):
+            self.camera_controls.select(
+                subject_id,
+                focus=self.focus_on_select.isChecked() and self._tool is AuthoringTool.SELECT,
+            )
 
     def fit_all(self) -> bool:
         port = getattr(self.viewport, "port", None)
+        if self.camera_controls is not None:
+            tools = self.camera_controls.camera_controller.presentation()
+            tools.prepare()
+            tools.free_camera()
         return bool(port is not None and port.fit_all())
+
+    def fit_actors(self) -> bool:
+        port = getattr(self.viewport, "port", None)
+        if self.camera_controls is not None:
+            tools = self.camera_controls.camera_controller.presentation()
+            tools.prepare()
+            tools.free_camera()
+        return bool(port is not None and port.fit_actors())
 
     def _install_actions(self) -> None:
         for sequence, callback in (
@@ -4989,7 +5194,9 @@ class ScenarioAuthoringWorkspace(QWidget):
     def _set_editing_enabled(self, enabled: bool) -> None:
         generation = getattr(self.visualizer, "authoring_generation_controller", None)
         drawing_waypoints = self._waypoint_session_actor_id is not None
-        ordinary_editing = enabled and not drawing_waypoints
+        osm_busy = self.osm_panel.active or self.osm_panel.building
+        ordinary_editing = enabled and not drawing_waypoints and not osm_busy
+        self.osm_panel.setEnabled(enabled and not drawing_waypoints)
         inspector_editing = (
             ordinary_editing
             and self.document is not None
@@ -4998,8 +5205,11 @@ class ScenarioAuthoringWorkspace(QWidget):
             )
         )
         workflow_enabled = ordinary_editing and not bool(getattr(generation, "running", False))
+        self.street_actors_button.setEnabled(workflow_enabled)
+        self.environment_library_button.setEnabled(workflow_enabled)
+        self.builder_tools.set_editing_enabled(workflow_enabled)
         self.actor_panel.setEnabled(not drawing_waypoints)
-        self.inspector_panel.setEnabled(not drawing_waypoints)
+        self.inspector_panel.setEnabled(not drawing_waypoints and not osm_busy)
         self.leave_authoring_button.setEnabled(
             not drawing_waypoints and not bool(getattr(generation, "running", False))
         )
@@ -5020,7 +5230,10 @@ class ScenarioAuthoringWorkspace(QWidget):
         self.scene_apply_button.setEnabled(ordinary_editing and not preserved_scene_extension)
         self.scene_browse_button.setEnabled(ordinary_editing)
         self.steps_spin.setEnabled(ordinary_editing)
-        self.duration_spin.setEnabled(ordinary_editing)
+        use_rate = self.sample_rate_check.isChecked()
+        self.sample_rate_check.setEnabled(ordinary_editing)
+        self.sample_rate_spin.setEnabled(ordinary_editing and use_rate)
+        self.duration_spin.setEnabled(ordinary_editing and not use_rate)
         self.quality_combo.setEnabled(ordinary_editing)
         self.path_metrics_check.setEnabled(ordinary_editing)
         self.apply_timeline_button.setEnabled(ordinary_editing and self._timeline_draft_pending)
@@ -5057,17 +5270,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                         actor.id,
                     ).editable
                 )
-                if actor.target is not None:
-                    self.target_asset_combo.setEnabled(
-                        inspector_editing
-                        and self.document.scenario.capability(
-                            "target_asset",
-                            actor.id,
-                        ).editable
-                    )
-                    self.target_mesh_animation.setEnabled(
-                        inspector_editing and actor.target.source != "file"
-                    )
+                self._set_target_editing_enabled(actor, inspector_editing)
             elif group is not None:
                 group_editable = self.document.scenario.capability(
                     "group",
@@ -5075,6 +5278,7 @@ class ScenarioAuthoringWorkspace(QWidget):
                 ).editable
                 self.name_edit.setEnabled(inspector_editing and group_editable)
                 self.mobility_editor.set_editing_enabled(inspector_editing and group_editable)
+        self._sync_motion_edit_action()
 
     def confirm_replace(self) -> bool:
         """Prompt before replacing or closing a dirty authoring document."""
@@ -5188,12 +5392,25 @@ class ScenarioAuthoringWorkspace(QWidget):
     def close_workspace(self) -> None:
         """Stop authoring work before releasing subscriptions and the renderer."""
 
+        self._compile_status_timer.stop()
+        if (
+            self.compilation is not None
+            and getattr(self.compilation, "recording", None) is not None
+        ):
+            self.compilation.recording.close()
+        if self.camera_controls is not None:
+            self.camera_controls.close_camera()
+            self.camera_controls = None
+        self.osm_panel.close_jobs()
         self._play_timer.stop()
         self._candidate_compile_timer.stop()
         if self._compile_scheduler is not None:
             self._compile_scheduler.close()
         if self._candidate_compile_scheduler is not None:
             self._candidate_compile_scheduler.close()
+        close_compiler = getattr(self.compiler, "close", None)
+        if callable(close_compiler):
+            close_compiler()
         self._finish_target_transform(commit=False)
         self._finish_mobility_drag(commit=False)
         self._cancel_waypoint_session()

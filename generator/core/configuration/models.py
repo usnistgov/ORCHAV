@@ -10,11 +10,13 @@ stay free of Sionna scene objects and other runtime allocations.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from numbers import Integral, Real
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from shared.logging import get_logger
 from shared.scenarios.actors import FixedOrientationSpec, OrientationSpec
+from shared.sensing.range_response import RangeResponseConfig
 
 from ..exceptions import ConfigurationError
 from ..mobility import MobilityPattern
@@ -54,6 +56,7 @@ from .defaults import (
     DEFAULT_SCENE_NAME,
     DEFAULT_SENSING_AOA_FILTER_ENABLED,
     DEFAULT_SENSING_BANDWIDTH_HZ,
+    DEFAULT_SENSING_CFAR_EDGE_POLICY,
     DEFAULT_SENSING_CFAR_GUARD_CELLS,
     DEFAULT_SENSING_CFAR_MIN_SNR_DB,
     DEFAULT_SENSING_CFAR_OS_RANK,
@@ -64,7 +67,6 @@ from .defaults import (
     DEFAULT_SENSING_CFAR_REF_CELLS,
     DEFAULT_SENSING_CFAR_THRESHOLD_SCALE,
     DEFAULT_SENSING_CFAR_TYPE,
-    DEFAULT_SENSING_CHIRPS_PER_FRAME,
     DEFAULT_SENSING_CLUTTER_REMOVAL_ENABLED,
     DEFAULT_SENSING_CLUTTER_REMOVAL_WINDOW,
     DEFAULT_SENSING_ENABLED,
@@ -246,15 +248,15 @@ class SensingConfig:
     requires the active installation to provide the processor.
 
     Carrier frequency comes from ``SimulationConfig.carrier_frequency_hz``.
-    ``bandwidth`` is the radar chirp bandwidth and remains distinct from
-    ``SimulationConfig.bandwidth_hz`` for the channel model.
+    ``bandwidth`` is the sensing observation bandwidth/grid scale, distinct
+    from ``SimulationConfig.bandwidth_hz`` for the channel model. Point-bin
+    and ideal CFR response models do not synthesize a transmitted chirp.
     """
 
     enabled: bool = DEFAULT_SENSING_ENABLED
 
-    # Waveform parameters
+    # Observation-grid and slow-time parameters
     bandwidth: float = DEFAULT_SENSING_BANDWIDTH_HZ
-    chirps_per_frame: int = DEFAULT_SENSING_CHIRPS_PER_FRAME
     prf_hz: float = DEFAULT_SENSING_PRF_HZ  # Pulse Repetition Frequency
     # Range interpretation: "bistatic" (path length) or "monostatic" (round-trip/2)
     range_mode: str = DEFAULT_SENSING_RANGE_MODE
@@ -262,11 +264,24 @@ class SensingConfig:
     # Processing parameters
     fft_size_range: int = DEFAULT_SENSING_FFT_SIZE_RANGE
     fft_size_doppler: int = DEFAULT_SENSING_FFT_SIZE_DOPPLER
+    # None preserves the mode's existing cadence; sequential defaults to one pulse.
+    cpi_hop_samples: Optional[int] = field(default=None, kw_only=True)
     window_range: str = DEFAULT_SENSING_WINDOW
     window_doppler: str = DEFAULT_SENSING_WINDOW
+    range_response: RangeResponseConfig = field(default_factory=RangeResponseConfig)
 
     # Detection parameters
+    # ``rd`` preserves fixed broadside combining; ``beam_scan`` detects in
+    # each physical spatial-FFT beam before selecting angular candidates.
+    array_detection_mode: str = "rd"
+    # Interpolate angles within the detected beam before tracking; 1 is unchanged.
+    beam_angle_oversampling: int = 1
+    cluster_range_gate_m: float = 1.0
+    cluster_velocity_gate_m_s: float = 5.0
+    ghost_filter_velocity_gate_m_s: Optional[float] = None
+    ghost_filter_azimuth_gate_deg: Optional[float] = None
     cfar_type: str = DEFAULT_SENSING_CFAR_TYPE  # cell-averaging
+    cfar_edge_policy: str = DEFAULT_SENSING_CFAR_EDGE_POLICY
     cfar_guard_cells: int = DEFAULT_SENSING_CFAR_GUARD_CELLS
     cfar_ref_cells: int = DEFAULT_SENSING_CFAR_REF_CELLS
     cfar_threshold_scale: float = DEFAULT_SENSING_CFAR_THRESHOLD_SCALE
@@ -276,6 +291,7 @@ class SensingConfig:
     cfar_rd_ref_cells_range: int = DEFAULT_SENSING_CFAR_RD_REF_CELLS_RANGE
     cfar_rd_ref_cells_doppler: int = DEFAULT_SENSING_CFAR_RD_REF_CELLS_DOPPLER
     cfar_min_snr_db: float = DEFAULT_SENSING_CFAR_MIN_SNR_DB  # Minimum SNR, dB.
+    cfar_max_dynamic_range_db: Optional[float] = None
     pre_cfar_doppler_edge_guard_bins: int = DEFAULT_SENSING_PRE_CFAR_DOPPLER_EDGE_GUARD_BINS
     pre_cfar_doppler_dc_guard_bins: int = DEFAULT_SENSING_PRE_CFAR_DOPPLER_DC_GUARD_BINS
 
@@ -287,11 +303,18 @@ class SensingConfig:
     track_confirmation_enabled: bool = DEFAULT_SENSING_TRACK_CONFIRMATION_ENABLED
     track_confirmation_m: int = DEFAULT_SENSING_TRACK_CONFIRMATION_M
     track_confirmation_n: int = DEFAULT_SENSING_TRACK_CONFIRMATION_N
+    track_confirmation_mode: str = field(default="latched", kw_only=True)
     track_max_missed_frames: int = DEFAULT_SENSING_TRACK_MAX_MISSED_FRAMES
     track_association_range_gate_m: float = DEFAULT_SENSING_TRACK_ASSOCIATION_RANGE_GATE_M
     track_association_velocity_gate_m_s: float = DEFAULT_SENSING_TRACK_ASSOCIATION_VELOCITY_GATE_M_S
+    track_association_azimuth_gate_deg: Optional[float] = None
     track_output_tentative: bool = DEFAULT_SENSING_TRACK_OUTPUT_TENTATIVE
     tracker_type: str = DEFAULT_SENSING_TRACKER_TYPE
+    jpda_max_joint_nodes: int = field(default=100_000, kw_only=True)
+    jpda_birth_confirmation_frames: int = field(default=3, kw_only=True)
+    jpda_birth_separation_chi2: float = field(default=1.0, kw_only=True)
+    track_association_position_gate_m: Optional[float] = None
+    track_acceleration_psd_m2_s3: Optional[float] = None
 
     # Evaluation/association gates for TP/FP/FN metrics
     eval_association_range_gate_m: float = DEFAULT_SENSING_EVAL_ASSOCIATION_RANGE_GATE_M
@@ -300,6 +323,9 @@ class SensingConfig:
     # Clutter removal
     clutter_removal_enabled: bool = DEFAULT_SENSING_CLUTTER_REMOVAL_ENABLED
     clutter_removal_window: int = DEFAULT_SENSING_CLUTTER_REMOVAL_WINDOW
+    # Omission preserves historical scenarios. New coherent acquisitions should
+    # explicitly choose none, or windowed_mean when suppression is intended.
+    coherent_clutter_mode: str = "legacy"
 
     # Display options (summary figures only, not processing)
     display_range_xlim: Optional[list] = None  # [min_m, max_m] to zoom RD figure
@@ -310,10 +336,15 @@ class SensingConfig:
     output_range_profile: bool = DEFAULT_SENSING_OUTPUT_RANGE_PROFILE
     output_detections: bool = DEFAULT_SENSING_OUTPUT_DETECTIONS
     persist_detection_stage_artifacts: bool = DEFAULT_SENSING_PERSIST_DETECTION_STAGE_ARTIFACTS
+    persist_tracking_diagnostics: bool = field(default=False, kw_only=True)
     raw_payload_policy: str = DEFAULT_SENSING_RAW_PAYLOAD_POLICY
+    recording_profile: Optional[str] = None
+    recording_display: Optional[dict] = None
     rng_seed: Optional[int] = None
 
-    # Noise injection (postprocessor can also inject noise independently)
+    # Target-relative complex AWGN in the relative unitless sensing sample domain.
+    # Historical field names are retained, but this is not physical thermal
+    # noise and ``noise_snr_db`` is relative to mean nonzero-sample power.
     noise_enabled: bool = DEFAULT_SENSING_NOISE_ENABLED
     noise_snr_db: Optional[float] = None
 
@@ -326,16 +357,181 @@ class SensingConfig:
     aoa_el_min_deg: Optional[float] = None
     aoa_el_max_deg: Optional[float] = None
 
-    # Processing mode selection: "auto" (default), "coherent_cpi",
-    # "snapshot_direct_rd", or "sequential_stft".
+    # ``auto`` is accepted only as an input convenience and is resolved into
+    # an explicit immutable execution contract before ray tracing.
     processing_mode: str = DEFAULT_SENSING_PROCESSING_MODE
 
     def __post_init__(self):
+        if self.cpi_hop_samples is not None:
+            if type(self.cpi_hop_samples) is not int or not (
+                1 <= self.cpi_hop_samples <= self.fft_size_doppler
+            ):
+                raise ConfigurationError(
+                    "cpi_hop_samples must be an integer between 1 and fft_size_doppler"
+                )
+        if self.recording_profile is not None:
+            from shared.sensing.recording import validate_recording_options
+
+            try:
+                validate_recording_options(
+                    self.recording_profile,
+                    self.recording_display,
+                    doppler_window_samples=self.fft_size_doppler,
+                    result_hop_samples=self.cpi_hop_samples or 1,
+                )
+                if (self.recording_display or {}).get("window_samples", 0) > self.fft_size_doppler:
+                    raise ValueError(
+                        "recording.display.window_samples cannot exceed the acquired Doppler window"
+                    )
+            except ValueError as exc:
+                raise ConfigurationError(str(exc)) from exc
+            if self.recording_profile != "results":
+                self.output_range_doppler = True
+                self.output_range_profile = True
+            if self.recording_profile == "full":
+                self.persist_detection_stage_artifacts = True
+                self.persist_tracking_diagnostics = True
+        elif self.recording_display is not None:
+            raise ConfigurationError("recording.display requires an explicit recording.profile")
+        try:
+            self.range_response = RangeResponseConfig.parse(self.range_response)
+            self.range_response.validate_processing(
+                bandwidth=self.bandwidth,
+                fft_size=self.fft_size_range,
+                window_range=self.window_range,
+                noise_enabled=self.noise_enabled,
+                noise_snr_db=self.noise_snr_db,
+                processing_mode=self.processing_mode,
+            )
+        except ValueError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        if self.coherent_clutter_mode not in {"none", "legacy", "windowed_mean"}:
+            raise ConfigurationError("coherent_clutter_mode must be none, legacy or windowed_mean")
+        if self.cfar_max_dynamic_range_db is not None:
+            value = self.cfar_max_dynamic_range_db
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, Real)
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ConfigurationError("cfar_max_dynamic_range_db must be finite and nonnegative")
+
+        def exact_integer(value: object, *, name: str, positive: bool) -> int:
+            qualifier = "positive" if positive else "non-negative"
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise ConfigurationError(f"Sensing {name} must be an exact {qualifier} integer")
+            result = int(value)
+            if (positive and result <= 0) or (not positive and result < 0):
+                raise ConfigurationError(f"Sensing {name} must be {qualifier}")
+            return result
+
+        def finite_number(value: object, *, name: str) -> float:
+            if isinstance(value, bool) or not isinstance(value, Real):
+                raise ConfigurationError(f"Sensing {name} must be a finite number")
+            result = float(value)
+            if not math.isfinite(result):
+                raise ConfigurationError(f"Sensing {name} must be a finite number")
+            return result
+
         if self.enabled:
+            self.bandwidth = finite_number(self.bandwidth, name="bandwidth")
+            self.prf_hz = finite_number(self.prf_hz, name="prf_hz")
             if self.bandwidth <= 0:
                 raise ConfigurationError("Sensing bandwidth must be positive")
             if self.prf_hz <= 0:
                 raise ConfigurationError("Sensing PRF must be positive")
+        self.array_detection_mode = str(self.array_detection_mode).lower()
+        if self.array_detection_mode not in {"rd", "beam_scan"}:
+            raise ConfigurationError("Sensing array_detection_mode must be 'rd' or 'beam_scan'")
+        self.beam_angle_oversampling = exact_integer(
+            self.beam_angle_oversampling, name="beam_angle_oversampling", positive=True
+        )
+        if self.beam_angle_oversampling > 16:
+            raise ConfigurationError("Sensing beam_angle_oversampling must be at most 16")
+        if self.beam_angle_oversampling > 1 and self.array_detection_mode != "beam_scan":
+            raise ConfigurationError(
+                "beam_angle_oversampling requires array_detection_mode: beam_scan"
+            )
+        if (
+            self.array_detection_mode == "beam_scan"
+            and not self.output_range_doppler
+            and self.recording_profile is None
+        ):
+            raise ConfigurationError("beam_scan requires output_range_doppler for retained inputs")
+        if self.array_detection_mode == "beam_scan" and self.range_mode != "monostatic":
+            raise ConfigurationError("beam_scan currently requires range_mode: monostatic")
+        for name in (
+            "cluster_range_gate_m",
+            "cluster_velocity_gate_m_s",
+            "ghost_filter_velocity_gate_m_s",
+            "ghost_filter_azimuth_gate_deg",
+            "track_association_azimuth_gate_deg",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                value = finite_number(value, name=name)
+                if value <= 0:
+                    raise ConfigurationError(f"Sensing {name} must be positive")
+                setattr(self, name, value)
+        if (
+            self.ghost_filter_azimuth_gate_deg is not None
+            and self.ghost_filter_velocity_gate_m_s is None
+        ):
+            raise ConfigurationError("An azimuth ghost gate also requires a velocity ghost gate")
+        self.cfar_type = str(self.cfar_type).lower()
+        if self.cfar_type not in {"ca", "os"}:
+            raise ConfigurationError("Sensing cfar_type must be exactly 'ca' or 'os'")
+        self.cfar_edge_policy = str(self.cfar_edge_policy).lower()
+        if self.cfar_edge_policy not in {"full_window", "truncate"}:
+            raise ConfigurationError(
+                "Sensing cfar_edge_policy must be exactly 'full_window' or 'truncate'"
+            )
+        self.cfar_guard_cells = exact_integer(
+            self.cfar_guard_cells, name="cfar_guard_cells", positive=False
+        )
+        self.cfar_ref_cells = exact_integer(
+            self.cfar_ref_cells, name="cfar_ref_cells", positive=True
+        )
+        self.cfar_rd_guard_cells_range = exact_integer(
+            self.cfar_rd_guard_cells_range,
+            name="cfar_rd_guard_cells_range",
+            positive=False,
+        )
+        self.cfar_rd_guard_cells_doppler = exact_integer(
+            self.cfar_rd_guard_cells_doppler,
+            name="cfar_rd_guard_cells_doppler",
+            positive=False,
+        )
+        self.cfar_rd_ref_cells_range = exact_integer(
+            self.cfar_rd_ref_cells_range,
+            name="cfar_rd_ref_cells_range",
+            positive=True,
+        )
+        self.cfar_rd_ref_cells_doppler = exact_integer(
+            self.cfar_rd_ref_cells_doppler,
+            name="cfar_rd_ref_cells_doppler",
+            positive=True,
+        )
+        self.pre_cfar_doppler_edge_guard_bins = exact_integer(
+            self.pre_cfar_doppler_edge_guard_bins,
+            name="pre_cfar_doppler_edge_guard_bins",
+            positive=False,
+        )
+        self.pre_cfar_doppler_dc_guard_bins = exact_integer(
+            self.pre_cfar_doppler_dc_guard_bins,
+            name="pre_cfar_doppler_dc_guard_bins",
+            positive=False,
+        )
+        self.cfar_threshold_scale = finite_number(
+            self.cfar_threshold_scale, name="cfar_threshold_scale"
+        )
+        if self.cfar_threshold_scale < 0.0:
+            raise ConfigurationError("Sensing cfar_threshold_scale must be non-negative")
+        self.cfar_os_rank = finite_number(self.cfar_os_rank, name="cfar_os_rank")
+        if not 0.0 <= self.cfar_os_rank <= 1.0:
+            raise ConfigurationError("Sensing cfar_os_rank must lie between zero and one")
+        self.cfar_min_snr_db = finite_number(self.cfar_min_snr_db, name="cfar_min_snr_db")
         # Normalize policy-like strings here so downstream processors only need
         # to handle canonical values.
         policy = self.raw_payload_policy
@@ -361,9 +557,17 @@ class SensingConfig:
             except (TypeError, ValueError):
                 logger.warning("Invalid sensing rng_seed %r; clearing", self.rng_seed)
                 self.rng_seed = None
+        if not isinstance(self.noise_enabled, bool):
+            raise ConfigurationError("Sensing noise_enabled must be boolean")
         if self.noise_enabled and self.noise_snr_db is None:
-            logger.warning("noise_enabled=True but noise_snr_db is None; disabling noise")
-            self.noise_enabled = False
+            raise ConfigurationError("Sensing noise_snr_db is required when noise_enabled is true")
+        if self.noise_snr_db is not None:
+            try:
+                self.noise_snr_db = float(self.noise_snr_db)
+            except (TypeError, ValueError) as exc:
+                raise ConfigurationError("Sensing noise_snr_db must be finite") from exc
+            if not math.isfinite(self.noise_snr_db):
+                raise ConfigurationError("Sensing noise_snr_db must be finite")
 
         mode = (self.range_mode or DEFAULT_SENSING_RANGE_MODE).lower()
         if mode not in VALID_SENSING_RANGE_MODES:
@@ -375,15 +579,22 @@ class SensingConfig:
             mode = DEFAULT_SENSING_RANGE_MODE
         self.range_mode = mode
 
-        pm = (self.processing_mode or DEFAULT_SENSING_PROCESSING_MODE).lower()
-        if pm not in VALID_SENSING_PROCESSING_MODES:
-            logger.warning(
-                "Invalid processing_mode '%s', defaulting to %s",
-                self.processing_mode,
-                DEFAULT_SENSING_PROCESSING_MODE,
+        if not isinstance(self.processing_mode, str) or not self.processing_mode.strip():
+            raise ConfigurationError("sensing.processing_mode must be a non-empty string")
+        pm = self.processing_mode.strip().lower()
+        if pm == "snapshot_direct_rd":
+            raise ConfigurationError(
+                "snapshot_direct_rd was renamed to analytic_path_doppler_oracle "
+                "because it is a diagnostic analytic product, not waveform sensing"
             )
-            pm = DEFAULT_SENSING_PROCESSING_MODE
+        if pm not in VALID_SENSING_PROCESSING_MODES:
+            raise ConfigurationError(
+                f"Invalid sensing.processing_mode {self.processing_mode!r}; "
+                f"expected one of {sorted(VALID_SENSING_PROCESSING_MODES)}"
+            )
         self.processing_mode = pm
+        if self.cpi_hop_samples is not None and pm not in {"auto", "sequential_stft"}:
+            raise ConfigurationError("cpi_hop_samples requires sequential_stft")
 
         tracker_type = str(self.tracker_type or DEFAULT_SENSING_TRACKER_TYPE).lower()
         if tracker_type not in VALID_SENSING_TRACKER_TYPES:
@@ -394,6 +605,36 @@ class SensingConfig:
             )
             tracker_type = DEFAULT_SENSING_TRACKER_TYPE
         self.tracker_type = tracker_type
+        for name, minimum in (("jpda_max_joint_nodes", 1), ("jpda_birth_confirmation_frames", 2)):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                raise ConfigurationError(f"{name} must be an integer >= {minimum}")
+        separation = self.jpda_birth_separation_chi2
+        if (
+            isinstance(separation, bool)
+            or not isinstance(separation, (int, float))
+            or not math.isfinite(separation)
+            or separation < 0
+        ):
+            raise ConfigurationError("jpda_birth_separation_chi2 must be finite and nonnegative")
+        for name, strictly_positive in (
+            ("track_association_position_gate_m", True),
+            ("track_acceleration_psd_m2_s3", False),
+        ):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if tracker_type not in {"cartesian", "cartesian3d"}:
+                raise ConfigurationError(f"{name} requires a Cartesian tracker")
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+                or (strictly_positive and value == 0)
+            ):
+                qualifier = "positive" if strictly_positive else "nonnegative"
+                raise ConfigurationError(f"{name} must be finite and {qualifier}")
 
         if self.min_detection_range_m is not None:
             self.min_detection_range_m = float(self.min_detection_range_m)
@@ -412,6 +653,8 @@ class SensingConfig:
                 "min_detection_range_m must be smaller than max_detection_range_m"
             )
 
+        if self.track_confirmation_mode not in {"latched", "continuous"}:
+            raise ConfigurationError("track_confirmation_mode must be latched or continuous")
         self.track_confirmation_m = max(1, int(self.track_confirmation_m))
         self.track_confirmation_n = max(self.track_confirmation_m, int(self.track_confirmation_n))
         self.track_max_missed_frames = max(0, int(self.track_max_missed_frames))
@@ -478,6 +721,8 @@ class SimulationConfig:
     scene_name: str = DEFAULT_SCENE_NAME
     duration: float = DEFAULT_DURATION_S
     num_steps: int = DEFAULT_NUM_STEPS
+    # Preserve the authored scene clock separately from the sensing/CIR rate.
+    scene_sample_rate_hz: float | None = None
     start_step: int = DEFAULT_START_STEP
     quality: str = DEFAULT_QUALITY_PRESET
     view: str = DEFAULT_VIEW

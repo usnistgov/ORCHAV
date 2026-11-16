@@ -35,6 +35,20 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: mark test as slow running")
 
 
+@pytest.fixture(autouse=True)
+def flush_deferred_qt_deletions():
+    """Retire explicitly closed Qt objects between test functions.
+
+    Nested test event loops can leave DeferredDelete requests pending. Execute
+    only those requests; active windows and the shared QApplication remain owned
+    by their fixtures.
+    """
+    yield
+    qt_core = sys.modules.get("PySide6.QtCore")
+    if qt_core is not None and qt_core.QCoreApplication.instance() is not None:
+        qt_core.QCoreApplication.sendPostedEvents(None, qt_core.QEvent.DeferredDelete)
+
+
 # ============================================================================
 # Mock Fixtures for Open3D
 # ============================================================================
@@ -94,6 +108,24 @@ def mock_open3d_geometry(monkeypatch):
 # ============================================================================
 # Common Test Fixtures
 # ============================================================================
+
+
+@pytest.fixture
+def sensing_figure_preferences(qapp):
+    """Give plot tests explicit display defaults and restore saved preferences."""
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings()
+    defaults = {
+        "visualizer/sensing_heatmaps": True,
+        "visualizer/sensing_figure_options_open": False,
+    }
+    previous = {key: settings.value(key) for key in defaults}
+    for key, value in defaults.items():
+        settings.setValue(key, value)
+    yield
+    for key, value in previous.items():
+        settings.remove(key) if value is None else settings.setValue(key, value)
 
 
 @pytest.fixture

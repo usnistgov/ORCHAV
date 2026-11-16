@@ -1,16 +1,24 @@
 import json
 import os
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from uuid import UUID, uuid5
 
 import numpy as np
 import pytest
 
 from generator.io.frames.builder import process_cached_frame_data
 from generator.io.storage.hdf5_frame_output import HDF5FrameOutputStrategy
-from shared.extensions.sensing import SENSING_DENSE_HDF5_MIN_SCHEMA_VERSION
+from shared.extensions.sensing import (
+    SENSING_SCHEMA_VERSION,
+    build_sensing_temporal_contract,
+    canonical_sensing_hash,
+    canonical_sensing_pair_id,
+    finalize_sensing_v4_publication,
+)
 from shared.frames.contracts import MPC_HDF5_LAYOUT, MPC_HDF5_SCHEMA_VERSION, PathMetric
 from shared.frames.hdf5 import HDF5FormatHandler
 from shared.frames.manifest import (
@@ -26,6 +34,239 @@ from shared.frames.packed_hdf5_writer import (
     write_packed_mpc_frame_chunk,
 )
 from shared.frames.types import StandardMPCFrame
+from shared.sensing.products import (
+    TEMPORAL_SUPPORT_LAST_VALID_SAMPLE,
+    add_product_spec,
+    catalog_axis,
+    dense_axis,
+    materialize_product_specs,
+)
+
+_TEST_GENERATION_ID = "a0ae32b1-e3b7-4fd6-85cc-a6e621872242"
+_TEST_FRAME_SET_ID = "3a93cd56-327d-4e46-af19-bac98ce0492e"
+_TEST_TX_SENSOR_ID = "incremental-bulk-tx"
+_TEST_RX_SENSOR_ID = "incremental-bulk-rx"
+
+
+def _storage_execution_config(
+    *,
+    fft_size_range: int,
+    rx_elements: int,
+    tx_elements: int,
+    processing_strategy: str | None,
+    overrides: dict[str, object] | None,
+) -> dict[str, object]:
+    strategy = processing_strategy or "coherent_cpi_fft"
+    if strategy == "analytic_path_doppler_oracle":
+        mode = "analytic_path_doppler_oracle"
+        sample_source = "analytic_path_snapshot"
+        sample_period_s = None
+        sample_rate_hz = None
+    else:
+        mode = "coherent_cpi"
+        sample_source = "coherent_one_solve"
+        sample_period_s = 1.0
+        sample_rate_hz = 1.0
+    configured_bandwidth = (overrides or {}).get(
+        "bandwidth",
+        (overrides or {}).get("bandwidth_hz", 1e9),
+    )
+    config: dict[str, object] = {
+        "contract_version": 1,
+        "fft_size_range": fft_size_range,
+        "fft_size_doppler": 1,
+        "sampling_frequency": float(configured_bandwidth),
+        "prf_hz": 1.0,
+        "carrier_freq_hz": 28e9,
+        "range_mode": "bistatic",
+        "acquisition": {
+            "sample_source": sample_source,
+            "rt_solve_stride_scene_steps": 1,
+            "sample_period_s": sample_period_s,
+            "sample_rate_hz": sample_rate_hz,
+            "cpi_length_samples": 1,
+            "cpi_hop_samples": 1,
+            "overlap_samples": 0,
+            "partial_window_policy": "retain_unprocessed",
+            "phase_contract": "incremental_storage_fixture_explicit_phase",
+        },
+        "processing": {
+            "mode": mode,
+            "strategy": strategy,
+            "fft_size_doppler": 1,
+            "result_stride_samples": 1,
+            "product_semantics": "typed_storage_layout_fixture",
+            "evidence_status": "synthetic_fixture",
+        },
+        "topology": {
+            "pair_count": 1,
+            "pair_index": 0,
+            "tx_device_count": 1,
+            "rx_device_count": 1,
+            "tx_elements": tx_elements,
+            "rx_elements": rx_elements,
+            "rx_array_processing": "siso",
+        },
+        "processing_mode": mode,
+        "processing_recipe": {
+            "window_range": "hann",
+            "window_doppler": "hann",
+            "fixture": "incremental_bulk_storage",
+        },
+    }
+    config.update(overrides or {})
+    return config
+
+
+def _sensing_v4_storage_payload(
+    frame_idx: int,
+    *,
+    config: dict[str, object] | None = None,
+    processing_strategy: str | None = None,
+    range_profile_by_pair: np.ndarray | None = None,
+    cir_by_pair_rx_element_tx_element: np.ndarray | None = None,
+) -> dict[str, object]:
+    """Return a native schema-v4 fixture for generic storage tests."""
+
+    range_size = (
+        int(np.asarray(range_profile_by_pair).shape[-1])
+        if range_profile_by_pair is not None
+        else (
+            int(np.asarray(cir_by_pair_rx_element_tx_element).shape[-1])
+            if cir_by_pair_rx_element_tx_element is not None
+            else 1
+        )
+    )
+    rx_elements = (
+        int(np.asarray(cir_by_pair_rx_element_tx_element).shape[1])
+        if cir_by_pair_rx_element_tx_element is not None
+        else 1
+    )
+    tx_elements = (
+        int(np.asarray(cir_by_pair_rx_element_tx_element).shape[2])
+        if cir_by_pair_rx_element_tx_element is not None
+        else 1
+    )
+    resolved_config = _storage_execution_config(
+        fft_size_range=range_size,
+        rx_elements=rx_elements,
+        tx_elements=tx_elements,
+        processing_strategy=processing_strategy,
+        overrides=config,
+    )
+
+    temporal = build_sensing_temporal_contract(
+        clock_id=_TEST_GENERATION_ID,
+        acquisition_id=str(
+            uuid5(UUID(_TEST_GENERATION_ID), f"incremental-bulk-acquisition-{frame_idx}")
+        ),
+        acquisition_config_id=canonical_sensing_hash(
+            {
+                "fixture": "incremental-bulk",
+                "sample_count": 1,
+                "config": config or {},
+            }
+        ),
+        pair_id=canonical_sensing_pair_id(_TEST_TX_SENSOR_ID, _TEST_RX_SENSOR_ID),
+        tx_sensor_id=_TEST_TX_SENSOR_ID,
+        rx_sensor_id=_TEST_RX_SENSOR_ID,
+        samples=[
+            {
+                "sample_index": 0,
+                "sample_time_s": float(frame_idx),
+                "valid": True,
+                "phase_coherent": True,
+                "source": {
+                    "source_generation_id": _TEST_GENERATION_ID,
+                    "scene_frame_id": frame_idx,
+                    "sample_offset": 0,
+                },
+            }
+        ],
+    )
+    sensing: dict[str, object] = {
+        "schema_version": SENSING_SCHEMA_VERSION,
+        "temporal": temporal,
+        "processing_strategy": resolved_config["processing"]["strategy"],
+        "config_resolved": deepcopy(resolved_config),
+        "config": deepcopy(resolved_config),
+    }
+
+    pair_axis = catalog_axis("pair", size=1, catalog_key="pair_axis")
+    if range_profile_by_pair is not None:
+        values = np.asarray(range_profile_by_pair)
+        if values.ndim != 2 or values.shape[0] != 1:
+            raise ValueError("range_profile_by_pair must have shape [1, range]")
+        sensing["range_axis_m"] = np.arange(values.shape[1], dtype=np.float64)
+        sensing["range_profile_by_pair"] = values
+        add_product_spec(
+            sensing,
+            data_key="range_profile_by_pair",
+            kind="range_profile",
+            axes=(
+                pair_axis,
+                dense_axis(
+                    "range",
+                    size=values.shape[1],
+                    unit="m",
+                    coordinate_key="range_axis_m",
+                    coordinate_semantics="bistatic_path_length",
+                    reference_frame="tx_target_rx_path",
+                ),
+            ),
+            representation="power_linear",
+            unit="1",
+            temporal_support=TEMPORAL_SUPPORT_LAST_VALID_SAMPLE,
+        )
+    if cir_by_pair_rx_element_tx_element is not None:
+        values = np.asarray(cir_by_pair_rx_element_tx_element)
+        if values.ndim != 4 or values.shape[0] != 1:
+            raise ValueError(
+                "cir_by_pair_rx_element_tx_element must have shape "
+                "[1, rx_element, tx_element, delay]"
+            )
+        sensing["rx_element_axis"] = [
+            {"element_index": index, "row": 0, "column": index} for index in range(values.shape[1])
+        ]
+        sensing["tx_element_axis"] = [
+            {"element_index": index, "row": 0, "column": index} for index in range(values.shape[2])
+        ]
+        sensing["delay_axis_s"] = np.arange(values.shape[3], dtype=np.float64) * 1e-9
+        sensing["cir_by_pair_rx_element_tx_element"] = values
+        add_product_spec(
+            sensing,
+            data_key="cir_by_pair_rx_element_tx_element",
+            kind="impulse_response",
+            axes=(
+                pair_axis,
+                catalog_axis(
+                    "rx_element",
+                    size=values.shape[1],
+                    catalog_key="rx_element_axis",
+                    reference_frame="rx_array_local",
+                ),
+                catalog_axis(
+                    "tx_element",
+                    size=values.shape[2],
+                    catalog_key="tx_element_axis",
+                    reference_frame="tx_array_local",
+                ),
+                dense_axis(
+                    "delay",
+                    size=values.shape[3],
+                    unit="s",
+                    coordinate_key="delay_axis_s",
+                    coordinate_semantics="propagation_delay",
+                    reference_frame="tx_to_rx",
+                ),
+            ),
+            representation="complex_voltage",
+            unit="1",
+            temporal_support=TEMPORAL_SUPPORT_LAST_VALID_SAMPLE,
+        )
+    materialize_product_specs(sensing)
+    finalize_sensing_v4_publication(sensing)
+    return sensing
 
 
 def create_mock_frame_data(frame_idx):
@@ -68,13 +309,13 @@ def _write_packed_frame_set(frames_dir, frames, *, compression=None):
     chunk = write_packed_mpc_frame_chunk(
         frames_dir,
         frames,
-        generation_id="incremental-bulk-test-generation",
+        generation_id=_TEST_GENERATION_ID,
         compression=compression,
     )
     compression_filter = "none" if compression is None else compression
     manifest = manifest_from_chunks(
-        generation_id="incremental-bulk-test-generation",
-        frame_set_id="incremental-bulk-test-frame-set",
+        generation_id=_TEST_GENERATION_ID,
+        frame_set_id=_TEST_FRAME_SET_ID,
         chunks=[chunk],
         compression={
             "configured": compression,
@@ -216,7 +457,7 @@ def test_estimated_byte_cap_rotates_before_appending_next_frame(mock_config, moc
 
 @pytest.mark.parametrize(
     "boundary_kind",
-    ["topology", "fixed_sensing", "cir", "sensing_config"],
+    ["topology", "fixed_sensing", "typed_cir", "sensing_config"],
 )
 def test_layout_changes_rotate_and_retry_in_a_clean_chunk(
     mock_config,
@@ -232,14 +473,44 @@ def test_layout_changes_rotate_and_retry_in_a_clean_chunk(
         first = replace(first, rx_names=("rx-a",))
         second = replace(second, rx_names=("rx-b",))
     elif boundary_kind == "fixed_sensing":
-        first = replace(first, sensing={"range_profile": np.ones((3,), dtype=np.float32)})
-        second = replace(second, sensing={"range_profile": np.ones((4,), dtype=np.float32)})
-    elif boundary_kind == "cir":
-        first = replace(first, sensing={"cir": np.ones((2, 2), dtype=np.complex64)})
-        second = replace(second, sensing={"cir": np.ones((2, 2), dtype=np.complex128)})
+        first = replace(
+            first,
+            sensing=_sensing_v4_storage_payload(
+                0,
+                range_profile_by_pair=np.ones((1, 3), dtype=np.float32),
+            ),
+        )
+        second = replace(
+            second,
+            sensing=_sensing_v4_storage_payload(
+                1,
+                range_profile_by_pair=np.ones((1, 4), dtype=np.float32),
+            ),
+        )
+    elif boundary_kind == "typed_cir":
+        first = replace(
+            first,
+            sensing=_sensing_v4_storage_payload(
+                0,
+                cir_by_pair_rx_element_tx_element=np.ones((1, 1, 1, 2), dtype=np.complex64),
+            ),
+        )
+        second = replace(
+            second,
+            sensing=_sensing_v4_storage_payload(
+                1,
+                cir_by_pair_rx_element_tx_element=np.ones((1, 1, 1, 2), dtype=np.complex128),
+            ),
+        )
     else:
-        first = replace(first, sensing={"config": {"bandwidth_hz": 1.0}})
-        second = replace(second, sensing={"config": {"bandwidth_hz": 2.0}})
+        first = replace(
+            first,
+            sensing=_sensing_v4_storage_payload(0, config={"bandwidth_hz": 1.0}),
+        )
+        second = replace(
+            second,
+            sensing=_sensing_v4_storage_payload(1, config={"bandwidth_hz": 2.0}),
+        )
 
     mocker.patch(
         "generator.io.storage.hdf5_frame_output.standard_mpc_frame_from_raw",
@@ -706,7 +977,7 @@ def test_packed_writer_exposes_frame_ids_and_writes_manifest(tmp_path):
     frames_dir = tmp_path / "frames"
     writer = PackedMPCChunkWriter(
         frames_dir,
-        generation_id="incremental-bulk-test-generation",
+        generation_id=_TEST_GENERATION_ID,
         compression=None,
         partial_name=".incremental-bulk-test.h5.partial",
     )
@@ -718,8 +989,8 @@ def test_packed_writer_exposes_frame_ids_and_writes_manifest(tmp_path):
 
     chunk = writer.finalize_to_range_name()
     manifest = manifest_from_chunks(
-        generation_id="incremental-bulk-test-generation",
-        frame_set_id="incremental-bulk-test-frame-set",
+        generation_id=_TEST_GENERATION_ID,
+        frame_set_id=_TEST_FRAME_SET_ID,
         chunks=[chunk],
         compression={"configured": None, "filter": "none", "shuffle": False},
         segmentation={"max_frames": 2},
@@ -788,13 +1059,16 @@ def test_packed_round_trip_full_fidelity(tmp_path):
                 targets_metadata=[
                     {"name": f"target_{j}", "velocity": rng.randn(3).tolist()} for j in range(2)
                 ],
-                sensing={
-                    "config": {"bandwidth": 100e6, "num_samples": 256},
-                    "range_profile": rng.randn(256).astype(np.float32),
-                    "cir": (rng.randn(1, 1, 1, 64) + 1j * rng.randn(1, 1, 1, 64)).astype(
-                        np.complex64
-                    ),
-                },
+                sensing=_sensing_v4_storage_payload(
+                    i,
+                    config={"bandwidth": 100e6, "num_samples": 256},
+                    # ``power_linear`` products are finite and nonnegative by
+                    # contract; use random power rather than signed samples.
+                    range_profile_by_pair=rng.rand(1, 256).astype(np.float32),
+                    cir_by_pair_rx_element_tx_element=(
+                        rng.randn(1, 1, 1, 64) + 1j * rng.randn(1, 1, 1, 64)
+                    ).astype(np.complex64),
+                ),
                 provenance={
                     "provider": "test",
                     "frame_idx": i,
@@ -851,13 +1125,13 @@ def test_packed_round_trip_full_fidelity(tmp_path):
         assert orig.sensing is not None
         assert loaded.sensing["config"]["bandwidth"] == 100e6
         np.testing.assert_allclose(
-            loaded.sensing["range_profile"],
-            orig.sensing["range_profile"],
+            loaded.sensing["range_profile_by_pair"],
+            orig.sensing["range_profile_by_pair"],
             atol=1e-6,
         )
         np.testing.assert_allclose(
-            loaded.sensing["cir"],
-            orig.sensing["cir"],
+            loaded.sensing["cir_by_pair_rx_element_tx_element"],
+            orig.sensing["cir_by_pair_rx_element_tx_element"],
             atol=1e-6,
         )
 
@@ -868,12 +1142,12 @@ def test_packed_schema_keeps_sensing_json_metadata_only(tmp_path):
     frame = _mock_standard_frame(frame_idx=0, num_mpcs=2, max_bounces=2)
     frame = replace(
         frame,
-        sensing={
-            "schema_version": SENSING_DENSE_HDF5_MIN_SCHEMA_VERSION,
-            "processing_strategy": "snapshot_direct_rd",
-            "range_profile": np.linspace(0.0, 1.0, 8, dtype=np.float32),
-            "cir": np.ones((1, 1, 1, 8), dtype=np.complex64),
-        },
+        sensing=_sensing_v4_storage_payload(
+            0,
+            processing_strategy="analytic_path_doppler_oracle",
+            range_profile_by_pair=np.linspace(0.0, 1.0, 8, dtype=np.float32).reshape(1, 8),
+            cir_by_pair_rx_element_tx_element=np.ones((1, 1, 1, 8), dtype=np.complex64),
+        ),
     )
 
     frames_dir = tmp_path / "frames"
@@ -885,8 +1159,8 @@ def test_packed_schema_keeps_sensing_json_metadata_only(tmp_path):
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8")
         payload = json.loads(raw)
-        assert payload["schema_version"] == SENSING_DENSE_HDF5_MIN_SCHEMA_VERSION
-        assert "range_profile" not in payload
-        assert "cir" not in payload
-        assert "sensing/fixed/range_profile/data" in h5
-        assert "sensing/ragged/cir/values" in h5
+        assert payload["schema_version"] == SENSING_SCHEMA_VERSION
+        assert "range_profile_by_pair" not in payload
+        assert "cir_by_pair_rx_element_tx_element" not in payload
+        assert "sensing/fixed/range_profile_by_pair/data" in h5
+        assert "sensing/fixed/cir_by_pair_rx_element_tx_element/data" in h5

@@ -1,19 +1,18 @@
 # Scenarios
 
-ORCHAV includes runnable scenarios for the first workflow, Generator features,
-and Visualizer features.
+Start with [Getting Started](getting_started/README.md) to generate, inspect, and open your first frame set. Then choose a catalog by task.
 
 ## Recommended Path
 
-1. Start with [Getting Started](getting_started/README.md) to learn the basic
-   generation, inspection, and visualization workflow.
-2. Choose the [Generator scenarios](generator/README.md) to learn authoring and
-   frame, summary, or coverage generation. Choose the [Visualizer
-   scenarios](visualizer/README.md) to continue the guided playback and
-   analysis path.
+| Folder | What you can do |
+|---|---|
+| [getting_started/](getting_started/README.md) | Run Hello World and inspect the results in the Visualizer. |
+| [generator/](generator/README.md) | Configure actors, propagation, materials, or coverage grids and generate results. |
+| [visualizer/](visualizer/README.md) | Inspect propagation paths, follow channel metrics, and compare links during playback. |
+| [sensing/](sensing/README.md) | Start with a stationary cube, then explore motion, detection, tracking, and more complex scenes. |
 
-Each group guide lists its included scenarios and recommends an order based on
-the feature you want to learn.
+To analyze sensing results on a CPU, first generate an acquisition with a supported ray-tracing backend, then follow the [saved-acquisition workflow](../docs/sensing/reprocessing.md#run-processing). Generated sensing recordings are not bundled.
+
 
 ## Scenario Contents
 
@@ -22,8 +21,6 @@ Scenario directories contain portable inputs: usually a
 [`generate.py` Python driver](../docs/generator/scenario_authoring.md#python-scripted-actors)
 when a scenario needs behavior outside the YAML schema, such as a calculated
 trajectory, external preprocessing, or generated setup.
-Generated outputs such as `frames/`, `summary/`, and rendered images are local
-artifacts that can be recreated.
 
 ## Units And Coordinates
 
@@ -36,16 +33,9 @@ and roll values are degrees. Carrier frequencies and bandwidths are hertz.
 Coverage-grid coordinates and heights are meters. Path loss is reported in
 decibels.
 
-## What Is Not Bundled
+## Generated outputs
 
-The runnable scenario directories include definitions and curated input assets,
-not their generated [`frames/`](../docs/shared/frame_reference.md#hdf5-frame-layout),
-[`summary/`](../docs/generator/generated_figures.md),
-[`coverage/`](../docs/generator/configuration.md#coverage-configuration), video, or
-cache output directories. Run the documented commands to create those products
-locally.
-Selected preview images used by these guides are maintained separately under
-`docs/assets/`.
+Each scenario guide gives the commands for generating its [frames](../docs/shared/frame_reference.md#hdf5-frame-layout), [summary figures](../docs/generator/generated_figures.md), or [coverage data](../docs/generator/configuration.md#coverage-configuration). Guides that include a recording or reference result explain how to use it.
 
 ## Input Assets
 

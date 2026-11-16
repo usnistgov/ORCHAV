@@ -1,16 +1,16 @@
 # Metrics Evolution
 
-[Scenarios](../../README.md) > [Visualizer](../README.md) > Metrics Evolution
-
 This compact Visualizer scenario makes per-frame channel changes easy to see.
 One receiver moves directly toward a fixed transmitter over 100 frames above a
 flat ground plane. [Rough-surface scattering from the
-ground](../../../docs/concepts/propagation.md#diffuse-scattering) provides many
+ground](../../../docs/reference/propagation.md#diffuse-scattering) provides many
 paths without the geometric complexity of an urban scene.
 
 To run it, see [Running](#running).
 
 ## Scene Layout
+
+![Scenario topology](../../../docs/assets/scenarios/scenarios_visualizer_metrics_evolution_topology.png)
 
 All positions use meters in the local Cartesian scene frame.
 
@@ -26,6 +26,8 @@ The receiver moves at 2 m/s, and the direct TX/RX distance falls from about
 about 150 ns in frame 0 and 19 ns in frame 99.
 
 ## Configuration Walkthrough
+
+See [scenario.yaml](scenario.yaml) for the complete configuration.
 
 The receiver uses the shared linear mobility model:
 
@@ -77,24 +79,22 @@ Orientation](../../../docs/generator/mobility_and_orientation.md#mobility-models
 
 ## Running
 
-From the repository root, validate the schema, generate the local frame set,
-then run the strict path check:
+From the repository root, generate the local frame set:
 
 ```bash
-orchav-validate scenarios/visualizer/metrics_evolution/scenario.yaml
 orchav-generator scenarios/visualizer/metrics_evolution
-orchav-validate --strict scenarios/visualizer/metrics_evolution/scenario.yaml
 ```
 
-Strict validation checks that the generated `frames/` directory exists, so run
-it after generation on a fresh checkout.
-
 The Generator writes 100 HDF5 frames under `frames/`. Generated frames are
-local artifacts and are not stored in the repository. Compare the endpoints
-from the terminal:
+local artifacts and are not stored in the repository. Inspect the first frame from the terminal:
 
 ```bash
 orchav-inspect scenarios/visualizer/metrics_evolution --frame 0
+```
+
+Inspect the final frame:
+
+```bash
 orchav-inspect scenarios/visualizer/metrics_evolution --frame 99
 ```
 
@@ -151,8 +151,4 @@ For the frame data contract used by both views, see
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../README.md) | [Visualizer](../README.md) |
-> Current: **Metrics Evolution**
->
-> Previous: [MPC Inspection](../mpc_inspection/README.md) | Next:
-> [Statistics](../statistics/README.md)
+Up: [Visualizer scenarios](../README.md) | Previous: [MPC Inspection](../mpc_inspection/README.md) | Next: [Statistics](../statistics/README.md)

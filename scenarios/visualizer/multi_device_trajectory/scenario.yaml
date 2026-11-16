@@ -15,21 +15,17 @@ scene:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
 
   quality:
     preset: ultra-low
 
 timeline:
-  steps: 50
-  duration_s: 10.0
+  steps: 38
+  duration_s: 5.285714285714286
 
 generator_summary:
   enabled: true
-  create:
-    - scene2d
-    - speed
-    - orientation
+  create: [topology, speed, orientation]
   visualization:
     actor_label_mode: name
 

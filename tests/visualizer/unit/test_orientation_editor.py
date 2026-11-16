@@ -113,11 +113,12 @@ _LOOK_AT_TARGET = UUID("10000000-0000-0000-0000-000000000001")
     ids=("fixed", "keyframes", "align-motion", "look-at", "spin", "random"),
 )
 def test_all_orientation_pages_round_trip_every_field_without_type_signal(
-    qapp,
+    qtbot,
     orientation,
     page_name,
 ) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
     emitted: list[str] = []
     editor.orientation_type_changed.connect(emitted.append)
 
@@ -130,8 +131,9 @@ def test_all_orientation_pages_round_trip_every_field_without_type_signal(
     editor.close()
 
 
-def test_type_signal_switches_pages_without_applying_conversion(qapp) -> None:
+def test_type_signal_switches_pages_without_applying_conversion(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
     emitted: list[str] = []
     editor.orientation_type_changed.connect(emitted.append)
     original = FixedOrientationSpec(yaw_deg=8.0, pitch_deg=9.0, roll_deg=10.0)
@@ -155,8 +157,9 @@ def test_type_signal_switches_pages_without_applying_conversion(qapp) -> None:
     editor.close()
 
 
-def test_actor_look_at_choices_use_uuid_identity_and_current_labels(qapp) -> None:
+def test_actor_look_at_choices_use_uuid_identity_and_current_labels(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
     first_id = UUID("20000000-0000-0000-0000-000000000001")
     second_id = UUID("20000000-0000-0000-0000-000000000002")
     missing_id = UUID("20000000-0000-0000-0000-000000000003")
@@ -183,8 +186,9 @@ def test_actor_look_at_choices_use_uuid_identity_and_current_labels(qapp) -> Non
     editor.close()
 
 
-def test_point_look_at_round_trips_without_an_actor_choice(qapp) -> None:
+def test_point_look_at_round_trips_without_an_actor_choice(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
     orientation = point_look_at_orientation(
         (10.0, -20.0, 30.0),
         allow_pitch=False,
@@ -206,8 +210,9 @@ def test_point_look_at_round_trips_without_an_actor_choice(qapp) -> None:
     editor.close()
 
 
-def test_actor_look_at_mode_requires_a_selected_actor(qapp) -> None:
+def test_actor_look_at_mode_requires_a_selected_actor(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
     editor.type_combo.setCurrentIndex(editor.type_combo.findData("look_at"))
     editor.look_at_target_mode_combo.setCurrentIndex(
         editor.look_at_target_mode_combo.findData("actor")
@@ -218,8 +223,9 @@ def test_actor_look_at_mode_requires_a_selected_actor(qapp) -> None:
     editor.close()
 
 
-def test_keyframes_include_time_and_support_add_remove_and_reorder(qapp) -> None:
+def test_keyframes_include_time_and_support_add_remove_and_reorder(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
     editor.set_orientation(
         KeyframesOrientationSpec(
             keyframes=(
@@ -284,8 +290,9 @@ def test_keyframes_include_time_and_support_add_remove_and_reorder(qapp) -> None
     editor.close()
 
 
-def test_keyframes_require_two_rows_before_returning(qapp) -> None:
+def test_keyframes_require_two_rows_before_returning(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
     editor.type_combo.setCurrentIndex(editor.type_combo.findData("keyframes"))
     editor._set_keyframe_rows((OrientationKeyframeSpec(time_s=0.0),))
 
@@ -294,8 +301,9 @@ def test_keyframes_require_two_rows_before_returning(qapp) -> None:
     editor.close()
 
 
-def test_advanced_sections_start_collapsed_and_can_expand(qapp) -> None:
+def test_advanced_sections_start_collapsed_and_can_expand(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
 
     for section in (
         editor.align_advanced_section,
@@ -310,8 +318,9 @@ def test_advanced_sections_start_collapsed_and_can_expand(qapp) -> None:
     editor.close()
 
 
-def test_numeric_controls_are_named_adaptive_and_respect_read_only(qapp) -> None:
+def test_numeric_controls_are_named_adaptive_and_respect_read_only(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
 
     assert editor.objectName() == "orientationEditor"
     assert editor.type_combo.objectName() == "orientationTypeCombo"
@@ -355,8 +364,9 @@ def test_numeric_controls_are_named_adaptive_and_respect_read_only(qapp) -> None
     editor.close()
 
 
-def test_optional_controls_preserve_none_and_explicit_values(qapp) -> None:
+def test_optional_controls_preserve_none_and_explicit_values(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
 
     editor.set_orientation(AlignMotionOrientationSpec())
     assert editor.orientation() == AlignMotionOrientationSpec()
@@ -376,8 +386,9 @@ def test_optional_controls_preserve_none_and_explicit_values(qapp) -> None:
     editor.close()
 
 
-def test_random_seed_editor_matches_the_lossless_shared_contract(qapp) -> None:
+def test_random_seed_editor_matches_the_lossless_shared_contract(qtbot) -> None:
     editor = OrientationEditor()
+    qtbot.addWidget(editor)
     editor.set_orientation(RandomOrientationSpec(seed=MAX_RANDOM_SEED))
 
     assert editor.random_seed_spin.minimum() == 0

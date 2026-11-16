@@ -1,0 +1,266 @@
+{
+  "scenario": "scenarios/generator/building_appearance/cities/paris_opera/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "generated_scene/scene.xml"
+  },
+  "source_files": {
+    "scenarios/generator/building_appearance/cities/paris_opera/generated_scene/mesh/buildings_concrete.ply": "8b966eacf165055524002a9190ca4f03dd4c723de85e65f48ad80ace1766893f",
+    "scenarios/generator/building_appearance/cities/paris_opera/generated_scene/mesh/buildings_glass.ply": "df52ed41f66f3b911175222137fc542b02c0498562a4f6176376436ea7088cc3",
+    "scenarios/generator/building_appearance/cities/paris_opera/generated_scene/mesh/buildings_marble.ply": "514029e1b8a00ac4b719915775b80cba200de1dc99c7ba5e3845cf677ea00a0d",
+    "scenarios/generator/building_appearance/cities/paris_opera/generated_scene/mesh/buildings_metal.ply": "18fb6bfc1851fb1f3e10fc58cc2a86f9122dc09cf92bca9cf63778f3f83a1018",
+    "scenarios/generator/building_appearance/cities/paris_opera/generated_scene/mesh/ground.ply": "c6a850964e9584e9d72cfc8d21f5dc2a366247059f70a8236b8ef60bb01b48a8",
+    "scenarios/generator/building_appearance/cities/paris_opera/generated_scene/mesh/streets.ply": "961212fe7af18556c0b97fa553b23a7f706b34132232efbd5b1d304a2982d947",
+    "scenarios/generator/building_appearance/cities/paris_opera/generated_scene/mesh/vegetation.ply": "5a67142b04b50586d8565635cdb1e39bb5a2bfa7b99644a129ef8a6e1d3d057b",
+    "scenarios/generator/building_appearance/cities/paris_opera/generated_scene/mesh/water.ply": "ff681eb1a44f8428718134e54666eef869e3960c5f7f7c2b4aef48e50aeaa8d5",
+    "scenarios/generator/building_appearance/cities/paris_opera/generated_scene/scene.xml": "7c999e35873ec12aa7319b8b9acc605c62f5815ac3cdb6546008767e6eed2b23",
+    "scenarios/generator/building_appearance/cities/paris_opera/scenario.yaml": "acda0be8b3be8dddb78559db48280f7b90455e975bf808ba9b8c6c9b80d75c65"
+  },
+  "sample_indices": [
+    0
+  ],
+  "sample_times_s": [
+    0.0
+  ],
+  "steps": 1,
+  "actors": [
+    {
+      "name": "TX",
+      "role": "tx",
+      "members": [
+        "TX"
+      ],
+      "sample_positions_m": [
+        [
+          -400.0,
+          -420.0,
+          5.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -400.0,
+            -420.0,
+            5.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX",
+      "role": "rx",
+      "members": [
+        "RX"
+      ],
+      "sample_positions_m": [
+        [
+          400.0,
+          420.0,
+          5.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            400.0,
+            420.0,
+            5.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "287c2d86018cd5104301206385af553b417f957b73be8877749643e9cc15249d",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (mat-itu medium dry ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Ground (mat-itu wet ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Mat-Itu Concrete",
+      "display_rgb": [
+        0.6872,
+        0.6872,
+        0.6872
+      ]
+    },
+    {
+      "label": "Mat-Itu Glass",
+      "display_rgb": [
+        0.6784313725490196,
+        0.7764705882352941,
+        0.803921568627451
+      ]
+    },
+    {
+      "label": "Mat-Itu Marble",
+      "display_rgb": [
+        0.796,
+        0.7552000000000001,
+        0.6532
+      ]
+    },
+    {
+      "label": "Mat-Itu Metal",
+      "display_rgb": [
+        0.4696,
+        0.4696,
+        0.49
+      ]
+    },
+    {
+      "label": "Mat-Itu Wood",
+      "display_rgb": [
+        0.6940000000000001,
+        0.558,
+        0.43560000000000004
+      ]
+    }
+  ],
+  "output_sha256": "bf2deaa65c56497695d46f4861b23992b4cbfeb8643bda2c3a908c80723acabe",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -572.0434350585938,
+        -645.0039697265624,
+        -2.32
+      ],
+      [
+        583.4864282226563,
+        619.818544921875,
+        60.32
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "ef1158c348035b465264fffe0e89ec2f7ce041fa72adf21bba951cf058f35c7d",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/building_appearance/cities/paris_opera"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

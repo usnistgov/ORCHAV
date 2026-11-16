@@ -26,25 +26,42 @@ use **File > Open Scenario...**.
 | `--renderer {pygfx,open3d}` | `pygfx` | Renderer backend. Use pygfx on macOS; both choices are available on Windows and Linux. |
 | `--viewport-mode {auto,embedded,detached}` | `auto` | Select renderer hosting. Normal pygfx launches are embedded. Open3D uses its native window. |
 | `--no-resume` | off | Skip automatic workspace restoration for this launch. |
+| `--sensing-frames-only` | automatic, except with figures and 3D explicitly `off` | Require playback of only scene frames bound to saved sensing results. Available with ORCHAV Sensing; requires `--scenario` and local frame files. |
+| `--sensing-figures {on-demand,summary,motion,prepare,off}` | saved loading choice | Choose initial sensing views and preparation for a local recording. See [loading choices](sensing_dashboard.md#loading-and-playback). |
+| `--sensing-motion {all-ranges,saved-stft}` | `all-ranges` | With `--sensing-figures motion`, select the initial saved-RD overview or authored STFT. |
+| `--sensing-3d {on,off}` | saved visibility; off for focused modes | Override initial **Show 3D sensing**. `off` skips 3D sensing preparation, including with figure preparation. Enable overlays later from the Sensing panel. |
+| `--sensing-overview-cache-mb N` | `64` | Retained compact spectral overview budget in MiB. Affects recording-wide plot coverage. |
+| `--sensing-history-cache-mb N` | `64` | Retained detailed detection/tracking history budget in MiB. |
+| `--sensing-history-results N` | `4096` | Detailed-history result limit, independent of compact spectral coverage. |
+| `--sensing-result-cache-mb N` | `512`; `2048` with `prepare` | RAM budget in MiB for individual figure requests. |
+| `--sensing-result-cache-entries N` | `512`; `2048` with `prepare` | Maximum cached individual figure requests. |
+| `--fusion-results PATH` | none | Open saved tracking or [multi-sensor fusion results](../sensing/detection_and_tracking.md#multi-sensor-fusion). |
+| `--sensing-volume DIR` | none | Open a saved [sensing volume](volume_inspection.md#sensing-volumes) in pygfx. |
 | `--enable-textures` | off | Enable bundled or scenario-provided albedo/detail texture maps. |
 | `--disable-textures` | texture maps off | Explicitly disable texture maps when another setting enables them. |
-| `--author` | off | Open the [Scenario Builder](../generator/scenario_builder.md). Requires pygfx and `ORCHAV_ENABLE_SCENARIO_BUILDER=1`. |
+| `--author` | off | Open the [Scenario Builder](../generator/scenario_builder.md), available by default with pygfx. |
 
 See the [Shared Data Layer](../shared/README.md) for frame-provider behavior,
 [Renderers](renderers.md) for the two rendering backends, and [Workspace
 Snapshots](workspace_snapshots.md) for resume behavior.
 
+Texture precedence and manual restoration are described in
+[Workspace snapshots](workspace_snapshots.md#save-open-and-resume).
+
 ## Override The Frame Provider
 
 CLI overrides remain in memory and are not written to `scenario.yaml` or a
-workspace snapshot:
+workspace snapshot. Connect to a Live Generator on a non-default port:
 
 ```bash
-# Match a Live Generator on a non-default local port.
 orchav-visualizer --scenario path/to/scenario \
   --data-mode live_grpc --grpc-port 50053 --no-resume
 
-# Read through a remote frame server on a non-default port.
+```
+
+Connect to a remote frame server on a non-default port:
+
+```bash
 orchav-visualizer --scenario path/to/scenario \
   --data-mode remote_hdf5 --grpc-port 50054 --no-resume
 ```
@@ -52,6 +69,33 @@ orchav-visualizer --scenario path/to/scenario \
 `--grpc-port` retains the endpoint host selected by scenario configuration. A
 port override with effective `files` mode is rejected because no gRPC client is
 involved.
+
+## Load Only Sensing Frames
+
+For a saved sensing recording, select its result-bound scene frames before
+automatic preloading starts:
+
+```bash
+orchav-visualizer --scenario path/to/scenario \
+  --data-mode files --sensing-frames-only
+```
+
+The Visualizer indexes saved result bindings and timestamps in the background,
+then enables **Sensing → Play sensing frames only**. This includes results with
+zero detections and handles irregular frame spacing; it does not assume a fixed
+stride. **Real time** playback uses the recorded timestamps. Disable the checkbox
+to restore the full timeline and preload all scene frames.
+
+The option reduces frame decoding, cache population, and frame preparation.
+Static geometry and textures still load normally; compressed HDF5 chunks may
+contain additional rows even when only selected rows are decoded. Startup may
+also read a frame for scene discovery or workspace restoration. Use `--no-resume`
+to skip workspace restoration.
+
+This option applies to the scenario opened at launch and requires saved results
+with available scene bindings. Missing results produce a startup error without
+falling back to full-frame preloading. Live sources, remote frame servers,
+authoring, benchmarks, and batch rendering do not support this flag.
 
 ## Rendering And Capture Options
 
@@ -72,7 +116,7 @@ graphics-environment guidance, use [Renderers](renderers.md) and
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--max-performance` | off | Enable the high-memory cache profile for heavy playback. |
-| `--pygfx-mpc-line-cache-mb MB` | `0` | Set the expanded pygfx MPC-line cache budget. A value of `0` disables it. |
+| `--pygfx-mpc-line-cache-mb MiB` | environment, otherwise `0` | Set the CPU expanded-line cache budget in MiB. Explicit `0` disables it, including under `--max-performance`. See [sizing and tradeoffs](caching.md#tuning-large-scenarios). |
 | `--benchmark N` | `0` | Run benchmark mode for `N` frame transitions, write timing JSON, and exit. Requires `--scenario`. |
 | `--benchmark-warmup W` | `5` | Warmup frames discarded before benchmark measurement. |
 | `--benchmark-output PATH` | `benchmark_render_results.json` | Benchmark JSON destination. |
@@ -104,7 +148,7 @@ Batch-render a scenario:
 
 ```bash
 orchav-visualizer --scenario scenarios/getting_started/hello_world \
-  --renderer pygfx --render-frames tmp/orchav-frames
+  --render-frames tmp/orchav-frames
 ```
 
 The Visualizer opens the scenario, renders every available frame to the

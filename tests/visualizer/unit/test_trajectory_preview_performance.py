@@ -71,8 +71,6 @@ def visible_preview(qtbot):
     qtbot.addWidget(host)
     host.show()
     _process_events_until(panel._is_plot_visible)
-    if not panel._has_matplotlib:
-        pytest.skip("Matplotlib is not available")
 
     panel._on_loading_complete(_snapshot())
     assert panel._static_plot_dirty is False
@@ -83,7 +81,7 @@ def visible_preview(qtbot):
 
 
 def _offsets(panel: TrajectoryPreviewPanel) -> np.ndarray:
-    return np.asarray(panel._current_marker_artist.get_offsets(), dtype=float)
+    return np.column_stack(panel._current_marker_artist.getData())
 
 
 def test_frame_change_reuses_marker_without_clearing_axes(visible_preview, mocker) -> None:
@@ -115,7 +113,7 @@ def test_trajectory_positions_are_indexed_by_frame(visible_preview) -> None:
 
 
 def test_hidden_preview_defers_frame_and_static_updates(visible_preview, mocker) -> None:
-    """A hidden Analysis panel must not schedule Matplotlib repaint work."""
+    """A hidden Analysis panel must not schedule plot repaint work."""
     panel, _group, host = visible_preview
     panel._last_frame_update_at = 0.0
     panel.set_current_frame(1)
@@ -123,7 +121,7 @@ def test_hidden_preview_defers_frame_and_static_updates(visible_preview, mocker)
 
     host.hide()
     _process_events_until(lambda: not panel._is_plot_visible())
-    draw_spy = mocker.spy(panel.widgets["canvas"], "draw_idle")
+    draw_spy = mocker.spy(panel.widgets["canvas"], "update")
     clear_spy = mocker.spy(panel._ax, "clear")
 
     panel.set_current_frame(2)
@@ -173,7 +171,7 @@ def test_hidden_partial_snapshots_index_only_latest_on_show(visible_preview, moc
 def test_rapid_frame_changes_coalesce_to_latest_marker_update(visible_preview, mocker) -> None:
     """Playback faster than the plot budget should issue one latest-frame draw."""
     panel, _group, _host = visible_preview
-    draw_spy = mocker.spy(panel.widgets["canvas"], "draw_idle")
+    draw_spy = mocker.spy(panel.widgets["canvas"], "update")
     panel._last_frame_update_at = time.monotonic()
 
     panel.set_current_frame(1)
@@ -187,3 +185,18 @@ def test_rapid_frame_changes_coalesce_to_latest_marker_update(visible_preview, m
         _offsets(panel),
         np.asarray([(2.0, 4.0), (12.0, 4.0), (22.0, 4.0)]),
     )
+
+
+def test_metric_colored_tracks_render_and_retain_segment_values(visible_preview):
+    import pyqtgraph as pg
+
+    panel, _group, host = visible_preview
+    panel.set_per_frame_stats({"frame_indices": [0, 1, 2], "mpc_evolution": [1, 7, 9]})
+    panel.widgets["color_by_combo"].setCurrentText("Path Count")
+    graphs = [item for item in panel._ax.items() if isinstance(item, pg.GraphItem)]
+    assert len(graphs) == 3
+    for graph in graphs:
+        np.testing.assert_array_equal(graph.adjacency, [[0, 1], [1, 2]])
+        assert graph.pen[0] != graph.pen[1]
+    assert panel._colorbar is not None
+    assert not host.grab().isNull()

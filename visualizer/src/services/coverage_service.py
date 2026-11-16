@@ -634,6 +634,9 @@ class CoverageService:
         height_index: int,
     ) -> np.ndarray:
         """Return one file-backed metric slice through a bounded raw-data LRU."""
+        volume = coverage_data.get("_volume_layer")
+        if volume is not None and volume.quantity == metric_name:
+            return volume.values[height_index : height_index + 1]
         cache = coverage_data.get("_metric_slice_cache")
         if not isinstance(cache, OrderedDict):
             cache = OrderedDict()
@@ -834,6 +837,11 @@ class CoverageService:
         scenario while the remaining state and widgets are reset.
         """
         viz: Any = cast(Any, visualizer)
+        volume_window = getattr(viz, "coverage_volume_window", None)
+        if volume_window is not None and not volume_window.closed:
+            # Source teardown must not restore the old planar layer.
+            volume_window.old_planar_visibility = False
+            volume_window.close()
         ui_controller = getattr(viz, "ui_controller", None)
         reset_controller_state = getattr(ui_controller, "reset_coverage_runtime_state", None)
         if callable(reset_controller_state):

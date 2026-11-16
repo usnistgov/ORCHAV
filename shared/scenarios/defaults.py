@@ -5,3 +5,4 @@ from typing import Final
 DEFAULT_DEBUG_LEVEL: Final = "WARNING"
 DEFAULT_RAYTRACING_QUALITY_PRESET: Final = "low"
 DEFAULT_COVERAGE_TX_MODE: Final = "per_tx"
+DEFAULT_EXPORT_PATH_METRICS: Final = True

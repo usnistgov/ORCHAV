@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Union
 
+from .types.label_style import LabelCalloutStyle
+from .types.orientation_reference import OrientationReferenceSettings
 from .utils.antenna_utils import beamforming_defaults_from_scenario_config
 
 ColorMode = Literal[
@@ -12,11 +14,12 @@ ColorMode = Literal[
 ]
 NodeSelection = Union[int, Literal["all"]]
 CameraMode = Literal["overview", "follow", "pov"]
-POVAxis = Literal["forward", "x", "y", "z", "-x", "-y", "-z"]
+POVAxis = Literal["motion", "forward", "x", "y", "z", "-x", "-y", "-z"]
 TrajectoryColorMode = Literal["node_color", "speed", "altitude", "time", "angular_speed"]
-NodeLabelMode = Literal["role", "name"]
+NodeLabelMode = Literal["role", "name", "sensing"]
 HoverInfoMode = Literal["off", "essential", "inspect_all"]
 ViewportHudMode = Literal["compact", "detailed"]
+ViewportHudStyle = Literal["classic", "card", "minimal"]
 RFXRayMode = Literal["material_map", "mpc_usage", "material_properties"]
 RFXRayProperty = Literal[
     "relative_permittivity",
@@ -41,16 +44,18 @@ VIEWPORT_HUD_MODE_OPTIONS: tuple[ViewportHudMode, ...] = (
     "compact",
     "detailed",
 )
+VIEWPORT_HUD_STYLE_OPTIONS: tuple[ViewportHudStyle, ...] = ("classic", "card", "minimal")
 
 # Canonical MPC filter values. The UI, presets, session synchronization, and
 # initial state all use these tuples so supported interaction types cannot
 # silently disappear in one workflow.
 MPC_ORDER_VALUES: tuple[int, ...] = tuple(range(7))
-MPC_TYPE_VALUES: tuple[int, ...] = (0, 1, 2, 4, 8, 99)
+MPC_TYPE_VALUES: tuple[int, ...] = (0, 1, 2, 4, 8, 16, 99)
 DEFAULT_MPC_ALLOWED_ORDERS = frozenset(MPC_ORDER_VALUES)
 DEFAULT_MPC_ALLOWED_TYPES = frozenset(MPC_TYPE_VALUES)
 _LEGACY_DEFAULT_MPC_ALLOWED_TYPES = frozenset((0, 1, 2, 4, 8))
-_MPC_TYPE_FILTER_SCHEMA_VERSION = 2
+_V2_DEFAULT_MPC_ALLOWED_TYPES = frozenset((0, 1, 2, 4, 8, 99))
+_MPC_TYPE_FILTER_SCHEMA_VERSION = 3
 
 BEAMFORMING_STATE_KEYS: tuple[str, ...] = (
     "show_beamforming",
@@ -149,6 +154,14 @@ def normalize_viewport_hud_mode(value: Any) -> ViewportHudMode:
     return "compact"
 
 
+def normalize_viewport_hud_style(value: Any) -> ViewportHudStyle:
+    """Return a supported HUD appearance, preserving the classic default."""
+    style = str(value or "").strip().lower()
+    if style in VIEWPORT_HUD_STYLE_OPTIONS:
+        return style  # type: ignore[return-value]
+    return "classic"
+
+
 def _legacy_viewport_hud_mode_is_off(value: Any) -> bool:
     """Return whether the pre-split combined HUD setting requested hidden state."""
     return str(value or "").strip().lower() == "off"
@@ -205,7 +218,7 @@ class AppState:
     sync_target_position: bool
     camera_mode: CameraMode = "overview"
     fly_mode: bool = False
-    pov_axis: POVAxis = "forward"
+    pov_axis: POVAxis = "motion"
     pov_hidden_node: tuple[str, int] | None = None  # (type, index) of hidden node in POV mode
     show_camera_minimap: bool = False
     show_beamforming: bool = False
@@ -266,6 +279,9 @@ class AppState:
     aperture_radius_m: float = 5.0
     show_global_angular_reference: bool = False
     show_local_angular_reference: bool = False
+    orientation_reference: OrientationReferenceSettings = field(
+        default_factory=OrientationReferenceSettings
+    )
 
     # 3D trajectory visualization
     show_tx_trajectory: bool = False
@@ -286,6 +302,7 @@ class AppState:
     # When True, pygfx labels use screen-space sizing (stable pixel size
     # regardless of camera distance). Has no effect on the Open3D renderer.
     label_screen_space: bool = True
+    label_callout: LabelCalloutStyle = field(default_factory=LabelCalloutStyle)
 
     # Optional features keep transient values in their own namespace. These
     # values are intentionally excluded from session serialization.
@@ -312,11 +329,14 @@ class AppState:
     clip_z_flip: bool = False
 
     # Pygfx display controls for interactive antialiasing and the ground grid.
-    antialiasing_mode: str = "off"  # off | fxaa | ddaa | ppaa
+    antialiasing_mode: str = "off"  # off | fxaa
+    texture_mipmaps: bool | None = None  # None retains renderer launch policy.
+    depth_precision: bool | None = None
     show_ground_grid: bool = False
     hover_info_mode: HoverInfoMode = "essential"
     viewport_hud_enabled: bool = True
     viewport_hud_mode: ViewportHudMode = "compact"
+    viewport_hud_style: ViewportHudStyle = "classic"
     viewport_hud_show_status: bool = True
     viewport_hud_show_legends: bool = True
     viewport_hud_show_filters: bool = True
@@ -325,6 +345,7 @@ class AppState:
     # The workspace schema fixes this persisted key name for snapshot compatibility.
     # Pygfx only; the data path uses canonical itype end-to-end.
     show_mpc_type_markers: bool = False
+    show_mpc_frame_details: bool = False
 
     def to_dict(self) -> dict:
         """Convert AppState to JSON-serializable dict.
@@ -340,8 +361,7 @@ class AppState:
             "mpc_visibility": self.mpc_visibility.to_dict(),
             "mpc_allowed_orders": sorted(list(self.mpc_allowed_orders)),
             "mpc_allowed_types": sorted(list(self.mpc_allowed_types)),
-            # Distinguish explicit "Virtual off" intent from workspaces written
-            # before type 99 and the filter-schema marker were introduced.
+            # Keep explicit hidden-type choices separate from older defaults.
             "mpc_type_filter_schema_version": _MPC_TYPE_FILTER_SCHEMA_VERSION,
             "color_mode": self.color_mode,
             "show_labels": self.show_labels,
@@ -404,6 +424,7 @@ class AppState:
             "aperture_radius_m": self.aperture_radius_m,
             "show_global_angular_reference": self.show_global_angular_reference,
             "show_local_angular_reference": self.show_local_angular_reference,
+            "orientation_reference": self.orientation_reference.to_dict(),
             # 3D trajectory visualization
             "show_tx_trajectory": self.show_tx_trajectory,
             "show_rx_trajectory": self.show_rx_trajectory,
@@ -419,6 +440,7 @@ class AppState:
             "target_labels": list(self.target_labels),
             "show_target_labels": self.show_target_labels,
             "label_screen_space": self.label_screen_space,
+            "label_callout": self.label_callout.to_dict(),
             # Cutaway planes
             "clip_x_enabled": self.clip_x_enabled,
             "clip_x_position": self.clip_x_position,
@@ -431,15 +453,19 @@ class AppState:
             "clip_z_flip": self.clip_z_flip,
             # Capture mode
             "antialiasing_mode": self.antialiasing_mode,
+            "texture_mipmaps": self.texture_mipmaps,
+            "depth_precision": self.depth_precision,
             "show_ground_grid": self.show_ground_grid,
             "hover_info_mode": self.hover_info_mode,
             "viewport_hud_enabled": bool(self.viewport_hud_enabled),
             "viewport_hud_mode": normalize_viewport_hud_mode(self.viewport_hud_mode),
+            "viewport_hud_style": normalize_viewport_hud_style(self.viewport_hud_style),
             "viewport_hud_show_status": self.viewport_hud_show_status,
             "viewport_hud_show_legends": self.viewport_hud_show_legends,
             "viewport_hud_show_filters": self.viewport_hud_show_filters,
             "viewport_hud_show_annotations": self.viewport_hud_show_annotations,
             "show_mpc_type_markers": self.show_mpc_type_markers,
+            "show_mpc_frame_details": self.show_mpc_frame_details,
         }
 
     @classmethod
@@ -467,9 +493,8 @@ class AppState:
         kwargs["mpc_allowed_orders"] = frozenset(kwargs.get("mpc_allowed_orders", []))
         type_filter_schema = int(kwargs.pop("mpc_type_filter_schema_version", 1))
         allowed_types = frozenset(kwargs.get("mpc_allowed_types", []))
-        if (
-            type_filter_schema < _MPC_TYPE_FILTER_SCHEMA_VERSION
-            and allowed_types == _LEGACY_DEFAULT_MPC_ALLOWED_TYPES
+        if (type_filter_schema < 2 and allowed_types == _LEGACY_DEFAULT_MPC_ALLOWED_TYPES) or (
+            type_filter_schema < 3 and allowed_types == _V2_DEFAULT_MPC_ALLOWED_TYPES
         ):
             allowed_types = DEFAULT_MPC_ALLOWED_TYPES
         kwargs["mpc_allowed_types"] = allowed_types
@@ -477,6 +502,27 @@ class AppState:
         # Convert pov_hidden_node from list to tuple if present
         if kwargs.get("pov_hidden_node") is not None:
             kwargs["pov_hidden_node"] = tuple(kwargs["pov_hidden_node"])
+
+        kwargs["label_callout"] = LabelCalloutStyle.from_dict(kwargs.get("label_callout"))
+        if "orientation_reference" not in kwargs and (
+            kwargs.get("show_global_angular_reference")
+            or kwargs.get("show_local_angular_reference")
+        ):
+            # Older workspaces attached references to Context. Keep one of those
+            # actors when migrating to the independent orientation selector.
+            actor = ""
+            for kind in ("tx", "rx"):
+                index = kwargs.get(f"selected_{kind}")
+                if isinstance(index, int) and not isinstance(index, bool) and index >= 0:
+                    actor = f"{kind}:{index}"
+                    break
+            kwargs["orientation_reference"] = {
+                "actor": actor,
+                "radius_m": kwargs.get("aperture_radius_m"),
+            }
+        kwargs["orientation_reference"] = OrientationReferenceSettings.from_dict(
+            kwargs.get("orientation_reference")
+        )
 
         # Convert label lists back to tuples
         if "tx_labels" in kwargs and isinstance(kwargs["tx_labels"], list):
@@ -489,10 +535,9 @@ class AppState:
             kwargs["rx_device_names"] = tuple(kwargs["rx_device_names"])
         if "target_labels" in kwargs and isinstance(kwargs["target_labels"], list):
             kwargs["target_labels"] = tuple(kwargs["target_labels"])
+        label_mode = str(kwargs.get("node_label_mode", "role")).strip().lower()
         kwargs["node_label_mode"] = (
-            "name"
-            if str(kwargs.get("node_label_mode", "role")).strip().lower() == "name"
-            else "role"
+            label_mode if label_mode in {"role", "name", "sensing"} else "role"
         )
 
         # Drop vestigial keys that may exist in saved sessions
@@ -536,6 +581,9 @@ class AppState:
         else:
             kwargs["viewport_hud_enabled"] = not _legacy_viewport_hud_mode_is_off(raw_hud_mode)
         kwargs["viewport_hud_mode"] = normalize_viewport_hud_mode(raw_hud_mode)
+        kwargs["viewport_hud_style"] = normalize_viewport_hud_style(
+            kwargs.get("viewport_hud_style")
+        )
         kwargs.setdefault("viewport_hud_show_status", True)
         kwargs.setdefault("viewport_hud_show_legends", True)
         kwargs.setdefault("viewport_hud_show_filters", True)
@@ -559,7 +607,7 @@ def create_initial_state(
     sync_target_position: bool = True,
     camera_mode: CameraMode = "overview",
     fly_mode: bool = False,
-    pov_axis: POVAxis = "forward",
+    pov_axis: POVAxis = "motion",
     pov_hidden_node: tuple[str, int] | None = None,
     show_camera_minimap: bool = False,
     show_beamforming: bool = False,
@@ -615,6 +663,7 @@ def create_initial_state(
     aperture_radius_m: float = 5.0,
     show_global_angular_reference: bool = False,
     show_local_angular_reference: bool = False,
+    orientation_reference: OrientationReferenceSettings | dict | None = None,
     # 3D trajectory visualization
     show_tx_trajectory: bool = False,
     show_rx_trajectory: bool = False,
@@ -630,6 +679,7 @@ def create_initial_state(
     target_labels: tuple[str, ...] = (),
     show_target_labels: bool = True,
     label_screen_space: bool = True,
+    label_callout: LabelCalloutStyle | None = None,
     # Cutaway planes
     clip_x_enabled: bool = False,
     clip_x_position: float = 0.0,
@@ -641,15 +691,19 @@ def create_initial_state(
     clip_z_position: float = 0.0,
     clip_z_flip: bool = False,
     antialiasing_mode: str = "off",
+    texture_mipmaps: bool | None = None,
+    depth_precision: bool | None = None,
     show_ground_grid: bool = False,
     hover_info_mode: HoverInfoMode = "essential",
     viewport_hud_enabled: bool | None = None,
     viewport_hud_mode: ViewportHudMode = "compact",
+    viewport_hud_style: ViewportHudStyle = "classic",
     viewport_hud_show_status: bool = True,
     viewport_hud_show_legends: bool = True,
     viewport_hud_show_filters: bool = True,
     viewport_hud_show_annotations: bool = True,
     show_mpc_type_markers: bool = False,
+    show_mpc_frame_details: bool = False,
 ) -> AppState:
     """Return the default AppState configuration."""
 
@@ -731,6 +785,7 @@ def create_initial_state(
         aperture_radius_m=aperture_radius_m,
         show_global_angular_reference=show_global_angular_reference,
         show_local_angular_reference=show_local_angular_reference,
+        orientation_reference=OrientationReferenceSettings.from_dict(orientation_reference),
         # 3D trajectory visualization
         show_tx_trajectory=show_tx_trajectory,
         show_rx_trajectory=show_rx_trajectory,
@@ -746,6 +801,7 @@ def create_initial_state(
         target_labels=target_labels,
         show_target_labels=show_target_labels,
         label_screen_space=label_screen_space,
+        label_callout=LabelCalloutStyle.from_dict(label_callout),
         clip_x_enabled=clip_x_enabled,
         clip_x_position=clip_x_position,
         clip_x_flip=clip_x_flip,
@@ -756,6 +812,8 @@ def create_initial_state(
         clip_z_position=clip_z_position,
         clip_z_flip=clip_z_flip,
         antialiasing_mode=antialiasing_mode,
+        texture_mipmaps=texture_mipmaps,
+        depth_precision=depth_precision,
         show_ground_grid=show_ground_grid,
         hover_info_mode=normalize_hover_info_mode(hover_info_mode),
         viewport_hud_enabled=(
@@ -764,11 +822,13 @@ def create_initial_state(
             else bool(viewport_hud_enabled)
         ),
         viewport_hud_mode=normalize_viewport_hud_mode(viewport_hud_mode),
+        viewport_hud_style=normalize_viewport_hud_style(viewport_hud_style),
         viewport_hud_show_status=viewport_hud_show_status,
         viewport_hud_show_legends=viewport_hud_show_legends,
         viewport_hud_show_filters=viewport_hud_show_filters,
         viewport_hud_show_annotations=viewport_hud_show_annotations,
         show_mpc_type_markers=show_mpc_type_markers,
+        show_mpc_frame_details=show_mpc_frame_details,
     )
 
 
@@ -837,4 +897,7 @@ def update_state(state: AppState, **changes) -> AppState:
     normalized_hud_mode = normalize_viewport_hud_mode(updated.viewport_hud_mode)
     if normalized_hud_mode != updated.viewport_hud_mode:
         updated = replace(updated, viewport_hud_mode=normalized_hud_mode)
+    normalized_hud_style = normalize_viewport_hud_style(updated.viewport_hud_style)
+    if normalized_hud_style != updated.viewport_hud_style:
+        updated = replace(updated, viewport_hud_style=normalized_hud_style)
     return updated

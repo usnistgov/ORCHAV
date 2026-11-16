@@ -59,6 +59,9 @@ class _ApplicationDouble(QObject):
         self._stylesheet = stylesheet
         self.stylesheet_apply_count += 1
 
+    def allWidgets(self):
+        return []
+
     def styleHints(self):  # noqa: N802 - Qt-compatible test double
         return self._style_hints
 
@@ -260,6 +263,21 @@ def test_theme_manager_ignores_its_own_deferred_palette_change():
     assert app.stylesheet_apply_count == 1
 
 
+@pytest.mark.parametrize("scale", [1.0, 1.3])
+def test_theme_filter_ignores_non_event_wrapper(qtbot, scale, monkeypatch):
+    from PySide6.QtGui import QStandardItem
+
+    from visualizer.src.app.theme import ThemeManager
+
+    manager = ThemeManager()
+    manager._scale = scale
+    widget = _REAL_QLABEL("Selection")
+    qtbot.addWidget(widget)
+    monkeypatch.setattr(manager, "_scale_widget", lambda _: pytest.fail("Not a Qt event"))
+    # Reported by PySide on Windows while switching between native plot widgets.
+    assert manager.eventFilter(widget, QStandardItem("unexpected wrapper")) is False
+
+
 def test_theme_manager_reapplies_one_external_palette_change_once():
     from PySide6.QtCore import QEvent
 
@@ -303,3 +321,156 @@ def test_spacing_and_font_constants():
 
     assert SPACING_XS < SPACING_SM < SPACING_MD < SPACING_LG < SPACING_XL
     assert FONT_SM < FONT_MD < FONT_LG
+
+
+def test_interface_scale_round_trip_and_late_controls(qapp, tmp_path):
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QSpinBox, QWidget
+
+    from visualizer.src.app.theme import ThemeManager
+
+    settings = QSettings(str(tmp_path / "theme.ini"), QSettings.IniFormat)
+    manager = ThemeManager(settings)
+    host = QWidget()
+    spin = QSpinBox(host)
+    spin.setFixedHeight(24)
+    spin.setStyleSheet("font-size: 10px;")
+    manager.install(qapp, mode="light")
+    try:
+        manager.set_interface_scale(1.3)
+        assert spin.height() == 31
+        assert "13px" in spin.styleSheet()
+        manager.set_mode("dark", persist=False)
+        assert spin.height() == 31
+        assert "13px" in spin.styleSheet()
+        later = QSpinBox(host)
+        later.setStyleSheet("font-size: 10px;")
+        later.ensurePolished()
+        assert "13px" in later.styleSheet()
+        manager.set_interface_scale(1.0)
+        assert spin.height() == 24
+        assert "10px" in spin.styleSheet()
+        assert "10px" in later.styleSheet()
+    finally:
+        qapp.removeEventFilter(manager)
+        host.close()
+
+
+def test_theme_change_survives_widget_deletion_during_scaling(qapp, monkeypatch):
+    from PySide6.QtWidgets import QLabel, QWidget
+    from shiboken6 import delete, isValid
+
+    from visualizer.src.app.theme import (
+        LIGHT_THEME,
+        ThemeManager,
+        generate_application_palette,
+    )
+
+    victim = QWidget()
+
+    class DeletesNextWidget(QLabel):
+        def property(self, name):
+            if name == "_scaleAppliedStyle" and isValid(victim):
+                delete(victim)
+            return super().property(name)
+
+    first = DeletesNextWidget()
+    last = QLabel()
+    first.setStyleSheet("font-size: 10px;")
+    last.setStyleSheet("font-size: 10px;")
+    app = _ApplicationDouble(generate_application_palette(LIGHT_THEME))
+    manager = ThemeManager()
+    manager.install(app, mode="light")
+    monkeypatch.setattr(app, "allWidgets", lambda: [first, victim, last])
+    try:
+        manager.set_interface_scale(1.3, persist=False)
+        assert not isValid(victim)
+        assert "13px" in first.styleSheet()
+        assert "13px" in last.styleSheet()
+        assert manager.current_theme == LIGHT_THEME
+    finally:
+        first.close()
+        last.close()
+
+
+def test_scaled_workflow_controls_match_new_controls(qapp, qtbot, tmp_path):
+    """Changing scale must not enlarge QSS bounds a second time."""
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QComboBox, QLineEdit, QSpinBox, QVBoxLayout, QWidget
+
+    from visualizer.src.app.theme import ThemeManager
+
+    manager = ThemeManager(QSettings(str(tmp_path / "workflow.ini"), QSettings.IniFormat))
+    previous_style = qapp.styleSheet()
+    previous_palette = qapp.palette()
+
+    def controls():
+        host = QWidget()
+        qtbot.addWidget(host)
+        host.setProperty("workflowWorkspace", True)
+        layout = QVBoxLayout(host)
+        widgets = [QSpinBox(), QComboBox(), QLineEdit()]
+        widgets[0].setFixedWidth(72)
+        widgets[1].addItem("Choice")
+        for widget in widgets:
+            layout.addWidget(widget)
+        host.show()
+        qapp.processEvents()
+        return host, widgets
+
+    manager.install(qapp, mode="light")
+    host, existing = controls()
+    try:
+        for scale, mode in ((1.3, "light"), (1.3, "dark"), (1.15, "dark"), (1.0, "light")):
+            manager.set_interface_scale(scale, persist=False)
+            manager.set_mode(mode, persist=False)
+            new_host, fresh = controls()
+            for old, new in zip(existing, fresh, strict=True):
+                assert old.minimumHeight() == new.minimumHeight()
+                assert old.sizeHint().height() == new.sizeHint().height()
+                assert old.font().pixelSize() == new.font().pixelSize()
+            assert existing[0].minimumWidth() == round(72 * scale)
+            assert existing[0].maximumWidth() == round(72 * scale)
+            new_host.close()
+    finally:
+        qapp.removeEventFilter(manager)
+        host.close()
+        qapp.setStyleSheet(previous_style)
+        qapp.setPalette(previous_palette)
+
+
+def test_local_stylesheet_bounds_scale_once_after_creation(qapp, qtbot, tmp_path):
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QSpinBox, QWidget
+
+    from visualizer.src.app.theme import ThemeManager
+
+    manager = ThemeManager(QSettings(str(tmp_path / "local.ini"), QSettings.IniFormat))
+    previous_style = qapp.styleSheet()
+    previous_palette = qapp.palette()
+    host = QWidget()
+    qtbot.addWidget(host)
+    spin = QSpinBox(host)
+    spin.setFixedWidth(80)
+    manager.install(qapp, mode="light")
+    try:
+        manager.set_interface_scale(1.3, persist=False)
+        spin.setStyleSheet("min-height: 28px; max-height: 45px; font-size: 12px;")
+        spin.ensurePolished()
+        qapp.processEvents()
+        bounds = spin.minimumHeight(), spin.maximumHeight()
+        manager.set_mode("dark", persist=False)
+        assert (spin.minimumHeight(), spin.maximumHeight()) == bounds
+        assert spin.minimumWidth() == spin.maximumWidth() == 104
+        assert "16px" in spin.styleSheet()
+        manager.set_interface_scale(1.0, persist=False)
+        # QSS bounds include the theme's 3px padding and 1px border on each side.
+        assert spin.minimumHeight() == 36
+        assert spin.maximumHeight() == 53
+        assert spin.minimumWidth() == spin.maximumWidth() == 80
+        assert "12px" in spin.styleSheet()
+    finally:
+        qapp.removeEventFilter(manager)
+        host.close()
+        qapp.setStyleSheet(previous_style)
+        qapp.setPalette(previous_palette)

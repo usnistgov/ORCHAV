@@ -1,0 +1,240 @@
+{
+  "scenario": "scenarios/visualizer/sensing_gui/scenario.yaml",
+  "scene_source": {
+    "source": "library",
+    "id": "empty/empty.xml"
+  },
+  "source_files": {
+    "libraries/scenes/empty/empty.xml": "cad4eee6d9d4902909746d583904e156f27f3b022d08a2055d3ccc24666b7742",
+    "libraries/targets/cube/cube.ply": "92b4c49988762b9f7e425596c2b071dc3ba8ecb2d281df7985e32249bb6ed437",
+    "scenarios/visualizer/sensing_gui/scenario.yaml": "f28013cd03b906c332881c76f67257b19a07015c52fc781f469dc63041bd05d7"
+  },
+  "sample_indices": [
+    0,
+    255
+  ],
+  "sample_times_s": [
+    0.0,
+    0.255
+  ],
+  "steps": 256,
+  "actors": [
+    {
+      "name": "Monostatic radar",
+      "role": "radar",
+      "members": [
+        "RadarTX",
+        "RadarRX"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          0.0,
+          0.5
+        ],
+        [
+          0.0,
+          0.0,
+          0.5
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            0.0,
+            0.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TrackedCube",
+      "role": "target",
+      "members": [
+        "TrackedCube"
+      ],
+      "sample_positions_m": [
+        [
+          5.3,
+          0.8,
+          0.5
+        ],
+        [
+          4.767,
+          0.8,
+          0.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 128,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 0.128,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 255,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 0.255,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            5.3,
+            0.8,
+            0.5
+          ],
+          "rotation_matrix": [
+            [
+              -1.0,
+              -1.2246467991473532e-16,
+              0.0
+            ],
+            [
+              1.2246467991473532e-16,
+              -1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -1.0,
+            1.2246467991473532e-16,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "94ce3e6a7ccf8374100212619f05b7a70bfe40f934d8fe7ee7c87f77c06dd25f",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [],
+  "output_sha256": "23a2a73a7d88877641428c08edae762380e4672adf5102dd3eeefc7b291b6772",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -0.217,
+        -0.04,
+        0.335
+      ],
+      [
+        5.6419999999999995,
+        0.9650000000000001,
+        0.665
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 30,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "8832ee6a74cf03bfac1434a265d6ca1d887e04f7f95394323e31955b255118e1",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/visualizer/sensing_gui"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

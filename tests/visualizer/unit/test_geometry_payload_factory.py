@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from visualizer.src.scene.geometry_payload_factory import (
+    _compute_vertex_normals,
     extract_wireframe_payload,
     load_mesh_payload,
     make_box_payload,
@@ -16,6 +17,25 @@ from visualizer.src.scene.geometry_payload_factory import (
     make_sphere_payload,
     merge_mesh_payloads,
 )
+
+
+def test_vertex_normals_weight_faces_equally_and_accumulate_shared_vertices():
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [100.0, 0.0, 0.0], [0.0, 100.0, 0.0], [0.0, 0.0, 1.0], [5.0, 5.0, 5.0]]
+    )
+    triangles = np.array([[0, 1, 2], [0, 3, 1], [0, 0, 1], [-1, 0, 1], [0, 1, 99]])
+    normals = _compute_vertex_normals(vertices, triangles)
+    diagonal = np.sqrt(0.5)
+    np.testing.assert_allclose(
+        normals, [[0, diagonal, diagonal], [0, diagonal, diagonal], [0, 0, 1], [0, 1, 0], [0, 0, 0]]
+    )
+
+
+def test_vertex_normals_cancel_opposite_winding_and_reject_empty_geometry():
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    assert _compute_vertex_normals(vertices, np.array([[0, 1, 2], [0, 2, 1]])) is None
+    assert _compute_vertex_normals(vertices, np.empty((0, 3), dtype=int)) is None
+    assert _compute_vertex_normals(vertices, np.array([[0, 0, 1], [-1, 0, 1]])) is None
 
 
 def test_sphere_payload_is_backend_neutral() -> None:
@@ -192,3 +212,55 @@ def test_load_binary_little_endian_ply_payload(tmp_path) -> None:
     np.testing.assert_allclose(payload.normals[0], [0.0, 0.0, 1.0])
     assert payload.vertex_colors is not None
     np.testing.assert_allclose(payload.vertex_colors[1], [0.0, 1.0, 0.0])
+
+
+def test_ascii_triangle_bulk_reader_matches_general_reader(tmp_path):
+    from visualizer.src.scene.geometry_payload_factory import _load_ascii_ply_payload
+
+    path = tmp_path / "attributes.ply"
+    path.write_text("""ply
+format ascii 1.0
+element vertex 3
+property uchar blue
+property double z
+property double x
+property double y
+property uchar red
+property uchar green
+property float nx
+property float ny
+property float nz
+element face 1
+property list uchar int vertex_indices
+end_header
+128 0 0.00000000000017 0 255 16 0 0 1
+255 0 1 0 0 64 0 0 1
+0 0 0 1 32 255 0 0 1
+3 0 1 2
+""")
+    actual, expected = load_mesh_payload(path), _load_ascii_ply_payload(path)
+    for field in ("vertices", "triangles", "normals", "vertex_colors"):
+        np.testing.assert_array_equal(getattr(actual, field), getattr(expected, field))
+
+
+def test_ascii_mixed_polygons_retain_fan_triangulation(tmp_path):
+    path = tmp_path / "polygons.ply"
+    path.write_text("""ply
+format ascii 1.0
+element vertex 4
+property float x
+property float y
+property float z
+element face 2
+property list uchar int vertex_indices
+end_header
+0 0 0
+1 0 0
+1 1 0
+0 1 0
+4 0 1 2 3
+3 0 2 3
+""")
+    payload = load_mesh_payload(path)
+    np.testing.assert_array_equal(payload.triangles, [[0, 1, 2], [0, 2, 3], [0, 2, 3]])
+    np.testing.assert_allclose(payload.normals, [[0, 0, 1]] * 4)

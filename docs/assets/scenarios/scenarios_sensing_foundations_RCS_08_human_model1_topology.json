@@ -1,0 +1,281 @@
+{
+  "scenario": "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml",
+  "scene_source": {
+    "id": "scene.xml",
+    "source": "local"
+  },
+  "source_files": {
+    "generator/core/target/representation.py": "72f0589ab16a8c10e2b6e0e0ad9aaf9f5bf77d5486adea86f7c370e2627a56f7",
+    "generator/figures/topology_targets.py": "5d3ca58b697140c614cf7aff988fd9cf8c5eced47f9b926cfe36deb638f90bbf",
+    "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml": "2545b6343c999642f7046adb94de8990d1f9470f3043f6c1c9bce23fa6c3b297",
+    "scenarios/sensing/foundations/RCS/08_human_model1/scene.xml": "e1632b3f855b07178d3329f59fdc000b2637fc76eb97abe1f44385311bba83f4"
+  },
+  "sample_indices": [
+    0,
+    511
+  ],
+  "sample_times_s": [
+    0.0,
+    1.022
+  ],
+  "steps": 512,
+  "actors": [
+    {
+      "name": "Monostatic radar",
+      "role": "radar",
+      "members": [
+        "radar_tx",
+        "radar_rx"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          0.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "native_human",
+      "role": "target",
+      "members": [
+        "native_human"
+      ],
+      "sample_positions_m": [
+        [
+          40.0,
+          0.0,
+          0.875
+        ],
+        [
+          38.467,
+          0.0,
+          0.875
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 256,
+          "mesh_index": 0,
+          "source": "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml",
+          "time_s": 0.512,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 511,
+          "mesh_index": 0,
+          "source": "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml",
+          "time_s": 1.022,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            40.0,
+            0.0,
+            0.875
+          ],
+          "rotation_matrix": [
+            [
+              -1.0,
+              -1.2246467991473532e-16,
+              0.0
+            ],
+            [
+              1.2246467991473532e-16,
+              -1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -1.0,
+            1.2246467991473532e-16,
+            0.0
+          ]
+        }
+      ],
+      "representation": "tr38901",
+      "proxy_geometry": {
+        "type": "box",
+        "scaling": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "length_m": 0.5,
+        "width_m": 0.5,
+        "height_m": 1.75
+      }
+    }
+  ],
+  "display_groups": [],
+  "material_legend": [],
+  "output_sha256": "3e2277c6bf1dfb508c8e19d1e03544800fd81a15fff30c3ae5f66aab8dbf26d1",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -1.61,
+        -0.29000000000000004,
+        -0.07
+      ],
+      [
+        41.86,
+        0.29000000000000004,
+        1.82
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 30,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [
+    {
+      "name": "native_human",
+      "projection_axes": [
+        "X",
+        "Z"
+      ],
+      "displacement_m": 1.5330000000000013,
+      "start_position_m": [
+        40.0,
+        0.0,
+        0.875
+      ],
+      "end_position_m": [
+        38.467,
+        0.0,
+        0.875
+      ],
+      "start_time_s": 0.0,
+      "end_time_s": 1.022
+    }
+  ],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "8832ee6a74cf03bfac1434a265d6ca1d887e04f7f95394323e31955b255118e1",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "motion_renderer_sha256": "8fea0d9a9ed108fe662e2941ee7b19df5b36b935bd1ac67b13769c343795aa58",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.topology",
+    "--scenario",
+    "scenarios/sensing/foundations/RCS/08_human_model1",
+    "--output",
+    "docs/assets/scenarios/scenarios_sensing_foundations_RCS_08_human_model1_topology.png",
+    "--view",
+    "both",
+    "--dpi",
+    "170"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

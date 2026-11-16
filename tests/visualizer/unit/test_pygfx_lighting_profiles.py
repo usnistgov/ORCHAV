@@ -10,6 +10,7 @@ from visualizer.src.renderers.pygfx.lighting_profiles import (
     CUSTOM_PROFILE,
     INSPECTION_PROFILE,
     OUTDOOR_REALISTIC_PROFILE,
+    PARIS_DAYLIGHT_PROFILE,
     PYGFX_LIGHTING_PROFILES,
     SIONNA_RT_PREVIEW_PROFILE,
 )
@@ -110,3 +111,26 @@ def test_manual_lighting_edit_marks_profile_custom():
 
     assert renderer.get_lighting_profile() == CUSTOM_PROFILE
     assert renderer.get_light_rig_state()["key_intensity"] == pytest.approx(2.25)
+
+
+def test_paris_daylight_can_be_switched_off_without_changing_inspection():
+    renderer = _profile_renderer()
+    renderer._key_light.shadow = SimpleNamespace(
+        bias=0.001,
+        camera=SimpleNamespace(width=1500.0, height=1500.0, near=-500.0, far=500.0),
+    )
+    assert renderer.set_lighting_profile(INSPECTION_PROFILE)
+    original = renderer.get_light_rig_state()
+    ibl = renderer._ibl_intensity
+    assert renderer.set_lighting_profile(PARIS_DAYLIGHT_PROFILE)
+    assert renderer.get_light_rig_state()["headlight_enabled"] is False
+    assert renderer._key_light.cast_shadow is True
+    assert 0.009 < renderer._key_light.shadow.bias < 0.011
+    renderer.set_key_light_intensity(2.25)
+    assert renderer.get_lighting_profile() == CUSTOM_PROFILE
+    renderer._update_shadow_extent(10.0)
+    assert renderer._key_light.shadow.bias < 0.001  # No city-sized bias indoors.
+    assert renderer.set_lighting_profile(INSPECTION_PROFILE)
+    assert renderer.get_light_rig_state() == original
+    assert renderer._ibl_intensity == ibl
+    assert renderer._key_light.shadow.bias == 0.001

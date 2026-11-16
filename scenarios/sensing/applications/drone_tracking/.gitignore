@@ -1,0 +1,5 @@
+runs/
+analysis/
+!multiple/experiment.json
+!munich/experiment.json
+!munich/two_drones/experiment.json

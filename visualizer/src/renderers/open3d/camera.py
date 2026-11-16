@@ -467,7 +467,10 @@ class Open3DCameraMixin:
         defer_redraw: bool = False,
     ) -> bool:
         """Apply a first-person camera intent from entity pose."""
-        state = camera_state_for_pov(position, orientation, axis=axis)
+        current = self.get_camera_state()
+        state = camera_state_for_pov(
+            position, orientation, axis=axis, fov=current.fov_deg if current is not None else 60.0
+        )
         return False if state is None else self.set_camera_state(state)
 
     def update_follow_camera(self, target_position: Any) -> bool:

@@ -23,6 +23,7 @@ from PySide6.QtCore import (
     QSortFilterProxyModel,
     Qt,
     QTimer,
+    Signal,
 )
 from PySide6.QtGui import QBrush, QFont
 from PySide6.QtWidgets import (
@@ -31,11 +32,15 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QFrame,
     QGridLayout,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMainWindow,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QTableView,
@@ -47,9 +52,52 @@ from PySide6.QtWidgets import (
 from shared.logging import get_logger
 from shared.statistics import DEFAULT_BINS
 
-from ..app.plot_theme import apply_pyqtgraph_plot_theme, pyqtgraph_theme
+from ..app.plot_theme import dashboard_series_color
 from ..app.theme import current_theme, get_theme_manager
+from ..widgets.dashboard_host import dashboard_is_visible
+from ..widgets.dashboard_plot import DashboardPlot
+from ..widgets.wrapping_layout import WrappingLayout
 from .mpc_path_catalog import MpcPathCatalog, MpcPathCatalogError
+
+
+# Dashboard-local surfaces deliberately do not change the application's theme.
+def _metrics_style(theme):
+    return f"""
+QWidget#MpcMetrics {{ background: {theme.bg_primary}; color: {theme.text_primary}; font-size: 12px; }}
+QWidget#MpcMetrics QLabel {{ background: transparent; color: {theme.text_primary}; }}
+QWidget#MpcMetrics QLabel#metricsTitle {{ font-size: 22px; font-weight: 700; }}
+QWidget#MpcMetrics QLabel#eyebrow {{ color: {theme.text_secondary}; font-size: 10px; font-weight: 600; letter-spacing: 1px; }}
+QWidget#MpcMetrics QLabel#scope, QWidget#MpcMetrics QLabel#methodNote {{ color: {theme.text_secondary}; font-size: 11px; }}
+QWidget#MpcMetrics QFrame#metricCard {{ background: {theme.bg_secondary}; border: 1px solid {theme.border_subtle}; border-radius: 8px; }}
+QWidget#MpcMetrics QLabel#metricName {{ color: {theme.text_secondary}; font-size: 10px; font-weight: 600; }}
+QWidget#MpcMetrics QLabel#metricValue {{ color: {theme.text_primary}; font-size: 22px; font-weight: 700; }}
+QWidget#MpcMetrics QLabel#metricCaption {{ color: {theme.text_secondary}; font-size: 10px; }}
+QWidget#MpcMetrics QFrame#settingsDrawer {{ background: {theme.bg_tertiary}; border: 1px solid {theme.border_subtle}; border-radius: 7px; }}
+QWidget#MpcMetrics QPushButton {{ background: {theme.bg_secondary}; color: {theme.text_secondary}; border: 1px solid {theme.border_primary}; border-radius: 6px; padding: 6px 10px; font-size: 11px; }}
+QWidget#MpcMetrics QPushButton:hover, QWidget#MpcMetrics QPushButton:checked {{ background: {theme.bg_tertiary}; border-color: {theme.accent_hover}; }}
+QWidget#MpcMetrics QCheckBox {{ color: {theme.text_secondary}; background: transparent; font-size: 11px; spacing: 5px; }}
+QWidget#MpcMetrics QCheckBox::indicator {{ width: 12px; height: 12px; border: 1px solid {theme.border_primary}; border-radius: 3px; background: {theme.bg_secondary}; }}
+QWidget#MpcMetrics QCheckBox::indicator:checked {{ background: {theme.accent}; border-color: {theme.accent}; }}
+QWidget#MpcMetrics QComboBox, QWidget#MpcMetrics QSpinBox {{ color: {theme.text_primary}; background: {theme.bg_secondary}; border: 1px solid {theme.border_primary}; border-radius: 4px; padding: 4px; font-size: 11px; }}
+QWidget#MpcMetrics QTabWidget::pane {{ border: none; background: transparent; }}
+QWidget#MpcMetrics QTabBar::tab {{ background: transparent; color: {theme.text_secondary}; border: none; border-bottom: 2px solid transparent; padding: 8px 20px; font-size: 12px; }}
+QWidget#MpcMetrics QTabBar::tab:selected {{ color: {theme.accent}; font-weight: 600; border-bottom: 2px solid {theme.accent}; }}
+QWidget#MpcMetrics QTabBar::tab:disabled {{ color: {theme.text_muted}; }}
+QWidget#MpcMetrics QTableView {{ background: {theme.bg_secondary}; alternate-background-color: {theme.bg_primary}; color: {theme.text_primary}; gridline-color: {theme.border_subtle}; border: 1px solid {theme.border_subtle}; border-radius: 6px; selection-background-color: {theme.bg_tertiary}; selection-color: {theme.text_primary}; }}
+QWidget#MpcMetrics QHeaderView::section {{ background: {theme.bg_tertiary}; color: {theme.text_secondary}; border: none; border-bottom: 1px solid {theme.border_subtle}; padding: 7px; font-size: 11px; }}
+"""
+
+
+_METRIC_CARDS = (
+    ("paths", "SELECTED MPCs", "all selected paths", "#2865b0"),
+    ("delay", "DELAY RANGE", "selected paths · ns", "#2865b0"),
+    ("loss", "PATH LOSS RANGE", "selected paths · dB", "#b5475a"),
+    ("spread", "RMS DELAY SPREAD", "pooled selected paths · ns", "#00866b"),
+    ("angle", "AoD AZIMUTH SPREAD", "selected paths · deg", "#a66b00"),
+)
+
+_UNAVAILABLE_METRIC = "N/A: no usable data for this metric in the current selection."
+_EMPTY_PLOT_MESSAGE = "No data available<br>for this selection"
 
 
 def _default_ui_font(
@@ -66,6 +114,26 @@ def _default_ui_font(
     if application is not None:
         font = font.resolve(application.font())
     return font
+
+
+class _ToolbarRowLayout(QHBoxLayout):
+    """Keep a natural-size heading beside the first line of wrapping controls."""
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        heading, flow = self.itemAt(0), self.itemAt(1).layout()
+        first = next(
+            (
+                flow.itemAt(index)
+                for index in range(flow.count())
+                if not flow.itemAt(index).isEmpty()
+            ),
+            None,
+        )
+        if first is not None:
+            geometry = heading.geometry()
+            geometry.moveTop(first.geometry().center().y() - (geometry.height() - 1) // 2)
+            heading.setGeometry(geometry)
 
 
 class _MaterialBreakdownModel(QAbstractTableModel):
@@ -207,13 +275,16 @@ class _PairCountModel(QAbstractTableModel):
         return None
 
 
-class MetricsWindow(QMainWindow):
-    """Per-frame MPC diagnostics window using pyqtgraph."""
+class _MetricsContent:
+    """Per-frame MPC diagnostics shared by the embedded and standalone hosts."""
 
     _DEFAULT_PLOT_POINT_LIMIT = 5000
     _MIN_PLOT_POINT_LIMIT = 0
     _MAX_PLOT_POINT_LIMIT = 50_000
     _MINIMUM_ADAPTIVE_COOLDOWN_MS = 16
+    _MAXIMUM_UI_DELAY_MS = 250.0
+    _UI_DELAY_TOLERANCE_MS = 2.0
+    _LOAD_DECAY = 0.8
     _CATALOG_PATH_COLUMNS = {
         ("path_tx", "tx_id"): "tx_ids",
         ("path_rx", "rx_id"): "rx_ids",
@@ -226,14 +297,15 @@ class MetricsWindow(QMainWindow):
         ("", "aoa_el"): "aoa_elevation_deg",
     }
     _ORDER_COLORS = (
-        "#2f7ed8",
-        "#5cb85c",
-        "#f0ad4e",
-        "#d9534f",
-        "#7b6ed6",
-        "#4ec9c9",
+        "#2865b0",
+        "#00866b",
+        "#a66b00",
+        "#b5475a",
+        "#7053ad",
+        "#078596",
     )
-    _ORDER_FALLBACK_COLOR = "#888888"
+    _ORDER_SYMBOLS = ("o", "s", "t", "d", "+", "x")
+    _ORDER_FALLBACK_COLOR = "#64748b"
 
     _ANGLE_FIELDS = {
         "aod_az": ("AoD Azimuth", "AoD Azimuth"),
@@ -245,18 +317,22 @@ class MetricsWindow(QMainWindow):
     def __init__(
         self,
         parent=None,
-        update_hz: int = 8,
+        update_hz: int = 0,
         frame_stats_provider: Callable[[Any], Any] | None = None,
     ):
         """Create the dashboard widgets and schedule periodic refreshes."""
         super().__init__(parent)
         self.setWindowTitle("ORCHAV - MPC Analysis Dashboard")
         self.setAttribute(Qt.WA_DeleteOnClose, True)
-        self.resize(1040, 760)
+        self._hosted = False
+        self._plots_released = False
+        self._live_figure_leases: dict[str, QLabel] = {}
+        self.setMinimumWidth(320)
 
         self.logger = get_logger("orchav.metrics")
         self._plot_titles: dict[pg.PlotWidget, str] = {}
         self._styled_plots: list[pg.PlotWidget] = []
+        self._scatter_orders: dict[pg.ScatterPlotItem, np.ndarray] = {}
         # ScatterPlotItem caches rendered symbols by QBrush identity. Reusing
         # these brushes avoids rasterizing the same order colors per point on
         # every dashboard refresh.
@@ -266,31 +342,87 @@ class MetricsWindow(QMainWindow):
         self._order_fallback_brush = pg.mkBrush(self._ORDER_FALLBACK_COLOR)
         self._refresh_theme_tokens()
 
-        cw = QWidget(self)
-        self.setCentralWidget(cw)
+        cw = self
+        if isinstance(self, QMainWindow):
+            self.resize(1280, 800)
+            cw = QWidget(self)
+            self.setCentralWidget(cw)
+        self._surface = cw
+        cw.setObjectName("MpcMetrics")
+        cw.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        cw.setStyleSheet(_metrics_style(current_theme()))
         root = QVBoxLayout(cw)
-        root.setContentsMargins(8, 8, 8, 8)
+        root.setContentsMargins(16, 8, 16, 8)
         root.setSpacing(6)
 
-        title = QLabel("MPC Analysis Dashboard")
-        title.setFont(_default_ui_font(13, weight=QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignCenter)
+        eyebrow = QLabel("PROPAGATION  /  LIVE FRAME ANALYSIS")
+        eyebrow.setObjectName("eyebrow")
+        title = QLabel("MPC metrics")
+        title.setObjectName("metricsTitle")
+        title.setFont(_default_ui_font(17, weight=QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignLeft)
         self.title_label = title
-        root.addWidget(title)
+        self.placement_button = QPushButton("Pop out")
+        self.placement_button.hide()
+        heading = QHBoxLayout()
+        titles = QVBoxLayout()
+        titles.setSpacing(2)
+        titles.setContentsMargins(0, 0, 0, 0)
+        titles.addWidget(eyebrow)
+        titles.addWidget(title)
+        title_widget = QWidget()
+        title_widget.setLayout(titles)
+        heading.addWidget(title_widget, 1)
+        heading.addWidget(self.placement_button)
+        root.addLayout(heading)
 
         self.context_label = QLabel("Frame - | TX: - | RX: - | MPCs: -")
-        self.context_label.setAlignment(Qt.AlignCenter)
+        self.context_label.setAlignment(Qt.AlignLeft)
+        self.context_label.setObjectName("scope")
         self.context_label.setFont(_default_ui_font(9))
+        self.context_label.setWordWrap(True)
         root.addWidget(self.context_label)
 
-        toolbar = QWidget(self)
-        toolbar_layout = QGridLayout(toolbar)
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setHorizontalSpacing(8)
-        toolbar_layout.setVerticalSpacing(4)
+        self.metric_values: dict[str, QLabel] = {}
+        self._metric_cards: list[QFrame] = []
+        self._metric_grid = QGridLayout()
+        self._metric_grid.setSpacing(8)
+        self._metric_columns = 0
+        for key, name, caption, accent in _METRIC_CARDS:
+            card = QFrame()
+            card.setObjectName("metricCard")
+            card.setStyleSheet(f"QFrame#metricCard {{ border-top: 3px solid {accent}; }}")
+            box = QVBoxLayout(card)
+            box.setContentsMargins(10, 7, 10, 7)
+            box.setSpacing(1)
+            for text, object_name in (
+                (name, "metricName"),
+                ("N/A", "metricValue"),
+                (caption, "metricCaption"),
+            ):
+                label = QLabel(text)
+                label.setObjectName(object_name)
+                label.setMinimumWidth(0)
+                label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                if object_name == "metricValue":
+                    self.metric_values[key] = label
+                    label.setToolTip(_UNAVAILABLE_METRIC)
+                box.addWidget(label)
+            self._metric_cards.append(card)
+        self._reflow_metric_cards()
+        root.addLayout(self._metric_grid)
 
-        self.pause_cb = QCheckBox("Pause")
-        self.refresh_btn = QPushButton("Refresh")
+        toolbar = QWidget(self)
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar_layout.setSpacing(4)
+
+        self.pause_cb = QCheckBox("Freeze results")
+        self.pause_cb.setToolTip(
+            "Keep the displayed results and stop automatic metric calculations. "
+            "Refresh once uses the current frame without resuming automatic updates."
+        )
+        self.refresh_btn = QPushButton("Refresh once")
         self.auto_range_cb = QCheckBox("Adaptive axes")
         self.auto_range_cb.setChecked(True)
         self.auto_range_cb.setToolTip(
@@ -299,16 +431,10 @@ class MetricsWindow(QMainWindow):
             "This does not scan other scenario frames."
         )
         self.log_y_cb = QCheckBox("Log Y")
+        self.overview_grid_cb = QCheckBox("Grid")
+        self.overview_grid_cb.setToolTip("Show grid lines on all Overview figures")
         self.materials_tab_cb = QCheckBox("Materials")
         self.materials_tab_cb.setChecked(True)
-        self.angle_combo = QComboBox()
-        self.angle_combo.addItem("AoD Az", "aod_az")
-        self.angle_combo.addItem("AoD El", "aod_el")
-        self.angle_combo.addItem("AoA Az", "aoa_az")
-        self.angle_combo.addItem("AoA El", "aoa_el")
-        self.angular_map_combo = QComboBox()
-        self.angular_map_combo.addItem("AoD Map", "aod")
-        self.angular_map_combo.addItem("AoA Map", "aoa")
         self.pair_metric_combo = QComboBox()
         self.pair_metric_combo.addItem("Selected MPC Count", "count")
         self.pair_metric_combo.addItem("Strongest Loss", "strongest_loss")
@@ -329,54 +455,93 @@ class MetricsWindow(QMainWindow):
         )
         self.update_rate_spin = QSpinBox()
         self.update_rate_spin.setRange(0, 60)
-        self.update_rate_spin.setSpecialValueText("Maximum (adaptive)")
+        self.update_rate_spin.setSpecialValueText("Automatic")
         self.update_rate_spin.setSuffix(" Hz")
         self.update_rate_spin.setValue(max(0, min(60, int(update_hz))))
         self.update_rate_spin.setToolTip(
-            "Maximum adapts to the measured computation and drawing cost so the "
-            "visualizer remains responsive. Intermediate Metrics frames may be "
+            "Automatic adapts to refresh cost and UI event-loop delays, including "
+            "deferred drawing work. Intermediate Metrics frames may be "
             "skipped, while fixed rates remain upper refresh limits."
         )
         self.export_csv_btn = QPushButton("Export CSV")
         self.export_png_btn = QPushButton("Export PNG")
 
-        primary_controls = (
-            self.pause_cb,
-            self.refresh_btn,
-            self.auto_range_cb,
-            self.log_y_cb,
-            QLabel("Tabs:"),
-            self.materials_tab_cb,
-            QLabel("Angle:"),
-            self.angle_combo,
-            QLabel("Map:"),
-            self.angular_map_combo,
+        self.settings_toggle = QPushButton("Options")
+        self.settings_toggle.setCheckable(True)
+        self.settings_toggle.setToolTip(
+            "Show marker limits, material visibility and export actions"
         )
-        for column, widget in enumerate(primary_controls):
-            toolbar_layout.addWidget(widget, 0, column)
-        toolbar_layout.setColumnStretch(len(primary_controls), 1)
+        self.settings_drawer = QFrame()
+        self.settings_drawer.setObjectName("settingsDrawer")
+        settings_layout = WrappingLayout(self.settings_drawer)
+        settings_layout.setContentsMargins(10, 6, 10, 6)
+        self.settings_drawer.hide()
+        self.settings_toggle.toggled.connect(self.settings_drawer.setVisible)
+
+        def field(label, control):
+            # Keep each label beside its control when the toolbar wraps.
+            widget = QWidget()
+            row = QHBoxLayout(widget)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(4)
+            row.addWidget(QLabel(label))
+            row.addWidget(control)
+            return widget
+
+        self._channel_pair_control = field("Pair metric:", self.pair_metric_combo)
+        self._channel_pair_control.hide()
+
+        def control_row(title, controls):
+            row = QWidget()
+            layout = _ToolbarRowLayout(row)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(8)
+            label = QLabel(title)
+            label.setObjectName("scope")
+            label.setFixedWidth(48)
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignTop)
+            flow = WrappingLayout()
+            for control in controls:
+                flow.addWidget(control)
+            layout.addLayout(flow, 1)
+            toolbar_layout.addWidget(row)
+            return row
+
+        self._refresh_controls_row = control_row(
+            "Updates", (self.pause_cb, self.refresh_btn, field("Rate:", self.update_rate_spin))
+        )
+        self._plot_controls_row = control_row(
+            "Plots",
+            (
+                self.auto_range_cb,
+                self.log_y_cb,
+                self.overview_grid_cb,
+                self._channel_pair_control,
+                self.settings_toggle,
+            ),
+        )
+        self._export_controls_row = control_row(
+            "Export", (self.export_csv_btn, self.export_png_btn)
+        )
 
         secondary_controls = (
-            QLabel("Pair metric:"),
-            self.pair_metric_combo,
-            QLabel("Max plotted markers:"),
-            self.plot_point_limit_spin,
-            QLabel("Update rate:"),
-            self.update_rate_spin,
-            self.export_csv_btn,
-            self.export_png_btn,
+            field("Max plotted markers:", self.plot_point_limit_spin),
+            self.materials_tab_cb,
         )
-        for column, widget in enumerate(secondary_controls):
-            toolbar_layout.addWidget(widget, 1, column)
+        for widget in secondary_controls:
+            settings_layout.addWidget(widget)
+        toolbar_layout.removeWidget(self._export_controls_row)
+        settings_layout.addWidget(self._export_controls_row)
         root.addWidget(toolbar)
+        root.addWidget(self.settings_drawer)
 
         self.pause_cb.toggled.connect(self._on_pause_toggled)
         self.refresh_btn.clicked.connect(self._manual_refresh)
         self.auto_range_cb.toggled.connect(self._mark_pending_refresh)
         self.log_y_cb.toggled.connect(self._apply_log_y)
+        self.overview_grid_cb.toggled.connect(self._apply_overview_grid)
         self.materials_tab_cb.toggled.connect(self._on_materials_tab_toggled)
-        self.angle_combo.currentIndexChanged.connect(self._mark_pending_refresh)
-        self.angular_map_combo.currentIndexChanged.connect(self._mark_pending_refresh)
         self.pair_metric_combo.currentIndexChanged.connect(self._mark_pending_refresh)
         self.plot_point_limit_spin.valueChanged.connect(self._mark_pending_refresh)
         self.update_rate_spin.valueChanged.connect(self._on_update_rate_changed)
@@ -386,60 +551,68 @@ class MetricsWindow(QMainWindow):
         pg.setConfigOptions(antialias=True)
         self.tabs = QTabWidget(self)
 
-        overview_tab = QWidget(self.tabs)
-        overview_layout = QVBoxLayout(overview_tab)
-        overview_layout.setContentsMargins(0, 0, 0, 0)
+        overview_tab = QScrollArea(self.tabs)
+        overview_tab.setWidgetResizable(True)
+        overview_tab.setFrameShape(QFrame.Shape.NoFrame)
+        overview_content = QWidget()
+        overview_tab.setWidget(overview_content)
+        overview_layout = QVBoxLayout(overview_content)
+        overview_layout.setContentsMargins(0, 8, 0, 0)
         overview_layout.setSpacing(6)
         grid = QGridLayout()
         grid.setSpacing(8)
+        self._overview_grid = grid
+        self._overview_columns = 0
 
         def style_plot(pw: pg.PlotWidget, title_text: str) -> None:
             """Apply the dashboard's shared pyqtgraph plot styling."""
             self._register_plot(pw, title_text)
 
-        self.delay_plot = pg.PlotWidget()
+        self.delay_plot = DashboardPlot()
         style_plot(self.delay_plot, "Delay Distribution")
         self.delay_bars = pg.BarGraphItem(
             x=[],
             height=[],
             width=0.8,
-            brush=pg.mkBrush("#4a90d9"),
-            pen=pg.mkPen("#2c5f8a", width=0.5),
+            brush=pg.mkBrush("#477fb8"),
+            pen=pg.mkPen("#2865b0", width=0.5),
         )
         self.delay_plot.addItem(self.delay_bars)
         self.delay_plot.setLabel("bottom", "Delay", units="ns", **self._label_style)
         self.delay_plot.setLabel("left", "Count", **self._label_style)
-        grid.addWidget(self.delay_plot, 0, 0)
 
-        self.angle_plot = pg.PlotWidget()
-        style_plot(self.angle_plot, "AoD Azimuth Distribution")
-        self.angle_bars = pg.BarGraphItem(
-            x=[],
-            height=[],
-            width=0.8,
-            brush=pg.mkBrush("#e68a3c"),
-            pen=pg.mkPen("#b06020", width=0.5),
-        )
-        self.angle_plot.addItem(self.angle_bars)
-        self.angle_plot.setLabel("bottom", "AoD Azimuth", units="deg", **self._label_style)
-        self.angle_plot.setLabel("left", "Count", **self._label_style)
-        grid.addWidget(self.angle_plot, 0, 1)
+        self.angle_plots = {}
+        self.angle_bars = {}
+        for field, (title, label) in self._ANGLE_FIELDS.items():
+            plot = DashboardPlot()
+            style_plot(plot, f"{title} Distribution")
+            bars = pg.BarGraphItem(
+                x=[],
+                height=[],
+                width=0.8,
+                brush=pg.mkBrush("#c08a35"),
+                pen=pg.mkPen("#a66b00", width=0.5),
+            )
+            plot.addItem(bars)
+            plot.setLabel("bottom", label, units="deg", **self._label_style)
+            plot.setLabel("left", "Count", **self._label_style)
+            self.angle_plots[field] = plot
+            self.angle_bars[field] = bars
 
-        self.loss_plot = pg.PlotWidget()
+        self.loss_plot = DashboardPlot()
         style_plot(self.loss_plot, "Path Loss Distribution")
         self.loss_bars = pg.BarGraphItem(
             x=[],
             height=[],
             width=0.8,
-            brush=pg.mkBrush("#d95050"),
-            pen=pg.mkPen("#8b2020", width=0.5),
+            brush=pg.mkBrush("#bd6678"),
+            pen=pg.mkPen("#b5475a", width=0.5),
         )
         self.loss_plot.addItem(self.loss_bars)
         self.loss_plot.setLabel("bottom", "Path Loss", units="dB", **self._label_style)
         self.loss_plot.setLabel("left", "Count", **self._label_style)
-        grid.addWidget(self.loss_plot, 1, 0)
 
-        self.binned_pdp_plot = pg.PlotWidget()
+        self.binned_pdp_plot = DashboardPlot()
         style_plot(
             self.binned_pdp_plot,
             "Power Delay Profile (1 ns resolution)",
@@ -454,28 +627,27 @@ class MetricsWindow(QMainWindow):
             x=[],
             height=[],
             width=0.01,
-            brush=pg.mkBrush("#4ec9c9"),
-            pen=pg.mkPen("#2a8a8a", width=0.5),
+            brush=pg.mkBrush("#168f80"),
+            pen=pg.mkPen("#00866b", width=0.5),
         )
         self.binned_pdp_plot.addItem(self.binned_pdp_stems)
         self.binned_pdp_dots = pg.ScatterPlotItem(
             size=6,
-            brush=pg.mkBrush("#4ec9c9"),
+            brush=pg.mkBrush("#168f80"),
             pen=pg.mkPen(None),
         )
         self.binned_pdp_plot.addItem(self.binned_pdp_dots)
         self.binned_pdp_plot.setLabel("bottom", "Delay", units="ns", **self._label_style)
         self.binned_pdp_plot.setLabel("left", "Summed path gain", units="dB", **self._label_style)
-        grid.addWidget(self.binned_pdp_plot, 2, 0, 1, 2)
 
-        self.order_plot = pg.PlotWidget()
+        self.order_plot = DashboardPlot()
         style_plot(self.order_plot, "Interaction Order Distribution")
         self.order_bars = pg.BarGraphItem(
             x=[],
             height=[],
             width=0.8,
-            brush=pg.mkBrush("#5cb85c"),
-            pen=pg.mkPen("#3a7a3a", width=0.5),
+            brush=pg.mkBrush("#269c82"),
+            pen=pg.mkPen("#00866b", width=0.5),
         )
         self.order_plot.addItem(self.order_bars)
         self.order_plot.setLabel("bottom", "Interaction Order", **self._label_style)
@@ -491,15 +663,28 @@ class MetricsWindow(QMainWindow):
             (6, "6+"),
         ]
         self.order_plot.getAxis("bottom").setTicks([x_ticks])
-        grid.addWidget(self.order_plot, 1, 1)
 
         overview_layout.addLayout(grid)
         self.tabs.addTab(overview_tab, "Overview")
         self._overview_tab = overview_tab
+        self._overview_plots = (
+            self.delay_plot,
+            self.loss_plot,
+            self.order_plot,
+            self.binned_pdp_plot,
+            self.angle_plots["aod_az"],
+            self.angle_plots["aoa_az"],
+            self.angle_plots["aod_el"],
+            self.angle_plots["aoa_el"],
+        )
 
-        channel_tab = QWidget(self.tabs)
-        channel_layout = QVBoxLayout(channel_tab)
-        channel_layout.setContentsMargins(0, 0, 0, 0)
+        channel_tab = QScrollArea(self.tabs)
+        channel_tab.setWidgetResizable(True)
+        channel_tab.setFrameShape(QFrame.Shape.NoFrame)
+        channel_content = QWidget()
+        channel_tab.setWidget(channel_content)
+        channel_layout = QVBoxLayout(channel_content)
+        channel_layout.setContentsMargins(0, 8, 0, 0)
         channel_layout.setSpacing(6)
 
         self.channel_summary_label = QLabel("No channel summary available")
@@ -514,52 +699,68 @@ class MetricsWindow(QMainWindow):
 
         channel_grid = QGridLayout()
         channel_grid.setSpacing(8)
+        self._channel_grid = channel_grid
 
-        self.delay_power_plot = pg.PlotWidget()
+        self.delay_power_plot = DashboardPlot()
         style_plot(self.delay_power_plot, "Delay-Power Scatter")
         self.delay_power_scatter = pg.ScatterPlotItem(size=7, pen=self._scatter_pen)
         self.delay_power_plot.addItem(self.delay_power_scatter)
         self.delay_power_plot.setLabel("bottom", "Delay", units="ns", **self._label_style)
-        self.delay_power_plot.setLabel(
-            "left", "Received power proxy", units="dB", **self._label_style
-        )
-        channel_grid.addWidget(self.delay_power_plot, 0, 0)
+        self.delay_power_plot.setLabel("left", "Power proxy", units="dB", **self._label_style)
+        channel_grid.addWidget(self.delay_power_plot, 1, 0)
 
-        self.angular_heatmap_plot = pg.PlotWidget()
-        style_plot(self.angular_heatmap_plot, "AoD Polar Direction Map")
-        self.angular_heatmap = pg.ImageItem()
-        self.angular_heatmap_plot.addItem(self.angular_heatmap)
-        self.angular_polar_scatter = pg.ScatterPlotItem(
-            size=7,
-            pen=self._scatter_pen,
-        )
-        self.angular_heatmap_plot.addItem(self.angular_polar_scatter)
-        self.angular_heatmap_plot.setAspectLocked(True)
-        self.angular_heatmap_plot.setLabel(
-            "bottom", "cos(az) x elevation radius", **self._label_style
-        )
-        self.angular_heatmap_plot.setLabel(
-            "left", "sin(az) x elevation radius", **self._label_style
-        )
+        self.direction_plots = {}
+        self.direction_scatters = {}
         self._angular_guide_items = []
         theta = np.linspace(0.0, 2.0 * np.pi, 181)
-        for radius in (0.25, 0.5, 0.75, 1.0):
-            guide = pg.PlotDataItem(
-                radius * np.cos(theta),
-                radius * np.sin(theta),
-                pen=self._guide_pen,
+        for column, (mode, label) in enumerate((("aod", "AoD"), ("aoa", "AoA"))):
+            plot = self.direction_plots[mode] = DashboardPlot()
+            style_plot(plot, f"{label} Polar Direction Map")
+            scatter = self.direction_scatters[mode] = pg.ScatterPlotItem(
+                size=7, pen=self._scatter_pen
             )
-            self.angular_heatmap_plot.addItem(guide)
-            self._angular_guide_items.append(guide)
-        channel_grid.addWidget(self.angular_heatmap_plot, 0, 1)
+            plot.addItem(scatter)
+            plot.setAspectLocked(True)
+            plot.hideAxis("left")
+            plot.hideAxis("bottom")
+            caption = pg.LabelItem("Elevation: +90° centre / −90° rim", color="#435878", size="8pt")
+            plot.getPlotItem().layout.removeItem(plot.getAxis("bottom"))
+            plot.getPlotItem().layout.addItem(caption, 3, 0, 1, 3)
+            for text, x, y, anchor in (
+                ("0°", 1.04, 0.0, (0.0, 0.5)),
+                ("90°", 0.0, 1.04, (0.5, 1.0)),
+                ("180°", -1.04, 0.0, (1.0, 0.5)),
+                ("−90°", 0.0, -1.04, (0.5, 0.0)),
+            ):
+                direction = pg.TextItem(text, color="#435878", anchor=anchor)
+                direction.setFont(_default_ui_font(8))
+                direction.setPos(x, y)
+                plot.addItem(direction, ignoreBounds=True)
+            plot.setToolTip(
+                "Azimuth sets the direction around the circle. Elevation runs from "
+                "+90° at the centre to −90° at the outer ring. Marker colours show "
+                "interaction order; both maps use the same selected paths."
+            )
+            for radius in (0.25, 0.5, 0.75, 1.0):
+                guide = pg.PlotDataItem(
+                    radius * np.cos(theta), radius * np.sin(theta), pen=self._guide_pen
+                )
+                plot.addItem(guide)
+                self._angular_guide_items.append(guide)
+            channel_grid.addWidget(plot, 0, column)
 
-        self.pair_count_panel = QWidget()
+        self.pair_count_panel = QFrame()
+        self.pair_count_panel.setObjectName("pairCountCard")
         pair_count_layout = QVBoxLayout(self.pair_count_panel)
         pair_count_layout.setContentsMargins(6, 6, 6, 6)
         pair_count_layout.setSpacing(4)
         self.pair_count_title_label = QLabel("Selected MPCs by TX/RX Pair")
         self.pair_count_title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.pair_count_title_label.setFont(_default_ui_font(10, weight=QFont.Weight.Bold))
+        self.pair_count_title_label.setWordWrap(True)
+        self.pair_count_title_label.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum
+        )
         pair_count_layout.addWidget(self.pair_count_title_label)
 
         self.pair_count_model = _PairCountModel(self)
@@ -568,6 +769,9 @@ class MetricsWindow(QMainWindow):
         self.pair_count_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.pair_count_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.pair_count_table.setAlternatingRowColors(True)
+        self.pair_count_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored
+        )
         self.pair_count_table.verticalHeader().setVisible(False)
         self.pair_count_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
@@ -575,9 +779,9 @@ class MetricsWindow(QMainWindow):
         self.pair_count_table.setToolTip(
             "Exact selected-path count for each represented TX/RX pair."
         )
-        pair_count_layout.addWidget(self.pair_count_table)
+        pair_count_layout.addWidget(self.pair_count_table, 1)
 
-        self.pair_heatmap_plot = pg.PlotWidget()
+        self.pair_heatmap_plot = DashboardPlot()
         style_plot(self.pair_heatmap_plot, "TX/RX Pair Overview")
         self.pair_heatmap = pg.ImageItem(axisOrder="row-major")
         self.pair_heatmap_plot.addItem(self.pair_heatmap)
@@ -601,12 +805,14 @@ class MetricsWindow(QMainWindow):
         self.pair_stack = QStackedWidget()
         self.pair_stack.addWidget(self.pair_count_panel)
         self.pair_stack.addWidget(self.pair_heatmap_plot)
-        channel_grid.addWidget(self.pair_stack, 1, 0)
-        channel_grid.addWidget(self.channel_summary_label, 1, 1)
+        channel_grid.addWidget(self.pair_stack, 1, 1)
+        channel_grid.addWidget(self.channel_summary_label, 2, 0, 1, 2)
         channel_grid.setColumnStretch(0, 1)
         channel_grid.setColumnStretch(1, 1)
-        channel_grid.setRowStretch(0, 3)
-        channel_grid.setRowStretch(1, 2)
+        channel_grid.setRowMinimumHeight(0, 260)
+        channel_grid.setRowMinimumHeight(1, 160)
+        channel_grid.setRowStretch(0, 5)
+        channel_grid.setRowStretch(1, 3)
 
         channel_layout.addLayout(channel_grid, stretch=1)
         self.tabs.addTab(channel_tab, "Channel")
@@ -614,7 +820,7 @@ class MetricsWindow(QMainWindow):
 
         materials_tab = QWidget(self.tabs)
         materials_layout = QGridLayout(materials_tab)
-        materials_layout.setContentsMargins(0, 0, 0, 0)
+        materials_layout.setContentsMargins(0, 8, 0, 0)
         materials_layout.setSpacing(8)
 
         self.material_table_model = _MaterialBreakdownModel(self)
@@ -625,12 +831,14 @@ class MetricsWindow(QMainWindow):
         self.material_table.setModel(self.material_table_proxy)
         self.material_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.material_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.material_table.setAlternatingRowColors(True)
+        self.material_table.verticalHeader().setVisible(False)
         self.material_table.setSortingEnabled(True)
         self.material_table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self.material_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         materials_layout.addWidget(self.material_table, 0, 0, 1, 2)
 
-        self.material_depth_plot = pg.PlotWidget()
+        self.material_depth_plot = DashboardPlot()
         style_plot(self.material_depth_plot, "Material Hits by Bounce Depth")
         self.material_depth_heatmap = pg.ImageItem(axisOrder="row-major")
         self.material_depth_plot.addItem(self.material_depth_heatmap)
@@ -655,14 +863,14 @@ class MetricsWindow(QMainWindow):
         self.material_depth_plot.setLabel("left", "Material", **self._label_style)
         materials_layout.addWidget(self.material_depth_plot, 1, 0)
 
-        self.material_power_plot = pg.PlotWidget()
+        self.material_power_plot = DashboardPlot()
         style_plot(self.material_power_plot, "Associated Path-Gain Proxy by Material")
         self.material_power_bars = pg.BarGraphItem(
             x=[],
             height=[],
             width=0.8,
-            brush=pg.mkBrush("#7b6ed6"),
-            pen=pg.mkPen("#4d4399", width=0.5),
+            brush=pg.mkBrush("#8b73bc"),
+            pen=pg.mkPen("#7053ad", width=0.5),
         )
         self.material_power_plot.addItem(self.material_power_bars)
         self.material_power_plot.setLabel("bottom", "Material", **self._label_style)
@@ -678,18 +886,48 @@ class MetricsWindow(QMainWindow):
         self.tabs.addTab(materials_tab, "Materials")
         self._materials_tab = materials_tab
         self.tabs.currentChanged.connect(self._mark_pending_refresh)
+        self.tabs.currentChanged.connect(self._sync_tab_controls)
+        for layout in (channel_grid, materials_layout):
+            layout.setColumnStretch(0, 1)
+            layout.setColumnStretch(1, 1)
+        for plot in self._styled_plots:
+            plot.setMinimumSize(160, 140)
+            plot.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        for plot in self._overview_plots:
+            plot.setMinimumHeight(190)
+        self._reflow_overview_plots()
+        for plot in self.direction_plots.values():
+            plot.setMinimumHeight(260)
+            plot.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.material_table.setMinimumHeight(130)
+        self.pair_stack.setMinimumHeight(160)
+        self.pair_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        self._add_order_legend(self.delay_power_plot)
+        for plot in self.direction_plots.values():
+            self._add_order_legend(plot)
 
         root.addWidget(self.tabs, stretch=1)
 
         self.data_status_label = QLabel("")
-        self.data_status_label.setAlignment(Qt.AlignCenter)
+        self.data_status_label.setAlignment(Qt.AlignLeft)
+        self.data_status_label.setObjectName("methodNote")
         self.data_status_label.setFont(_default_ui_font(8))
+        self.data_status_label.setWordWrap(True)
         root.addWidget(self.data_status_label)
 
         self.stats_label = QLabel("No data available")
         self.stats_label.setAlignment(Qt.AlignCenter)
         self.stats_label.setFont(_default_ui_font(9))
-        root.addWidget(self.stats_label)
+        self.stats_label.setWordWrap(True)
+        # The same summary remains available as accessible text; the visible
+        # metric cards carry its values without another full-width footer.
+        self.stats_label.hide()
+        self.method_label = QLabel(
+            "Current frame · all selected paths · Top-K affects 3D rendering only"
+        )
+        self.method_label.setObjectName("methodNote")
+        self.method_label.setWordWrap(True)
+        root.addWidget(self.method_label)
 
         self._last_vm = None
         self._last_stats = None
@@ -704,88 +942,246 @@ class MetricsWindow(QMainWindow):
         self._last_refresh_started_s: float | None = None
         self._last_refresh_finished_s: float | None = None
         self._last_refresh_duration_ms = 0.0
+        self._smoothed_refresh_duration_ms = 0.0
+        self._ui_delay_ms = 0.0
+        self._ui_busy_until_s: float | None = None
+        self._refresh_timer_due_s: float | None = None
+        self._ui_probe_due_s: float | None = None
+        self._refresh_suspended = False
         self._catalog_source: Any = None
         self._catalog_instance: MpcPathCatalog | None = None
         self._catalog_attempted = False
 
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
+        self._timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._timer.timeout.connect(self._periodic_refresh)
+        # One observation per refresh, not a continuously running heartbeat.
+        # Lateness includes deferred paint and other GUI-thread work; it is
+        # deliberately not presented as an exact paint or GPU duration.
+        self._ui_probe_timer = QTimer(self)
+        self._ui_probe_timer.setSingleShot(True)
+        self._ui_probe_timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._ui_probe_timer.timeout.connect(self._measure_ui_delay)
         self._apply_log_y()
         self._apply_theme()
         get_theme_manager().theme_changed.connect(self._apply_theme)
+        self._live_figure_plots = {
+            "delay": self.delay_plot,
+            "loss": self.loss_plot,
+            "order": self.order_plot,
+            "pdp": self.binned_pdp_plot,
+            **self.angle_plots,
+            "aod_map": self.direction_plots["aod"],
+            "aoa_map": self.direction_plots["aoa"],
+            "delay_power": self.delay_power_plot,
+        }
 
         self.logger.info("Metrics window initialized (selection-scoped tabbed dashboard)")
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "_timer"):
+            self._refresh_suspended = False
+            self._arm_refresh_timer()
+
+    def _sync_tab_controls(self, *_args) -> None:
+        """Keep presentation controls beside the figures they affect."""
+        self.overview_grid_cb.setVisible(self.tabs.currentWidget() is self._overview_tab)
+        self._channel_pair_control.setVisible(self.tabs.currentWidget() is self._channel_tab)
+
+    def hideEvent(self, event):
+        if hasattr(self, "_timer"):
+            self._refresh_suspended = not self.has_visible_live_figures()
+            if self._refresh_suspended:
+                self._cancel_refresh_timers()
+        super().hideEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_metric_cards"):
+            self._reflow_metric_cards()
+        if hasattr(self, "_overview_plots"):
+            self._reflow_overview_plots()
+
+    def _reflow_overview_plots(self) -> None:
+        """Keep complete angle figures readable in a sidebar or a wide pop-out."""
+        columns = 2 if self.width() >= 720 else 1
+        if columns == self._overview_columns:
+            return
+        placeholders = {
+            self._live_figure_plots[key]: placeholder
+            for key, placeholder in self._live_figure_leases.items()
+        }
+        figures = [placeholders.get(plot, plot) for plot in self._overview_plots]
+        for figure in figures:
+            self._overview_grid.removeWidget(figure)
+        for index, figure in enumerate(figures):
+            self._overview_grid.addWidget(figure, index // columns, index % columns)
+        for row in range(self._overview_grid.rowCount()):
+            self._overview_grid.setRowStretch(row, int(row < len(self._overview_plots) // columns))
+        self._overview_grid.setColumnStretch(0, 1)
+        self._overview_grid.setColumnStretch(1, int(columns == 2))
+        self._overview_columns = columns
+
+    def _reflow_metric_cards(self) -> None:
+        """Keep compact KPI cards readable in both docked and floating views."""
+        columns = 5 if self.width() >= 1000 else 3 if self.width() >= 680 else 2
+        if columns == self._metric_columns:
+            return
+        self._metric_columns = columns
+        for column in range(5):
+            self._metric_grid.setColumnStretch(column, int(column < columns))
+        for index, card in enumerate(self._metric_cards):
+            self._metric_grid.addWidget(card, index // columns, index % columns)
+
     def _refresh_theme_tokens(self) -> None:
-        """Refresh cached pyqtgraph styling tokens from the app theme."""
-        tokens = pyqtgraph_theme()
-        self._title_style = tokens.title_style
-        self._label_style = tokens.label_style
-        self._plot_bg_color = tokens.background
-        self._axis_pen = tokens.axis_pen
-        self._axis_text_pen = tokens.axis_text_pen
-        self._plot_border_pen = tokens.border_pen
-        self._scatter_pen = tokens.scatter_pen
-        self._guide_pen = tokens.guide_pen
+        """Resolve local chart colours from the application palette."""
+        theme = current_theme()
+        self._title_style = {"color": theme.text_primary, "size": "10pt", "bold": True}
+        self._label_style = {"color": theme.text_secondary, "font-size": "9pt"}
+        self._plot_bg_color = theme.bg_secondary
+        self._axis_pen = pg.mkPen(theme.border_primary, width=1)
+        self._axis_text_pen = pg.mkPen(theme.text_secondary)
+        self._plot_border_pen = pg.mkPen(None)
+        self._scatter_pen = pg.mkPen(theme.bg_secondary, width=0.5)
+        self._guide_pen = pg.mkPen(theme.border_primary, width=0.8, style=Qt.PenStyle.DashLine)
 
     def _register_plot(self, plot: pg.PlotWidget, title_text: str) -> None:
-        """Register and style a plot that should follow the application theme."""
+        """Register and style a scientific figure surface."""
         self._plot_titles[plot] = title_text
         if plot not in self._styled_plots:
             self._styled_plots.append(plot)
         self._style_plot(plot)
+        plot.set_empty_message(_EMPTY_PLOT_MESSAGE, color=current_theme().text_secondary)
 
     def _style_plot(self, plot: pg.PlotWidget) -> None:
-        """Apply current theme tokens to one pyqtgraph plot."""
-        apply_pyqtgraph_plot_theme(
-            plot,
-            title=self._plot_titles.get(plot, ""),
-            tokens=pyqtgraph_theme(),
+        """Apply local colours without mutating global pyqtgraph options."""
+        plot.setBackground(self._plot_bg_color)
+        plot.setStyleSheet(
+            f"border: 1px solid {current_theme().border_subtle}; border-radius: 8px;"
         )
+        plot.setTitle(self._plot_titles.get(plot, ""), **self._title_style)
+        message = plot._empty_message
+        if message is not None and message.isVisible():
+            plot.set_empty_message(message.text, color=current_theme().text_secondary)
+        plot.showGrid(x=False, y=True, alpha=0.10)
+        item = plot.getPlotItem()
+        item.layout.setContentsMargins(8, 5, 10, 5)
+        item.getViewBox().setBorder(self._plot_border_pen)
+        for axis_name in ("bottom", "left"):
+            axis = plot.getAxis(axis_name)
+            axis.setPen(self._axis_pen)
+            axis.setTextPen(self._axis_text_pen)
+            # Reserve tick-label space once it has grown. Shrinking it again
+            # on each changing frame causes a second layout/axis paint pass.
+            axis.setStyle(
+                tickFont=_default_ui_font(8),
+                tickLength=-4,
+                maxTickLevel=0,
+                autoReduceTextSpace=False,
+            )
+            axis.enableAutoSIPrefix(False)
+            if axis.labelText:
+                axis.setLabel(axis.labelText, units=axis.labelUnits or None, **self._label_style)
 
-    def _framed_label_style(self, *, padding: int) -> str:
-        """Return a theme-aware label frame used by dashboard summaries."""
-        theme = current_theme()
-        return (
-            "QLabel { "
-            f"background-color: {theme.bg_primary}; "
-            f"color: {theme.text_primary}; "
-            f"border: 1px solid {theme.border_primary}; "
-            "border-radius: 4px; "
-            f"padding: {padding}px; "
-            "}"
+    def _add_order_legend(self, plot: pg.PlotWidget) -> None:
+        """Place dark, shape-keyed labels in a reserved row outside the data axes."""
+        legend = plot.addLegend(
+            labelTextColor=current_theme().text_secondary,
+            labelTextSize="8pt",
+            colCount=7,
+            offset=None,
+            horSpacing=5,
+            verSpacing=0,
+        )
+        legend.layout.setContentsMargins(0, 0, 0, 0)
+        item = plot.getPlotItem()
+        item.layout.removeItem(item.getAxis("top"))
+        legend.setParentItem(item)
+        item.layout.addItem(legend, 1, 1)
+        for index, (color, symbol) in enumerate(zip(self._ORDER_COLORS, self._ORDER_SYMBOLS)):
+            sample = pg.ScatterPlotItem(
+                pen=pg.mkPen(color, width=1),
+                symbol=symbol,
+                size=7,
+                brush=color,
+            )
+            legend.addItem(sample, "Order 0" if index == 0 else str(index))
+        sample = pg.ScatterPlotItem(
+            pen=None,
+            symbol="star",
+            size=8,
+            brush=self._ORDER_FALLBACK_COLOR,
+        )
+        legend.addItem(sample, "6+ / ?")
+        plot.setToolTip(
+            plot.toolTip()
+            + "\nLegend: interaction order (colour and marker shape). ? = unavailable."
         )
 
     def _apply_theme(self, *_args) -> None:
-        """Apply the current application theme to the metrics dashboard."""
+        """Keep the dashboard isolated and readable across application themes."""
         self._refresh_theme_tokens()
         theme = current_theme()
-        pg.setConfigOption("background", self._plot_bg_color)
-        pg.setConfigOption("foreground", theme.text_primary)
-
-        self.title_label.setStyleSheet(f"color: {theme.text_primary}; margin-bottom: 2px;")
-        self.context_label.setStyleSheet(self._framed_label_style(padding=6))
-        self.channel_summary_label.setStyleSheet(self._framed_label_style(padding=8))
-        self.pair_count_title_label.setStyleSheet(f"color: {theme.text_primary};")
-        self.data_status_label.setStyleSheet(f"color: {theme.text_secondary};")
-        self.stats_label.setStyleSheet(self._framed_label_style(padding=10))
-
+        self._surface.setStyleSheet(_metrics_style(theme))
+        self.pair_count_panel.setStyleSheet(
+            f"QFrame#pairCountCard {{ background: {theme.bg_secondary}; "
+            f"border: 1px solid {theme.border_subtle}; border-radius: 8px; }}"
+        )
+        for card, (_, _, _, color) in zip(self._metric_cards, _METRIC_CARDS):
+            card.setStyleSheet(
+                f"QFrame#metricCard {{ border-top: 3px solid {dashboard_series_color(color)}; }}"
+            )
+        self._order_brush_cache = tuple(
+            pg.mkBrush(dashboard_series_color(c)) for c in self._ORDER_COLORS
+        )
+        self._order_fallback_brush = pg.mkBrush(dashboard_series_color(self._ORDER_FALLBACK_COLOR))
+        self.channel_summary_label.setStyleSheet(
+            f"background: {theme.bg_tertiary}; color: {theme.text_secondary}; "
+            f"border: 1px solid {theme.border_subtle}; "
+            "border-radius: 7px; padding: 7px; font-size: 11px;"
+        )
         for plot in self._styled_plots:
             self._style_plot(plot)
-
-        for scatter_attr in ("delay_power_scatter", "angular_polar_scatter"):
-            scatter = getattr(self, scatter_attr, None)
-            if scatter is not None:
-                scatter.setPen(self._scatter_pen)
-
+            legend = plot.getPlotItem().legend
+            if legend is not None:
+                legend.setLabelTextColor(theme.text_secondary)
+                for _, label in legend.items:
+                    label.setText(label.text, color=theme.text_secondary)
+                for (sample, _), color in zip(
+                    legend.items, (*self._ORDER_COLORS, self._ORDER_FALLBACK_COLOR)
+                ):
+                    sample.item.setBrush(dashboard_series_color(color))
+                    sample.item.setPen(pg.mkPen(dashboard_series_color(color), width=1))
+        for scatter in (self.delay_power_scatter, *self.direction_scatters.values()):
+            scatter.setPen(self._scatter_pen)
+            orders = self._scatter_orders.get(scatter)
+            if orders is not None and len(scatter.getData()[0]) == len(orders):
+                scatter.setBrush(self._order_brushes(orders))
+        for bars, color in (
+            (self.delay_bars, "#2865b0"),
+            (self.loss_bars, "#b5475a"),
+            *((bars, "#a66b00") for bars in self.angle_bars.values()),
+            (self.order_bars, "#00866b"),
+            (self.binned_pdp_stems, "#00866b"),
+        ):
+            themed = dashboard_series_color(color)
+            bars.setOpts(brush=pg.mkBrush(themed), pen=pg.mkPen(themed, width=0.5))
+        self.binned_pdp_dots.setBrush(dashboard_series_color("#00866b"))
         for guide in getattr(self, "_angular_guide_items", []):
             guide.setPen(self._guide_pen)
-
-        self.pair_heatmap_plot.setBackground(theme.bg_tertiary)
-        self.material_depth_plot.setBackground(theme.bg_tertiary)
+        for plot in self.direction_plots.values():
+            plot.showGrid(x=False, y=False)
+            for item in plot.getPlotItem().items:
+                if isinstance(item, pg.TextItem):
+                    item.setColor(theme.text_secondary)
+            caption = plot.getPlotItem().layout.itemAt(3, 0)
+            if isinstance(caption, pg.LabelItem):
+                caption.setText(caption.text, color=theme.text_secondary)
         self._style_colorbar(self.pair_colorbar)
         self._style_colorbar(self.material_depth_colorbar)
+        self._apply_overview_grid()
 
     def _style_colorbar(self, colorbar: pg.ColorBarItem) -> None:
         """Apply dashboard axis styling while preserving a colorbar's label."""
@@ -801,6 +1197,96 @@ class MetricsWindow(QMainWindow):
 
     # Public API
 
+    def available_live_figures(self) -> tuple[tuple[str, str], ...]:
+        """List individual figures that can share this dashboard's loaded frame."""
+        return tuple(
+            (key, self._plot_titles[plot]) for key, plot in self._live_figure_plots.items()
+        )
+
+    def acquire_live_figure(self, key: str, parent: QWidget) -> QWidget:
+        """Move one existing figure into a dock, retaining its data and inspection state."""
+        plot = self._live_figure_plots[key]
+        if self._plots_released:
+            raise RuntimeError("Metrics dashboard is closed")
+        if key in self._live_figure_leases:
+            if plot.parentWidget() is parent:
+                return plot
+            raise ValueError(f"Figure {key!r} is already displayed in a live figure")
+        placeholder = QLabel(f"{self._plot_titles[plot]}\nDisplayed in a live figure")
+        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        placeholder.setWordWrap(True)
+        placeholder.setMinimumSize(plot.minimumSize())
+        layout = self._overview_grid if plot in self._overview_plots else self._channel_grid
+        layout.replaceWidget(plot, placeholder)
+        self._live_figure_leases[key] = placeholder
+        plot.setParent(parent)
+        plot.show()
+        self.refresh_live_figure_visibility()
+        return plot
+
+    def release_live_figure(self, key: str) -> None:
+        """Return a moved figure to its original dashboard position."""
+        placeholder = self._live_figure_leases.pop(key, None)
+        if placeholder is None:
+            return
+        plot = self._live_figure_plots[key]
+        layout = self._overview_grid if plot in self._overview_plots else self._channel_grid
+        layout.replaceWidget(placeholder, plot)
+        placeholder.deleteLater()
+        plot.show()
+        self.refresh_live_figure_visibility()
+
+    def has_visible_live_figures(self) -> bool:
+        """Return whether any borrowed figure has a visible, non-minimized host."""
+        return any(
+            dashboard_is_visible(self._live_figure_plots[key]) for key in self._live_figure_leases
+        )
+
+    def refresh_live_figure_visibility(self) -> None:
+        """Reconcile refresh timing after a dock is shown, hidden, or minimized."""
+        if self._plots_released:
+            return
+        self._refresh_suspended = not (
+            dashboard_is_visible(self) or self.has_visible_live_figures()
+        )
+        if self._refresh_suspended:
+            self._cancel_refresh_timers()
+            return
+        self.input_requested.emit()
+        self._mark_pending_refresh()
+
+    def _live_figure_can_refresh(self, key: str) -> bool:
+        """Avoid updating a borrowed plot while its dock is hidden."""
+        return key not in self._live_figure_leases or dashboard_is_visible(
+            self._live_figure_plots[key]
+        )
+
+    def _refresh_live_figures(self, *, completed: tuple[str, ...] = ()) -> None:
+        """Update only borrowed visible plots outside the currently refreshed tab."""
+        keys = [
+            key
+            for key in self._live_figure_leases
+            if key not in completed and self._live_figure_can_refresh(key)
+        ]
+        if "pdp" in keys and not self._compute_latest_frame_stats():
+            return
+        direction_source = None
+        for key in keys:
+            if key in self._ANGLE_FIELDS:
+                self._update_angle_histogram(key)
+            elif key in ("aod_map", "aoa_map"):
+                if direction_source is None:
+                    direction_source = self._selected_path_data()
+                self._update_direction_map(key[:3], direction_source)
+            else:
+                {
+                    "delay": self._update_delay_histogram,
+                    "loss": self._update_loss_histogram,
+                    "order": self._update_order_distribution,
+                    "pdp": self._update_binned_pdp,
+                    "delay_power": self._update_delay_power_scatter,
+                }[key]()
+
     @property
     def updates_paused(self) -> bool:
         """Return whether new frame statistics should remain frozen."""
@@ -808,7 +1294,14 @@ class MetricsWindow(QMainWindow):
 
     def enqueue(self, view_model, frame_stats=None, context: dict[str, Any] | None = None):
         """Replace the pending dashboard input with the latest frame."""
-        if view_model is None:
+        if view_model is None or self._plots_released:
+            return
+        if (
+            view_model is self._last_vm
+            and (frame_stats is None or frame_stats is self._last_stats)
+            and (context or {}) == self._last_context
+        ):
+            self._arm_refresh_timer()
             return
 
         self._enqueue_revision += 1
@@ -834,48 +1327,83 @@ class MetricsWindow(QMainWindow):
             return
 
         try:
-            self._compute_latest_frame_stats()
+            if self._live_figure_leases and not dashboard_is_visible(self):
+                self._plot_messages = []
+                self._refresh_live_figures()
+                return
+            if not self._compute_latest_frame_stats():
+                return
             self._plot_messages = []
             self._update_context_label()
             self._update_summary()
             active_tab = self.tabs.currentWidget()
+            completed = ()
             if active_tab is self._overview_tab:
                 self._update_delay_histogram()
                 self._update_loss_histogram()
                 self._update_order_distribution()
                 self._update_binned_pdp()
                 self._update_angle_distribution()
+                completed = ("delay", "loss", "order", "pdp", *self._ANGLE_FIELDS)
             elif active_tab is self._channel_tab:
                 self._update_channel_summary()
                 self._update_delay_power_scatter()
-                self._update_angular_heatmap()
+                self._update_direction_maps()
                 self._update_pair_heatmap()
+                completed = ("delay_power", "aod_map", "aoa_map")
             elif active_tab is self._materials_tab:
                 if self.materials_tab_cb.isChecked():
                     self._update_material_breakdown()
                 else:
                     self._clear_material_plots()
                     self._note_plot_message("Materials tab disabled.")
+            self._refresh_live_figures(completed=completed)
             self._update_data_status()
             self.logger.debug("Metrics window refreshed")
         except (ValueError, TypeError, ZeroDivisionError, AttributeError) as exc:
             self.logger.error("Error refreshing metrics: %s", exc)
             self._clear_plots()
 
-    def _compute_latest_frame_stats(self) -> None:
+    def _compute_latest_frame_stats(self) -> bool:
         """Compute provider-backed statistics once for the newest queued frame."""
         if self._frame_stats_provider is None or self._stats_revision == self._enqueue_revision:
-            return
+            return True
+        revision = self._enqueue_revision
+        view_model = self._last_vm
+        was_paused = self.pause_cb.isChecked()
         try:
-            self._last_stats = self._frame_stats_provider(self._last_vm)
+            frame_stats = self._frame_stats_provider(view_model)
         except Exception as exc:  # noqa: BLE001 - optional metrics must remain isolated.
             self.logger.error("Error computing dashboard statistics: %s", exc)
-            self._last_stats = None
-        self._stats_revision = self._enqueue_revision
+            frame_stats = None
+        # A provider may yield to Qt or synchronously offer a newer selection.
+        # Never attach the completed result to that newer frame or render it
+        # under the newer context; the one pending refresh will consume it.
+        if (
+            self._enqueue_revision != revision
+            or self._last_vm is not view_model
+            or self._plots_released
+            or self._refresh_suspended
+            or (not was_paused and self.pause_cb.isChecked())
+        ):
+            if not self._plots_released and not self.pause_cb.isChecked():
+                self._pending_refresh = True
+            return False
+        self._last_stats = frame_stats
+        self._stats_revision = revision
+        return True
 
     def _periodic_refresh(self):
         """Consume the newest pending frame without replaying skipped frames."""
+        if self._refresh_in_progress:
+            return
+        due_s = self._refresh_timer_due_s
         self._timer.stop()
+        self._refresh_timer_due_s = None
+        if self._plots_released or self._refresh_suspended:
+            return
+        if self._hosted and not dashboard_is_visible(self) and not self.has_visible_live_figures():
+            return
         if self._last_vm is None:
             return
         if self.pause_cb.isChecked():
@@ -883,17 +1411,31 @@ class MetricsWindow(QMainWindow):
             return
         if not self._pending_refresh:
             return
+        if due_s is not None:
+            now_s = self._clock()
+            self._record_ui_delay((now_s - due_s) * 1000.0, now_s=now_s)
         self._pending_refresh = False
         self._run_timed_refresh()
 
     def _manual_refresh(self, *_args) -> None:
         """Refresh immediately and consume any already-scheduled redraw."""
-        self._timer.stop()
+        if self._plots_released or self._refresh_suspended or self._refresh_in_progress:
+            return
+        if self._hosted and not dashboard_is_visible(self) and not self.has_visible_live_figures():
+            return
+        self.input_requested.emit()
+        if self._plots_released or self._refresh_suspended:
+            return
+        if self._hosted and not dashboard_is_visible(self) and not self.has_visible_live_figures():
+            return
+        self._cancel_refresh_timers()
         self._pending_refresh = False
         self._run_timed_refresh()
 
     def _run_timed_refresh(self) -> None:
         """Measure one refresh so later scheduling can preserve UI time."""
+        if self._refresh_in_progress or self._plots_released or self._refresh_suspended:
+            return
         self._refresh_in_progress = True
         started_s = self._clock()
         try:
@@ -903,30 +1445,94 @@ class MetricsWindow(QMainWindow):
             self._last_refresh_started_s = started_s
             self._last_refresh_finished_s = finished_s
             self._last_refresh_duration_ms = max(0.0, (finished_s - started_s) * 1000.0)
+            self._smoothed_refresh_duration_ms = max(
+                self._last_refresh_duration_ms,
+                self._smoothed_refresh_duration_ms * self._LOAD_DECAY,
+            )
             self._refresh_in_progress = False
+            if (
+                not self._plots_released
+                and not self._refresh_suspended
+                and not self.pause_cb.isChecked()
+                and self._last_vm is not None
+            ):
+                delay_ms = self._MINIMUM_ADAPTIVE_COOLDOWN_MS
+                self._ui_probe_due_s = finished_s + delay_ms / 1000.0
+                self._ui_probe_timer.start(delay_ms)
             self._arm_refresh_timer()
+
+    def _cancel_refresh_timers(self) -> None:
+        """Discard timer observations when work is paused, hidden, or closed."""
+        self._timer.stop()
+        self._ui_probe_timer.stop()
+        self._refresh_timer_due_s = None
+        self._ui_probe_due_s = None
+        self._ui_busy_until_s = None
+
+    def _record_ui_delay(self, delay_ms: float, *, now_s: float) -> None:
+        """Back off quickly under GUI load and recover gradually without jitter."""
+        delay_ms = min(
+            self._MAXIMUM_UI_DELAY_MS,
+            max(0.0, delay_ms - self._UI_DELAY_TOLERANCE_MS),
+        )
+        self._ui_delay_ms = max(delay_ms, self._ui_delay_ms * self._LOAD_DECAY)
+        if delay_ms > 0.0:
+            self._ui_busy_until_s = now_s
+
+    def _measure_ui_delay(self) -> None:
+        """Observe GUI work after refresh returns, without an idle polling timer."""
+        due_s = self._ui_probe_due_s
+        self._ui_probe_timer.stop()
+        self._ui_probe_due_s = None
+        if (
+            due_s is None
+            or self._plots_released
+            or self._refresh_suspended
+            or self.pause_cb.isChecked()
+        ):
+            return
+        now_s = self._clock()
+        self._record_ui_delay((now_s - due_s) * 1000.0, now_s=now_s)
+        # Reconsider the one pending deadline once after observing deferred
+        # drawing. New frame arrivals themselves never restart this deadline.
+        if self._timer.isActive():
+            self._timer.stop()
+            self._refresh_timer_due_s = None
+        self._arm_refresh_timer()
 
     def _arm_refresh_timer(self) -> None:
         """Schedule one refresh for the latest pending dashboard input."""
         if (
             not self._pending_refresh
+            or self._plots_released
+            or self._refresh_suspended
             or self._last_vm is None
             or self.pause_cb.isChecked()
             or self._refresh_in_progress
             or self._timer.isActive()
+            or (
+                self._hosted
+                and not dashboard_is_visible(self)
+                and not self.has_visible_live_figures()
+            )
         ):
             return
-        self._timer.start(self._next_refresh_delay_ms())
+        now_s = self._clock()
+        delay_ms = self._next_refresh_delay_ms(now_s=now_s)
+        self._refresh_timer_due_s = now_s + delay_ms / 1000.0
+        self._timer.start(delay_ms)
 
     def _adaptive_cooldown_ms(self) -> int:
-        """Return a UI breathing interval based on the preceding refresh cost."""
+        """Return a UI breathing interval based on refresh cost and observed load."""
         return max(
             self._MINIMUM_ADAPTIVE_COOLDOWN_MS,
             math.ceil(self._last_refresh_duration_ms),
+            math.ceil(self._smoothed_refresh_duration_ms),
+            math.ceil(self._ui_delay_ms),
         )
 
     def _fixed_refresh_period_ms(self) -> int | None:
-        """Return the selected fixed-rate period, or ``None`` for Maximum."""
+        """Return the selected fixed-rate period, or ``None`` for Automatic."""
         update_hz = int(self.update_rate_spin.value())
         if update_hz <= 0:
             return None
@@ -940,7 +1546,11 @@ class MetricsWindow(QMainWindow):
         if now_s is None:
             now_s = self._clock()
 
-        elapsed_since_finish_ms = (now_s - self._last_refresh_finished_s) * 1000.0
+        work_finished_s = max(
+            self._last_refresh_finished_s,
+            self._ui_busy_until_s or self._last_refresh_finished_s,
+        )
+        elapsed_since_finish_ms = (now_s - work_finished_s) * 1000.0
         responsive_delay_ms = self._adaptive_cooldown_ms() - elapsed_since_finish_ms
         if period_ms is None:
             remaining_ms = responsive_delay_ms
@@ -968,21 +1578,23 @@ class MetricsWindow(QMainWindow):
     def _on_update_rate_changed(self, _update_hz: int) -> None:
         """Apply the user-selected dashboard computation and redraw cadence."""
         self._timer.stop()
+        self._refresh_timer_due_s = None
         self._arm_refresh_timer()
 
     def _on_pause_toggled(self, paused: bool) -> None:
         """Stop automatic updates while keeping manual refresh available."""
         if paused:
             self._pending_refresh = False
-            self._timer.stop()
+            self._cancel_refresh_timers()
             self.data_status_label.setText("Paused; new frame statistics are not computed.")
             return
+        self.input_requested.emit()
         self._mark_pending_refresh()
 
     def _apply_log_y(self, *_):
         """Apply manual log-height rendering for count-style bar plots."""
         enabled = bool(self.log_y_cb.isChecked())
-        for plot in (self.delay_plot, self.loss_plot, self.angle_plot, self.order_plot):
+        for plot in (self.delay_plot, self.loss_plot, *self.angle_plots.values(), self.order_plot):
             # BarGraphItem heights are not transformed correctly by
             # pyqtgraph's log axis mode. The axis remains linear while displaying
             # log10(count) heights manually in the count-plot update methods.
@@ -990,6 +1602,12 @@ class MetricsWindow(QMainWindow):
             label = "log10(Count + 1)" if enabled else "Count"
             plot.setLabel("left", label, **self._label_style)
         self._mark_pending_refresh()
+
+    def _apply_overview_grid(self, *_args) -> None:
+        """Change guides without recalculating data or resetting inspection ranges."""
+        visible = self.overview_grid_cb.isChecked()
+        for plot in self._overview_plots:
+            plot.showGrid(x=visible, y=visible, alpha=0.18)
 
     # Selected-path helpers
 
@@ -1524,8 +2142,9 @@ class MetricsWindow(QMainWindow):
         """Update one count histogram and its axis bounds."""
         if values is None or values.size == 0:
             bars.setOpts(x=[], height=[])
-            self._note_plot_message(f"No {message_label} data for current selection.")
+            self._note_plot_message(f"No {message_label} data for current selection.", plot)
             return
+        plot.set_empty_message("")
         vmin, vmax = self._histogram_range(values)
         hist, bins = np.histogram(
             values, bins=min(DEFAULT_BINS, max(1, values.size)), range=(vmin, vmax)
@@ -1536,21 +2155,26 @@ class MetricsWindow(QMainWindow):
         bars.setOpts(x=centers, height=display_hist, width=bin_width)
         if self._adaptive_overview_axes_enabled():
             ymax = max(float(np.max(display_hist)) * 1.2, 1.0)
-            plot.setYRange(0.0, ymax)
-            plot.setXRange(vmin, vmax)
+            plot.setRange(xRange=(vmin, vmax), yRange=(0.0, ymax))
 
     def _update_delay_histogram(self):
         """Refresh the selected-path delay histogram."""
+        if not self._live_figure_can_refresh("delay"):
+            return
         delays = self._selected_path_values("path_delays", "delay")
         self._update_histogram(self.delay_plot, self.delay_bars, delays, "delay")
 
     def _update_loss_histogram(self):
         """Refresh the selected-path path-loss histogram."""
+        if not self._live_figure_can_refresh("loss"):
+            return
         losses = self._selected_path_values("path_losses", "loss")
         self._update_histogram(self.loss_plot, self.loss_bars, losses, "path loss")
 
     def _update_order_distribution(self):
         """Refresh reflection-order counts for visible paths."""
+        if not self._live_figure_can_refresh("order"):
+            return
         stats = self._last_stats
         orders_hist = getattr(stats, "orders_hist", None) if stats is not None else None
         if not orders_hist:
@@ -1560,8 +2184,11 @@ class MetricsWindow(QMainWindow):
                 orders_hist = dict(zip(unique.astype(int), counts.astype(int)))
         if not orders_hist:
             self.order_bars.setOpts(x=[], height=[])
-            self._note_plot_message("No interaction order data for current selection.")
+            self._note_plot_message(
+                "No interaction order data for current selection.", self.order_plot
+            )
             return
+        self.order_plot.set_empty_message("")
         full_orders = list(range(7))
         full_counts = [orders_hist.get(order, 0) for order in range(6)]
         full_counts.append(
@@ -1571,25 +2198,34 @@ class MetricsWindow(QMainWindow):
         self.order_bars.setOpts(x=full_orders, height=display_counts)
         if self._adaptive_overview_axes_enabled():
             ymax = max(float(np.max(display_counts)) * 1.2, 1.0)
-            self.order_plot.setYRange(0.0, ymax)
-            self.order_plot.setXRange(-0.5, 6.5)
+            self.order_plot.setRange(xRange=(-0.5, 6.5), yRange=(0.0, ymax))
 
     def _update_binned_pdp(self):
         """Refresh the phase-free 1 ns power-delay profile."""
+        if not self._live_figure_can_refresh("pdp"):
+            return
         stats = self._last_stats
         if stats is None or stats.binned_power_delay_profile is None:
             self.binned_pdp_stems.setOpts(x=[], height=[])
             self.binned_pdp_dots.setData([], [])
-            self._note_plot_message("No measured delay/path-gain data for the current selection.")
+            self._note_plot_message(
+                "No measured delay/path-gain data for the current selection.", self.binned_pdp_plot
+            )
             return
         delays_ns, powers_db = stats.binned_power_delay_profile
         delays = np.asarray(delays_ns, dtype=float)
         powers = np.asarray(powers_db, dtype=float)
+        if delays.size == powers.size:
+            finite = np.isfinite(delays) & np.isfinite(powers)
+            delays, powers = delays[finite], powers[finite]
         if delays.size == 0 or powers.size == 0:
             self.binned_pdp_stems.setOpts(x=[], height=[])
             self.binned_pdp_dots.setData([], [])
-            self._note_plot_message("No measured delay/path-gain data for the current selection.")
+            self._note_plot_message(
+                "No measured delay/path-gain data for the current selection.", self.binned_pdp_plot
+            )
             return
+        self.binned_pdp_plot.set_empty_message("")
         display_delays, display_powers = self._sample_profile_for_display(
             delays,
             powers,
@@ -1606,24 +2242,44 @@ class MetricsWindow(QMainWindow):
         self.binned_pdp_dots.setData(x=display_delays, y=display_powers)
         if self._adaptive_overview_axes_enabled():
             ymin, ymax = self._histogram_range(powers)
-            self.binned_pdp_plot.setYRange(ymin, ymax)
-            self.binned_pdp_plot.setXRange(dmin, dmax)
+            self.binned_pdp_plot.setRange(xRange=(dmin, dmax), yRange=(ymin, ymax))
 
     def _update_angle_distribution(self):
-        """Refresh the selected AoA/AoD angle histogram."""
-        field = self.angle_combo.currentData() or "aod_az"
-        title, label = self._ANGLE_FIELDS.get(field, self._ANGLE_FIELDS["aod_az"])
-        self.angle_plot.setTitle(f"{title} Distribution", **self._title_style)
-        self.angle_plot.setLabel("bottom", label, units="deg", **self._label_style)
+        """Refresh all four angle histograms from the same selected-path catalog."""
+        for field in self._ANGLE_FIELDS:
+            self._update_angle_histogram(field)
+
+    def _update_angle_histogram(self, field: str) -> None:
+        """Refresh one angle figure, including a separately visible live figure."""
+        if not self._live_figure_can_refresh(field):
+            return
+        _title, label = self._ANGLE_FIELDS[field]
         angles = self._selected_path_values("", field)
-        self._update_histogram(self.angle_plot, self.angle_bars, angles, label)
+        self._update_histogram(self.angle_plots[field], self.angle_bars[field], angles, label)
 
     def _update_summary(self):
         """Refresh the overview summary text."""
         stats = self._last_stats
         if stats is None:
             self.stats_label.setText("No statistics available")
+            self._clear_metric_cards()
             return
+        self.metric_values["paths"].setText(f"{getattr(stats, 'total_paths', 0):,}")
+        for key, attribute in (("delay", "delay_range_ns"), ("loss", "path_loss_range")):
+            bounds = getattr(stats, attribute, None)
+            available = bounds is not None and np.all(np.isfinite(bounds))
+            value = f"{bounds[0]:.1f}–{bounds[1]:.1f}" if available else "N/A"
+            self.metric_values[key].setText(value)
+            self.metric_values[key].setToolTip(
+                f"{bounds[0]:.12g}–{bounds[1]:.12g}" if available else _UNAVAILABLE_METRIC
+            )
+        for key, attribute in (("spread", "delay_spread_ns"), ("angle", "angular_spread_deg")):
+            value = getattr(stats, attribute, None)
+            available = value is not None and np.isfinite(value)
+            self.metric_values[key].setText(f"{value:.3g}" if available else "N/A")
+            self.metric_values[key].setToolTip(
+                f"{value:.12g}" if available else _UNAVAILABLE_METRIC
+            )
         parts = [f"MPCs: {getattr(stats, 'total_paths', 0)}"]
         dr = getattr(stats, "delay_range_ns", None)
         if dr:
@@ -1638,6 +2294,13 @@ class MetricsWindow(QMainWindow):
         if ang is not None:
             parts.append(f"AoD Az. Spread: {ang:.1f} deg")
         self.stats_label.setText("  |  ".join(parts))
+        self.method_label.setToolTip(self.stats_label.text())
+
+    def _clear_metric_cards(self) -> None:
+        """Clear values when a selection or frame has no statistics."""
+        for label in self.metric_values.values():
+            label.setText("N/A")
+            label.setToolTip(_UNAVAILABLE_METRIC)
 
     def _update_channel_summary(self) -> None:
         """Refresh channel KPI summary text."""
@@ -1670,7 +2333,7 @@ class MetricsWindow(QMainWindow):
         angular_spread = getattr(stats, "angular_spread_deg", None) if stats is not None else None
         if angular_spread is not None:
             parts.append(f"AoD azimuth spread: {angular_spread:.1f} deg")
-        self.channel_summary_label.setText("Selected-path channel summary\n\n" + "\n".join(parts))
+        self.channel_summary_label.setText("  ·  ".join(parts))
 
     def _order_brushes(self, orders: np.ndarray) -> list[QBrush]:
         """Return shared scatter brushes keyed by reflection order."""
@@ -1683,13 +2346,29 @@ class MetricsWindow(QMainWindow):
                 brushes.append(self._order_fallback_brush)
         return brushes
 
+    def _order_symbols(self, orders: np.ndarray) -> list[str]:
+        """Use cached standard symbols to make order visible without colour."""
+        # Truncate like int(order), but keep the finite/range checks in NumPy
+        # rather than invoking a scalar ufunc for every rendered point. Replace
+        # invalid values before casting so NaN, infinity and huge orders stay
+        # on the fallback symbol without integer-overflow warnings.
+        keys = np.trunc(orders)
+        valid = (keys >= 0) & (keys < len(self._ORDER_SYMBOLS))
+        keys = np.where(valid, keys, len(self._ORDER_SYMBOLS)).astype(np.intp)
+        return np.take(self._ORDER_SYMBOLS + ("star",), keys).tolist()
+
     def _update_delay_power_scatter(self) -> None:
         """Refresh the delay-vs-power scatter plot."""
+        if not self._live_figure_can_refresh("delay_power"):
+            return
         data = self._finite_path_data("delay", "loss")
         if data["path_id"].size == 0:
             self.delay_power_scatter.setData([], [])
-            self._note_plot_message("No delay-power data for current selection.")
+            self._note_plot_message(
+                "No delay-power data for current selection.", self.delay_power_plot
+            )
             return
+        self.delay_power_plot.set_empty_message("")
         plot_data = self._sample_plot_data(data)
         delays = plot_data["delay"]
         power_db = -plot_data["loss"]
@@ -1698,13 +2377,19 @@ class MetricsWindow(QMainWindow):
             {
                 "pos": (float(delay), float(power)),
                 "brush": brush,
+                "symbol": symbol,
                 "data": int(path_id),
             }
-            for delay, power, brush, path_id in zip(
-                delays, power_db, self._order_brushes(orders), plot_data["path_id"]
+            for delay, power, brush, symbol, path_id in zip(
+                delays,
+                power_db,
+                self._order_brushes(orders),
+                self._order_symbols(orders),
+                plot_data["path_id"],
             )
         ]
         self.delay_power_scatter.setData(spots=spots)
+        self._scatter_orders[self.delay_power_scatter] = orders
         if plot_data["path_id"].shape[0] < data["path_id"].shape[0]:
             self._note_plot_message(
                 f"Delay-power scatter sampled {plot_data['path_id'].shape[0]}/"
@@ -1715,24 +2400,31 @@ class MetricsWindow(QMainWindow):
         self.delay_power_plot.setXRange(xmin, xmax)
         self.delay_power_plot.setYRange(ymin, ymax)
 
-    def _update_angular_heatmap(self) -> None:
-        """Refresh the polar AoA/AoD direction scatter plot."""
-        mode = self.angular_map_combo.currentData() or "aod"
+    def _update_direction_maps(self) -> None:
+        """Draw departure and arrival directions from the same selected frame."""
+        source = self._selected_path_data()
+        for mode in self.direction_plots:
+            self._update_direction_map(mode, source)
+
+    def _update_direction_map(self, mode: str, source: dict[str, np.ndarray]) -> None:
+        """Filter unavailable angles independently for each direction map."""
+        if not self._live_figure_can_refresh(f"{mode}_map"):
+            return
         az_field = f"{mode}_az"
         el_field = f"{mode}_el"
-        data = self._finite_path_data(az_field, el_field, "order")
+        valid = np.isfinite(source[az_field]) & np.isfinite(source[el_field])
+        valid &= np.isfinite(source["order"])
+        data = {key: values[valid] for key, values in source.items()}
         az = data[az_field]
         el = data[el_field]
+        plot = self.direction_plots[mode]
+        scatter = self.direction_scatters[mode]
         title_prefix = "AoD" if mode == "aod" else "AoA"
-        self.angular_heatmap_plot.setTitle(
-            f"{title_prefix} Polar Direction Map", **self._title_style
-        )
         if az.size == 0 or el.size == 0:
-            self.angular_heatmap.clear()
-            self.angular_polar_scatter.setData([], [])
-            self._note_plot_message(f"No {title_prefix} polar direction data.")
+            scatter.setData([], [])
+            self._note_plot_message(f"No {title_prefix} polar direction data.", plot)
             return
-        self.angular_heatmap.clear()
+        plot.set_empty_message("")
         plot_data = self._sample_plot_data(data)
         az_rad = np.radians(plot_data[az_field])
         # Radius is an elevation projection: +90 deg at center, -90 deg on
@@ -1745,28 +2437,34 @@ class MetricsWindow(QMainWindow):
             {
                 "pos": (float(px), float(py)),
                 "brush": brush,
+                "symbol": symbol,
                 "data": int(path_id),
             }
-            for px, py, brush, path_id in zip(
+            for px, py, brush, symbol, path_id in zip(
                 x,
                 y,
                 self._order_brushes(plot_data["order"]),
+                self._order_symbols(plot_data["order"]),
                 plot_data["path_id"],
             )
         ]
-        self.angular_polar_scatter.setData(spots=spots)
+        scatter.setData(spots=spots)
+        self._scatter_orders[scatter] = plot_data["order"]
         if plot_data["path_id"].shape[0] < data["path_id"].shape[0]:
             self._note_plot_message(
                 f"{title_prefix} polar map sampled {plot_data['path_id'].shape[0]}/"
                 f"{data['path_id'].shape[0]} paths."
             )
-        self.angular_heatmap_plot.setXRange(-1.05, 1.05)
-        self.angular_heatmap_plot.setYRange(-1.05, 1.05)
+        plot.setXRange(-1.3, 1.3, padding=0)
+        plot.setYRange(-1.3, 1.3, padding=0)
 
     def _clear_pair_view(self) -> None:
         """Clear both pair encodings and select the requested empty page."""
         self.pair_count_model.set_rows([])
         self.pair_heatmap.clear()
+        self.pair_heatmap_plot.set_empty_message(
+            _EMPTY_PLOT_MESSAGE, color=current_theme().text_secondary
+        )
         self.pair_colorbar.setVisible(False)
         self.pair_heatmap_plot.getAxis("bottom").setTicks([])
         self.pair_heatmap_plot.getAxis("left").setTicks([])
@@ -1815,8 +2513,9 @@ class MetricsWindow(QMainWindow):
         self.pair_stack.setCurrentWidget(self.pair_heatmap_plot)
         levels = self._set_image_data(self.pair_heatmap, matrix)
         if levels is None:
-            self._note_plot_message("No finite TX/RX pair metric values.")
+            self._note_plot_message("No finite TX/RX pair metric values.", self.pair_heatmap_plot)
             return
+        self.pair_heatmap_plot.set_empty_message("")
         if metric == "strongest_loss":
             colorbar_label = "Strongest path loss"
             colorbar_units = "dB"
@@ -1862,6 +2561,7 @@ class MetricsWindow(QMainWindow):
 
         power_rows = [row for row in rows if np.isfinite(row["power_db"])]
         if power_rows:
+            self.material_power_plot.set_empty_message("")
             power_values = np.asarray([row["power_db"] for row in power_rows], dtype=float)
             x_values = np.arange(len(power_rows), dtype=float)
             value_min = float(np.min(power_values))
@@ -1888,9 +2588,15 @@ class MetricsWindow(QMainWindow):
         else:
             self.material_power_bars.setOpts(x=[], height=[], y0=0.0)
             self.material_power_plot.getAxis("bottom").setTicks([])
-            self._note_plot_message("No measured path-loss data for the selected material hits.")
+            self._note_plot_message(
+                "No measured path-loss data for the selected material hits.",
+                self.material_power_plot,
+            )
 
         if depth_matrix.size == 0:
+            self.material_depth_plot.set_empty_message(
+                _EMPTY_PLOT_MESSAGE, color=current_theme().text_secondary
+            )
             self.material_depth_heatmap.clear()
             self.material_depth_colorbar.setVisible(False)
             self.material_depth_plot.getAxis("bottom").setTicks([])
@@ -1899,8 +2605,12 @@ class MetricsWindow(QMainWindow):
         display_depth = np.where(depth_matrix > 0.0, depth_matrix, np.nan)
         levels = self._set_image_data(self.material_depth_heatmap, display_depth)
         if levels is None:
+            self.material_depth_plot.set_empty_message(
+                _EMPTY_PLOT_MESSAGE, color=current_theme().text_secondary
+            )
             self.material_depth_colorbar.setVisible(False)
             return
+        self.material_depth_plot.set_empty_message("")
         self.material_depth_colorbar.setLevels(levels)
         self.material_depth_colorbar.setVisible(True)
         self.material_depth_heatmap.setRect(
@@ -1965,9 +2675,15 @@ class MetricsWindow(QMainWindow):
             self.data_status_label.setText(" | ".join(unique_messages[:3]))
         else:
             self.data_status_label.setText("")
+        if self.updates_paused:
+            self.data_status_label.setText(
+                "Frozen results · Refresh once to calculate the current frame."
+            )
 
-    def _note_plot_message(self, message: str) -> None:
-        """Queue a plot status message for the next status-label update."""
+    def _note_plot_message(self, message: str, plot: DashboardPlot | None = None) -> None:
+        """Queue status text and keep missing-data context inside its figure."""
+        if plot is not None:
+            plot.set_empty_message(_EMPTY_PLOT_MESSAGE, color=current_theme().text_secondary)
         if message not in self._plot_messages:
             self._plot_messages.append(message)
 
@@ -2060,13 +2776,17 @@ class MetricsWindow(QMainWindow):
     def _clear_channel_plots(self) -> None:
         """Clear optional channel-analysis plots."""
         self.delay_power_scatter.setData([], [])
-        self.angular_heatmap.clear()
-        self.angular_polar_scatter.setData([], [])
+        for plot in (self.delay_power_plot, *self.direction_plots.values()):
+            plot.set_empty_message(_EMPTY_PLOT_MESSAGE, color=current_theme().text_secondary)
+        for scatter in self.direction_scatters.values():
+            scatter.setData([], [])
         self._clear_pair_view()
         self.channel_summary_label.setText("No channel summary available")
 
     def _clear_material_plots(self) -> None:
         """Clear material-analysis table and plots."""
+        for plot in (self.material_power_plot, self.material_depth_plot):
+            plot.set_empty_message(_EMPTY_PLOT_MESSAGE, color=current_theme().text_secondary)
         self.material_depth_heatmap.clear()
         self.material_depth_colorbar.setVisible(False)
         self.material_depth_plot.getAxis("bottom").setTicks([])
@@ -2077,23 +2797,58 @@ class MetricsWindow(QMainWindow):
 
     def _clear_plots(self):
         """Clear all dashboard plots and stop pending refresh work."""
+        for plot in self._styled_plots:
+            plot.set_empty_message(_EMPTY_PLOT_MESSAGE, color=current_theme().text_secondary)
         self.delay_bars.setOpts(x=[], height=[])
         self.loss_bars.setOpts(x=[], height=[])
         self.order_bars.setOpts(x=[], height=[])
         self.binned_pdp_stems.setOpts(x=[], height=[])
         self.binned_pdp_dots.setData([], [])
-        self.angle_bars.setOpts(x=[], height=[])
+        for bars in self.angle_bars.values():
+            bars.setOpts(x=[], height=[])
         self._clear_channel_plots()
         self._clear_material_plots()
         self.context_label.setText("Frame - | TX: - | RX: - | MPCs: -")
         self.data_status_label.setText("")
         self.stats_label.setText("No data available")
-        self._timer.stop()
+        self._clear_metric_cards()
+        self._cancel_refresh_timers()
         self._pending_refresh = False
 
     def closeEvent(self, event):
-        """Log dashboard closure before Qt destroys the window."""
-        self._timer.stop()
+        """Stop refresh work and release plot/theme subscriptions."""
+        from ..widgets.plot_lifecycle import unregister_plot_views
+
+        if self._plots_released:
+            super().closeEvent(event)
+            return
+        self._plots_released = True
+        self._cancel_refresh_timers()
         self._pending_refresh = False
+        for key in tuple(self._live_figure_leases):
+            self.release_live_figure(key)
+        get_theme_manager().theme_changed.disconnect(self._apply_theme)
+        for plot in self._styled_plots:
+            unregister_plot_views(plot)
+            plot.close()
+            plot.setParent(self)
+        self._last_vm = self._last_stats = None
+        self._catalog_source = self._catalog_instance = None
         self.logger.info("Metrics window closing")
         super().closeEvent(event)
+
+
+class MetricsDashboard(_MetricsContent, QWidget):
+    """Embeddable metrics with the same controls and results as the pop-out."""
+
+    input_requested = Signal()
+
+
+class MetricsWindow(_MetricsContent, QMainWindow):
+    """Standalone host retained for callers outside the Statistics panel."""
+
+    input_requested = Signal()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.resize(1280, 800)

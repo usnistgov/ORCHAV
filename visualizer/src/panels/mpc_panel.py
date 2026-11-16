@@ -9,8 +9,11 @@ renderer layers.
 from __future__ import annotations
 
 import math
+from contextlib import ExitStack
+from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QSignalBlocker, Qt
+import numpy as np
+from PySide6.QtCore import QSignalBlocker, QSize, Qt
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -54,7 +57,14 @@ from ..services.mpc_interaction_style_service import (
     rgb_to_css_hex,
 )
 from ..state import MPC_ORDER_VALUES, MPC_TYPE_VALUES
+from ..widgets.responsive import ResponsiveRow, wrap_control_row
+from ..widgets.wrapping_layout import WrappingLayout
 from .base import BasePanel
+from .collapsible_section import CollapsibleSection
+from .ui_theme import set_widget_role
+
+if TYPE_CHECKING:
+    from ..metrics.mpc_canon import CanonicalStepData
 
 logger = get_logger("orchav.mpc_panel")
 
@@ -169,6 +179,17 @@ def _get_type_palette_colors() -> list[str]:
     return [rgb_to_css_hex(entry.color) for entry in _get_type_legend_entries()]
 
 
+class _FirstFilterRowLabel(QLabel):
+    """Center a filter heading on its first checkbox when choices wrap."""
+
+    def sizeHint(self) -> QSize:
+        size = super().sizeHint()
+        control = self.buddy()
+        if control is not None:
+            size.setHeight(max(size.height(), control.sizeHint().height()))
+        return size
+
+
 class MPCVisualizationPanel(BasePanel):
     """Build the Paths-tab control surface for multipath components."""
 
@@ -178,37 +199,139 @@ class MPCVisualizationPanel(BasePanel):
         self._current_color_mode = "reflection_order"
         self._present_mpc_type_codes: tuple[int, ...] = ()
         self._updating_material_model = False
+        self._appearance_service = None
+        self._angle_filter_canonical: CanonicalStepData | None = None
+        self._angle_filter_selection: tuple[object, object] | None = None
+        self._angle_filter_available: dict[str, bool] = {}
         theme_manager.add_listener(self._on_theme_change)
 
     def _on_theme_change(self, theme) -> None:
         """Handle theme/colormap changes by refreshing the color legend."""
+        combo = self.widgets.get("continuous_cmap_combo")
+        if combo is not None:
+            with QSignalBlocker(combo):
+                combo.setCurrentText(theme.continuous_colormap)
+        combo = self.widgets.get("categorical_cmap_combo")
+        if combo is not None:
+            with QSignalBlocker(combo):
+                combo.setCurrentIndex(combo.findData(theme.categorical_colormap))
         if hasattr(self, "widgets") and "color_legend_layout" in self.widgets:
             self.update_color_legend(self._current_color_mode)
             logger.debug(f"Refreshed color legend for theme change: {theme.name}")
+        self._sync_mpc_sizes()
 
     def create_panel(self) -> QGroupBox:
-        """Create the primary MPC control panel used by the panel manager."""
-        group = self.create_group_box("MPCs")
+        """Create path appearance controls, separate from path filtering."""
+        group = self.create_group_box("Appearance")
 
         layout = QVBoxLayout(group)
-        layout.setSpacing(4)
-        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(10)
+        layout.setContentsMargins(0, 4, 0, 4)
+        service = getattr(self.parent, "mpc_appearance_service", None)
+        if service is not None:
+            self._appearance_service = service
+            # Demo and workspace restoration can change sizes without a widget
+            # edit. Keep the explicit controls synchronized, without exposing
+            # Demo's presentation recipes as a second owner of path colors.
+            service.changed.connect(self._sync_mpc_sizes)
         layout.addWidget(self._create_visibility_group())
         layout.addWidget(self._create_coloring_group())
-        layout.addWidget(self._create_mpc_selection_group())
-        layout.addWidget(self._create_render_budget_group())
-        layout.addWidget(self._create_markers_group())
+        layout.addWidget(self._create_path_tools_group())
         layout.addStretch()
+        self.sync_coloring_from_state(getattr(self.parent, "app_state", None))
+        self.sync_visibility_from_state(getattr(self.parent, "app_state", None))
+        self._sync_mpc_sizes()
         return group
 
-    def create_range_filters_panel(self) -> QGroupBox:
-        """Create range filters as a separate panel for the panel manager."""
-        group = self.create_group_box("Advanced Filtering")
+    def _sync_mpc_sizes(self) -> None:
+        """Reflect sizes restored by Demo or a workspace without changing them."""
+        service = getattr(self, "_appearance_service", None)
+        if service is None:
+            return
+        data = service.capture()
+        for key, field in (("line_width_spin", "line_width"), ("point_size_spin", "point_size")):
+            widget = self.widgets.get(key)
+            if widget is not None:
+                with QSignalBlocker(widget):
+                    widget.setValue(data[field])
+
+    def cleanup(self) -> None:
+        theme_manager.remove_listener(self._on_theme_change)
+        if self._appearance_service is not None:
+            self._appearance_service.changed.disconnect(self._sync_mpc_sizes)
+            self._appearance_service = None
+
+    def sync_visibility_from_state(self, state: object | None) -> None:
+        """Show effective visibility, keeping each part available to enable it."""
+        visibility = getattr(state, "mpc_visibility", None)
+        if visibility is None:
+            return
+        enabled = bool(visibility.enabled)
+        for key, value in (
+            ("mpc_paths_cb", visibility.effective_paths),
+            ("mpc_bounce_points_cb", visibility.effective_bounce_points),
+            ("mpc_frame_details_cb", getattr(state, "show_mpc_frame_details", False)),
+        ):
+            widget = self.widgets.get(key)
+            if widget is not None:
+                with QSignalBlocker(widget):
+                    widget.setChecked(bool(value))
+        label = self.widgets.get("mpc_hidden_label")
+        if label is not None:
+            label.setVisible(not enabled)
+        self._sync_visibility_details()
+        self._sync_topk_from_state(state)
+        self._sync_mpc_sizes()
+
+    def _sync_topk_from_state(self, state: object | None) -> None:
+        """Sync the cap when its separate Filtering section has been built."""
+        checkbox = self.widgets.get("topk_render_cb")
+        if checkbox is None:
+            return
+        capped = bool(getattr(state, "topk_render_enabled", False))
+        with QSignalBlocker(checkbox):
+            checkbox.setChecked(capped)
+        for key in ("topk_render_label", "topk_render_max_spin", "topk_render_presets"):
+            self.widgets[key].setVisible(capped)
+        self.widgets["topk_render_max_spin"].setEnabled(capped)
+        with QSignalBlocker(self.widgets["topk_render_max_spin"]):
+            self.widgets["topk_render_max_spin"].setValue(
+                getattr(state, "topk_render_max_paths", 20000)
+            )
+
+    def sync_coloring_from_state(self, state: object | None) -> None:
+        """Reflect scenario/session colors without replaying render-setting actions."""
+        mode = getattr(state, "color_mode", "reflection_order")
+        button = self.widgets.get(f"{mode}_rb") if isinstance(mode, str) else None
+        if button is None:
+            return
+        # Changing the checked radio can emit from the formerly checked one too.
+        with ExitStack() as stack:
+            for radio in self.widgets["color_mode_group"].buttons():
+                stack.enter_context(QSignalBlocker(radio))
+            button.setChecked(True)
+        distinct = self.widgets.get("distinct_material_colors_cb")
+        if distinct is not None:
+            with QSignalBlocker(distinct):
+                distinct.setChecked(bool(getattr(state, "use_distinct_material_colors", False)))
+            distinct.setVisible(mode == "material")
+        self.update_color_legend(mode)
+        self._sync_mpc_sizes()
+
+    def create_filtering_panel(self) -> QGroupBox:
+        """Keep path selection, strongest-path limits and property filters together."""
+        group = self.create_group_box("Filtering")
         layout = QVBoxLayout(group)
         layout.setSpacing(4)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.addWidget(self._create_range_filters())
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.addWidget(self._create_topk_group())
+        layout.addWidget(self._create_mpc_selection_group())
+        properties = CollapsibleSection("Path properties", start_open=False, flat_header=True)
+        properties.content_layout().addWidget(self._create_property_filters())
+        self.widgets["path_properties_section"] = properties
+        layout.addWidget(properties)
         layout.addStretch()
+        self._sync_topk_from_state(getattr(self.parent, "app_state", None))
         return group
 
     def _create_visibility_group(self) -> QGroupBox:
@@ -218,12 +341,17 @@ class MPCVisualizationPanel(BasePanel):
         layout.setSpacing(4)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.addWidget(self._create_mpc_core_controls())
+        hidden = QLabel("MPC layer hidden. Enable Paths or Bounce points to show it.")
+        hidden.setWordWrap(True)
+        hidden.hide()
+        self.widgets["mpc_hidden_label"] = hidden
+        layout.addWidget(hidden)
         layout.addWidget(self._create_mpc_info_section())
         return group
 
     def _create_mpc_selection_group(self) -> QGroupBox:
         """Create preset, discrete, and material-selection filters."""
-        group = self.create_subgroup_box("MPC Selection")
+        group = self.create_subgroup_box("Path selection")
         layout = QVBoxLayout(group)
         layout.setSpacing(4)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -279,9 +407,9 @@ class MPCVisualizationPanel(BasePanel):
         self.widgets["continuous_cmap_combo"] = combo
         return combo
 
-    def _create_render_budget_group(self) -> QGroupBox:
-        """Create controls that cap how many strongest MPCs are rendered."""
-        group = self.create_subgroup_box("Render Budget")
+    def _create_topk_group(self) -> QGroupBox:
+        """Limit the displayed subset to the strongest paths after filtering."""
+        group = self.create_subgroup_box("Top K")
         layout = QVBoxLayout(group)
         layout.setSpacing(4)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -314,78 +442,95 @@ class MPCVisualizationPanel(BasePanel):
         except ValueError as exc:
             logger.warning("Failed to set scalar colormap: %s", exc)
 
-    def _create_markers_group(self) -> QGroupBox:
-        """Create Paths-owned MPC marker and path-thickness controls."""
-        group = self.create_subgroup_box("Marker")
+    def _create_mpc_core_controls(self) -> QWidget:
+        """Place each layer's appearance controls beside its visibility switch."""
+        group = QWidget()
         layout = QGridLayout(group)
-        layout.setSpacing(4)
-        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setHorizontalSpacing(4)
+        layout.setVerticalSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        self.widgets["mpc_interaction_markers_cb"] = QCheckBox("Interaction Markers")
+        paths = QCheckBox("Paths")
+        paths.setChecked(True)
+        paths.setToolTip("Show MPC path segments. Checking this also enables the MPC layer.")
+        paths.toggled.connect(self._sync_visibility_details)
+        self.widgets["mpc_paths_cb"] = paths
+        layout.addWidget(paths, 0, 0)
+
+        bounces = QCheckBox("Bounce points")
+        bounces.setChecked(True)
+        bounces.setToolTip(
+            "Show physical interaction points without TX/RX endpoints. "
+            "Checking this also enables the MPC layer."
+        )
+        bounces.toggled.connect(self._sync_visibility_details)
+        self.widgets["mpc_bounce_points_cb"] = bounces
+        layout.addWidget(bounces, 1, 0)
+
+        for row, prefix, label_text, bounds, default, callback, tooltip in (
+            (
+                0,
+                "line_width",
+                "Width",
+                MPC_LINE_WIDTH_BOUNDS_PX,
+                DEFAULT_MPC_LINE_WIDTH_PX,
+                self._on_line_width_changed,
+                "Width of MPC ray-path lines in pixels.",
+            ),
+            (
+                1,
+                "point_size",
+                "Size",
+                MPC_POINT_SIZE_BOUNDS_PX,
+                DEFAULT_MPC_POINT_SIZE_PX,
+                self._on_point_size_changed,
+                "Size of bounce points and interaction-marker glyphs in pixels.",
+            ),
+        ):
+            controls = QWidget()
+            control_layout = QHBoxLayout(controls)
+            control_layout.setContentsMargins(0, 0, 0, 0)
+            control_layout.setSpacing(2)
+            label = QLabel(label_text)
+            label.setToolTip(tooltip)
+            spin = QDoubleSpinBox()
+            spin.setDecimals(2)
+            spin.setRange(*bounds)
+            spin.setSingleStep(0.5)
+            spin.setValue(default)
+            spin.setSuffix(" px")
+            spin.setKeyboardTracking(False)
+            spin.setToolTip(tooltip)
+            spin.valueChanged.connect(callback)
+            label.setBuddy(spin)
+            control_layout.addWidget(label, 1)
+            control_layout.addWidget(spin)
+            self.widgets[f"{prefix}_spin"] = spin
+            self.widgets[f"{prefix}_controls"] = controls
+            layout.addWidget(controls, row, 1)
+
+        self.widgets["mpc_interaction_markers_cb"] = QCheckBox("Shape by type")
         self.widgets["mpc_interaction_markers_cb"].setToolTip(
             "Render physical MPC interaction points as glyphs:\n"
             "circle = specular, triangle = diffuse, diamond = refraction,\n"
-            "plus = diffraction, square = virtual, cross = unknown.\n"
+            "plus = diffraction, six-arm asterisk = sensing,\n"
+            "square = virtual, cross = unknown.\n"
             "LoS has no interaction point."
         )
-        self.widgets["mpc_interaction_markers_cb"].setStyleSheet("QCheckBox { font-size: 11px; }")
-        layout.addWidget(self.widgets["mpc_interaction_markers_cb"], 0, 0, 1, 2)
-
-        point_label = QLabel("Point / marker size:")
-        point_label.setToolTip("Size of bounce points and interaction-marker glyphs in pixels.")
-        layout.addWidget(point_label, 1, 0)
-        self.widgets["point_size_spin"] = QDoubleSpinBox()
-        self.widgets["point_size_spin"].setDecimals(2)
-        self.widgets["point_size_spin"].setRange(*MPC_POINT_SIZE_BOUNDS_PX)
-        self.widgets["point_size_spin"].setSingleStep(0.5)
-        self.widgets["point_size_spin"].setValue(DEFAULT_MPC_POINT_SIZE_PX)
-        self.widgets["point_size_spin"].setSuffix(" px")
-        self.widgets["point_size_spin"].setKeyboardTracking(False)
-        self.widgets["point_size_spin"].setToolTip(point_label.toolTip())
-        self.widgets["point_size_spin"].valueChanged.connect(self._on_point_size_changed)
-        layout.addWidget(self.widgets["point_size_spin"], 1, 1)
-
-        line_label = QLabel("Path line width:")
-        line_label.setToolTip("Width of MPC ray-path lines in pixels.")
-        layout.addWidget(line_label, 2, 0)
-        self.widgets["line_width_spin"] = QDoubleSpinBox()
-        self.widgets["line_width_spin"].setDecimals(2)
-        self.widgets["line_width_spin"].setRange(*MPC_LINE_WIDTH_BOUNDS_PX)
-        self.widgets["line_width_spin"].setSingleStep(0.5)
-        self.widgets["line_width_spin"].setValue(DEFAULT_MPC_LINE_WIDTH_PX)
-        self.widgets["line_width_spin"].setSuffix(" px")
-        self.widgets["line_width_spin"].setKeyboardTracking(False)
-        self.widgets["line_width_spin"].setToolTip(line_label.toolTip())
-        self.widgets["line_width_spin"].valueChanged.connect(self._on_line_width_changed)
-        layout.addWidget(self.widgets["line_width_spin"], 2, 1)
-
-        layout.setColumnStretch(0, 1)
+        layout.addWidget(self.widgets["mpc_interaction_markers_cb"], 1, 2)
+        layout.setColumnStretch(1, 1)
         self.refresh_renderer_controls_state()
         return group
 
-    def _create_mpc_core_controls(self) -> QWidget:
-        """Create Paths-local visibility toggles for MPC presentation details."""
-        group = QWidget()
-        layout = QHBoxLayout(group)
-        layout.setSpacing(12)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.widgets["mpc_paths_cb"] = QCheckBox("Paths")
-        self.widgets["mpc_paths_cb"].setChecked(True)
-        self.widgets["mpc_paths_cb"].setToolTip("Show MPC path segments.")
-        self.widgets["mpc_paths_cb"].setStyleSheet("QCheckBox { font-size: 11px; }")
-        layout.addWidget(self.widgets["mpc_paths_cb"])
-
-        self.widgets["mpc_bounce_points_cb"] = QCheckBox("Bounce Points")
-        self.widgets["mpc_bounce_points_cb"].setChecked(True)
-        self.widgets["mpc_bounce_points_cb"].setToolTip(
-            "Show physical interaction points without TX/RX endpoints."
+    def _sync_visibility_details(self, *_args) -> None:
+        """Show subordinate appearance controls only for enabled MPC layers."""
+        paths = self.widgets["mpc_paths_cb"].isChecked()
+        bounces = self.widgets["mpc_bounce_points_cb"].isChecked()
+        self.widgets["line_width_controls"].setVisible(paths)
+        self.widgets["point_size_controls"].setVisible(bounces)
+        self.widgets["mpc_interaction_markers_cb"].setVisible(
+            bounces and self._renderer_supports_interaction_markers()
         )
-        self.widgets["mpc_bounce_points_cb"].setStyleSheet("QCheckBox { font-size: 11px; }")
-        layout.addWidget(self.widgets["mpc_bounce_points_cb"])
-
-        layout.addStretch()
-        return group
 
     def _renderer_supports_interaction_markers(self) -> bool:
         """Return whether the active renderer can draw interaction markers."""
@@ -397,11 +542,11 @@ class MPCVisualizationPanel(BasePanel):
         """Refresh renderer-specific MPC display controls."""
         markers_cb = self.widgets.get("mpc_interaction_markers_cb")
         if markers_cb is not None:
-            markers_cb.setVisible(self._renderer_supports_interaction_markers())
+            self._sync_visibility_details()
 
         colormap_group = self.widgets.get("colormap_group")
         if colormap_group is not None:
-            colormap_group.setVisible(True)
+            self._sync_color_palette_visibility()
 
         state = getattr(getattr(self, "parent", None), "app_state", None)
         if state is not None and markers_cb is not None:
@@ -431,6 +576,7 @@ class MPCVisualizationPanel(BasePanel):
         setter = getattr(renderer, setter_name, None)
         if callable(setter):
             setter(float(value))
+        self._sync_mpc_sizes()
 
     def _on_point_size_changed(self, value: float) -> None:
         """Apply bounce-point and interaction-marker size."""
@@ -460,7 +606,7 @@ class MPCVisualizationPanel(BasePanel):
             self._apply_renderer_size(setter_name, value)
 
     def _create_topk_render_controls(self) -> QWidget:
-        """Create optional strongest-MPC render cap controls."""
+        """Create the optional strongest-path limit and its K presets."""
         group = QWidget()
         main_layout = QVBoxLayout(group)
         main_layout.setSpacing(4)
@@ -470,16 +616,18 @@ class MPCVisualizationPanel(BasePanel):
         layout.setSpacing(8)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.widgets["topk_render_cb"] = QCheckBox("Limit rendered MPCs")
+        self.widgets["topk_render_cb"] = QCheckBox("Keep strongest paths")
         self.widgets["topk_render_cb"].setChecked(False)
         self.widgets["topk_render_cb"].setToolTip(
-            "Limit rendered MPCs to the K strongest components after filters."
+            "Show at most K paths after all other filters, ranked by lowest path loss. "
+            "This affects the displayed subset only."
         )
-        self.widgets["topk_render_cb"].setStyleSheet("QCheckBox { font-size: 10px; }")
         layout.addWidget(self.widgets["topk_render_cb"])
 
-        label = QLabel("Max MPCs:")
-        label.setStyleSheet("font-size: 10px;")
+        label = QLabel("K:")
+        self.widgets["topk_render_label"] = label
+        label.setVisible(False)
+        self.widgets["topk_render_cb"].toggled.connect(label.setVisible)
         layout.addWidget(label)
 
         self.widgets["topk_render_max_spin"] = QSpinBox()
@@ -487,23 +635,27 @@ class MPCVisualizationPanel(BasePanel):
         self.widgets["topk_render_max_spin"].setSingleStep(1000)
         self.widgets["topk_render_max_spin"].setValue(20000)
         self.widgets["topk_render_max_spin"].setEnabled(False)
-        self.widgets["topk_render_max_spin"].setStyleSheet("QSpinBox { font-size: 10px; }")
+        self.widgets["topk_render_max_spin"].setVisible(False)
         self.widgets["topk_render_max_spin"].setToolTip(
-            "Maximum number of strongest MPCs to render when the cap is enabled."
+            "Maximum number of strongest paths to display after filtering."
         )
         layout.addWidget(self.widgets["topk_render_max_spin"])
 
         self.widgets["topk_render_cb"].toggled.connect(
             self.widgets["topk_render_max_spin"].setEnabled
         )
+        self.widgets["topk_render_cb"].toggled.connect(
+            self.widgets["topk_render_max_spin"].setVisible
+        )
         layout.addStretch()
         main_layout.addLayout(layout)
 
-        preset_row = QHBoxLayout()
+        preset_controls = QWidget()
+        self.widgets["topk_render_presets"] = preset_controls
+        preset_row = WrappingLayout(preset_controls)
         preset_row.setSpacing(4)
         preset_row.setContentsMargins(0, 0, 0, 0)
         preset_label = QLabel("Quick:")
-        preset_label.setStyleSheet("font-size: 9px;")
         preset_row.addWidget(preset_label)
         self.widgets["topk_render_preset_buttons"] = []
         for value, label_text in (
@@ -515,17 +667,16 @@ class MPCVisualizationPanel(BasePanel):
             (100000, "100k"),
         ):
             button = QPushButton(label_text)
-            button.setStyleSheet(
-                "QPushButton { font-size: 9px; padding: 2px 6px; min-width: 28px; }"
-            )
+            button.setStyleSheet("QPushButton { padding: 2px 6px; min-width: 28px; }")
             button.setToolTip(f"Set rendered MPC cap to {value:,}")
             button.clicked.connect(
                 lambda _checked=False, v=value: self.widgets["topk_render_max_spin"].setValue(v)
             )
             preset_row.addWidget(button)
             self.widgets["topk_render_preset_buttons"].append(button)
-        preset_row.addStretch()
-        main_layout.addLayout(preset_row)
+        preset_controls.hide()
+        self.widgets["topk_render_cb"].toggled.connect(preset_controls.setVisible)
+        main_layout.addWidget(preset_controls)
         return group
 
     def _create_color_mode_section(self) -> QWidget:
@@ -537,18 +688,15 @@ class MPCVisualizationPanel(BasePanel):
         layout.setSpacing(3)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(2)
+        mode_row = WrappingLayout()
+        mode_row.setSpacing(6)
         mode_row.setContentsMargins(0, 0, 0, 0)
 
         header = QLabel("Color By:")
-        header.setStyleSheet("font-size: 10px;")
         self.widgets["color_mode_label"] = header
         mode_row.addWidget(header)
 
         self.widgets["color_mode_group"] = QButtonGroup()
-
-        radio_style = "QRadioButton { font-size: 9px; margin: 0px; padding: 0px; }"
 
         radio_defs = [
             ("reflection_order_rb", "Order", None, True),
@@ -566,7 +714,6 @@ class MPCVisualizationPanel(BasePanel):
 
         for key, label, tooltip, checked in radio_defs:
             rb = QRadioButton(label)
-            rb.setStyleSheet(radio_style)
             rb.setChecked(checked)
             if tooltip:
                 rb.setToolTip(tooltip)
@@ -576,7 +723,6 @@ class MPCVisualizationPanel(BasePanel):
             self.widgets["color_mode_group"].addButton(rb)
             mode_row.addWidget(rb)
 
-        mode_row.addStretch()
         layout.addLayout(mode_row)
 
         colormap_group = self.create_subgroup_box("Colormap")
@@ -588,101 +734,133 @@ class MPCVisualizationPanel(BasePanel):
         palette_row.setSpacing(6)
         palette_row.setContentsMargins(6, 4, 6, 4)
 
-        palette_label = QLabel("MPC:")
-        palette_label.setStyleSheet("font-size: 10px;")
+        palette_label = QLabel("Palette:")
         self.widgets["categorical_cmap_label"] = palette_label
         palette_row.addWidget(palette_label)
 
         categorical_combo = self._create_categorical_palette_combo()
-        categorical_combo.setMaximumWidth(135)
         palette_row.addWidget(categorical_combo)
 
-        scalar_label = QLabel("Scalar:")
-        scalar_label.setStyleSheet("font-size: 10px;")
+        scalar_label = QLabel("Palette:")
         self.widgets["continuous_cmap_label"] = scalar_label
         palette_row.addWidget(scalar_label)
 
         continuous_combo = self._create_continuous_palette_combo()
-        continuous_combo.setMaximumWidth(105)
         palette_row.addWidget(continuous_combo)
 
         palette_row.addStretch()
         layout.addWidget(colormap_group)
         return container
 
+    def _sync_color_palette_visibility(self) -> None:
+        """Show only the palette used by the selected color mode."""
+        categorical = self._current_color_mode in {"reflection_order", "mpc_type"}
+        scalar = self._current_color_mode in {"delay", "path_loss"}
+        for key in ("categorical_cmap_label", "categorical_cmap_combo"):
+            self.widgets[key].setVisible(categorical)
+        for key in ("continuous_cmap_label", "continuous_cmap_combo"):
+            self.widgets[key].setVisible(scalar)
+        self.widgets["colormap_group"].setVisible(categorical or scalar)
+
     def _create_mpc_info_section(self) -> QWidget:
-        """Create compact MPC count and lazy Explorer entry point."""
+        """Create the path count and optional frame details control."""
         container = QWidget()
-        layout = QHBoxLayout(container)
+        layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
         self.widgets["mpc_info_label"] = QLabel("MPCs: --")
         self.widgets["mpc_info_label"].setObjectName("mpcInfoLabel")
-        self.widgets["mpc_info_label"].setStyleSheet("""
-            font-size: 10px;
-            font-weight: normal;
-        """)
+        self.widgets["mpc_info_label"].setProperty("role", "muted")
         self.widgets["mpc_info_label"].setWordWrap(True)
-        layout.addWidget(self.widgets["mpc_info_label"], 1)
+        layout.addWidget(self.widgets["mpc_info_label"])
 
-        explorer_button = QPushButton("Open MPC Explorer...")
+        actions = QHBoxLayout()
+        details = QCheckBox("Frame details")
+        details.setToolTip(
+            "Show counts by order, type or material, or delay/path-loss histograms. "
+            "Updates for each frame; leave off for a compact summary."
+        )
+        details.toggled.connect(self._on_frame_details_toggled)
+        self.widgets["mpc_frame_details_cb"] = details
+        actions.addWidget(details)
+        actions.addStretch()
+        layout.addLayout(actions)
+        return container
+
+    def _create_path_tools_group(self) -> QGroupBox:
+        """Keep the table and its linked analysis workspace together."""
+        group = self.create_group_box("Path tools")
+        layout = QHBoxLayout(group)
+        explorer_button = QPushButton("Path Explorer…")
         explorer_button.setObjectName("openMpcExplorerButton")
         explorer_button.setToolTip(
             "Open the scalable path table and selected-path inspection window."
         )
         self.widgets["mpc_explorer_btn"] = explorer_button
         layout.addWidget(explorer_button)
-        return container
+        analysis_button = QPushButton("Path Analysis…")
+        analysis_button.setObjectName("openPathAnalysisButton")
+        from ..experiments.runtime import enabled
+
+        supported = enabled(self.parent)
+        analysis_button.setEnabled(supported)
+        analysis_button.setToolTip(
+            "Inspect path delays and angles in linked plots."
+            if supported
+            else "Path Analysis requires the pygfx renderer."
+        )
+        analysis_button.clicked.connect(self._open_path_analysis)
+        self.widgets["path_analysis_btn"] = analysis_button
+        layout.addWidget(analysis_button)
+        return group
+
+    def _open_path_analysis(self) -> None:
+        service = getattr(self.parent, "extension_services", {}).get("experiments")
+        if service is not None:
+            service.open()
+
+    def _on_frame_details_toggled(self, checked: bool) -> None:
+        """Request optional per-frame histogram text without changing MPC geometry."""
+        controller = getattr(self.parent, "ui_controller", None)
+        if controller is not None:
+            controller.handle_mpc_frame_details_toggled(bool(checked))
 
     def _create_discrete_filters(self) -> QWidget:
-        """Create orders and types filter rows with inline labels."""
+        """Keep order/type labels aligned while their choices wrap naturally."""
         container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setSpacing(3)
+        layout = QGridLayout(container)
+        layout.setHorizontalSpacing(8)
+        layout.setVerticalSpacing(6)
         layout.setContentsMargins(0, 0, 0, 0)
-
-        label_style = "font-weight: bold; font-size: 10px;"
-        cb_style = "QCheckBox { font-size: 9px; margin: 0px; padding: 0px; }"
-
-        # Orders row
-        orders_row = QHBoxLayout()
-        orders_row.setSpacing(4)
-        orders_row.setContentsMargins(0, 0, 0, 0)
-        orders_label = QLabel("Orders:")
-        orders_label.setStyleSheet(label_style)
-        orders_label.setFixedWidth(50)
-        orders_row.addWidget(orders_label)
-
-        order_labels = ("LoS", "1st", "2nd", "3rd", "4th", "5th", "6+")
-        for i, label in zip(MPC_ORDER_VALUES, order_labels):
-            checkbox = QCheckBox(label)
-            checkbox.setChecked(True)
-            checkbox.setStyleSheet(cb_style)
-            self.widgets[f"order_{i}_cb"] = checkbox
-            orders_row.addWidget(checkbox)
-        orders_row.addStretch()
-        layout.addLayout(orders_row)
-
-        # Types row
-        types_row = QHBoxLayout()
-        types_row.setSpacing(4)
-        types_row.setContentsMargins(0, 0, 0, 0)
-        types_label = QLabel("Types:")
-        types_label.setStyleSheet(label_style)
-        types_label.setFixedWidth(50)
-        types_row.addWidget(types_label)
-
-        type_labels = ("LoS", "Spec", "Diff", "Refr", "Diffr", "Virtual")
-        for label, value in zip(type_labels, MPC_TYPE_VALUES):
-            checkbox = QCheckBox(label)
-            checkbox.setChecked(True)
-            checkbox.setStyleSheet(cb_style)
-            self.widgets[f"type_{value}_cb"] = checkbox
-            types_row.addWidget(checkbox)
-        types_row.addStretch()
-        layout.addLayout(types_row)
-
+        for row, title, prefix, values, labels in (
+            (
+                0,
+                "Orders",
+                "order",
+                MPC_ORDER_VALUES,
+                ("LoS", "1st", "2nd", "3rd", "4th", "5th", "6+"),
+            ),
+            (
+                1,
+                "Types",
+                "type",
+                MPC_TYPE_VALUES,
+                ("LoS", "Spec", "Diff", "Refr", "Diffr", "Sensing", "Virtual"),
+            ),
+        ):
+            choices = QWidget()
+            choice_layout = WrappingLayout(choices)
+            for value, text in zip(values, labels):
+                checkbox = QCheckBox(text)
+                checkbox.setChecked(True)
+                self.widgets[f"{prefix}_{value}_cb"] = checkbox
+                choice_layout.addWidget(checkbox)
+            heading = _FirstFilterRowLabel(title)
+            heading.setBuddy(choice_layout.itemAt(0).widget())
+            layout.addWidget(heading, row, 0, alignment=Qt.AlignTop)
+            layout.addWidget(choices, row, 1)
+        layout.setColumnStretch(1, 1)
         return container
 
     def _create_materials_section(self) -> QWidget:
@@ -697,7 +875,6 @@ class MPCVisualizationPanel(BasePanel):
         header_row.setSpacing(6)
         header_row.setContentsMargins(0, 0, 0, 0)
         materials_label = QLabel("Materials:")
-        materials_label.setStyleSheet("font-weight: bold; font-size: 10px;")
         header_row.addWidget(materials_label)
 
         distinct_cb = QCheckBox("Distinct")
@@ -705,7 +882,6 @@ class MPCVisualizationPanel(BasePanel):
             "Use auto-generated maximally distinct colors instead of ITU palette"
         )
         distinct_cb.setChecked(False)
-        distinct_cb.setStyleSheet("font-size: 9px;")
         distinct_cb.setVisible(False)  # Hidden until material color mode is selected
         self.widgets["distinct_material_colors_cb"] = distinct_cb
         header_row.addWidget(distinct_cb)
@@ -733,15 +909,12 @@ class MPCVisualizationPanel(BasePanel):
 
         return container
 
-    def _create_range_filters(self) -> QWidget:
+    def _create_property_filters(self) -> QWidget:
         """Create filter controls for delay, path loss, angles, and previews."""
         container = QWidget()
         main_layout = QVBoxLayout(container)
         main_layout.setSpacing(4)
         main_layout.setContentsMargins(0, 0, 0, 0)
-
-        spin_style = "QDoubleSpinBox { font-size: 9px; max-width: 70px; }"
-        label_style = "font-size: 9px;"
 
         def make_spin(
             suffix: str, min_val: float, max_val: float, decimals: int, tooltip: str
@@ -752,7 +925,6 @@ class MPCVisualizationPanel(BasePanel):
             spin.setRange(min_val, max_val)
             spin.setValue(min_val)
             spin.setSuffix(f" {suffix}" if suffix else "")
-            spin.setStyleSheet(spin_style)
             spin.setToolTip(tooltip)
             return spin
 
@@ -779,7 +951,6 @@ class MPCVisualizationPanel(BasePanel):
             self.widgets[f"{key_prefix}_filter_min"] = min_spin
             layout.addWidget(min_spin, row, 1)
             separator = QLabel("to")
-            separator.setStyleSheet(label_style)
             layout.addWidget(separator, row, 2)
             max_spin = make_spin(
                 suffix,
@@ -816,10 +987,8 @@ class MPCVisualizationPanel(BasePanel):
         )
         path_loss_layout.setColumnStretch(4, 1)
 
-        scalar_row = QWidget()
-        scalar_layout = QHBoxLayout(scalar_row)
-        scalar_layout.setSpacing(4)
-        scalar_layout.setContentsMargins(0, 0, 0, 0)
+        scalar_row = ResponsiveRow(spacing=6)
+        scalar_layout = scalar_row.row
         scalar_layout.addWidget(delay_group, 1)
         scalar_layout.addWidget(path_loss_group, 1)
         main_layout.addWidget(scalar_row)
@@ -834,19 +1003,20 @@ class MPCVisualizationPanel(BasePanel):
 
         angle_defs = [
             (0, 0, "AoD Az:", "\u00b0", -180.0, 180.0, "aod_az"),
-            (0, 5, "AoD El:", "\u00b0", -90.0, 90.0, "aod_el"),
-            (1, 0, "AoA Az:", "\u00b0", -180.0, 180.0, "aoa_az"),
-            (1, 5, "AoA El:", "\u00b0", -90.0, 90.0, "aoa_el"),
+            (1, 0, "AoD El:", "\u00b0", -90.0, 90.0, "aod_el"),
+            (2, 0, "AoA Az:", "\u00b0", -180.0, 180.0, "aoa_az"),
+            (3, 0, "AoA El:", "\u00b0", -90.0, 90.0, "aoa_el"),
         ]
 
         for row, col_base, lbl, suffix, mn, mx, key in angle_defs:
-            angle_grid.addWidget(QLabel(lbl), row, col_base)
+            label = QLabel(lbl)
+            self.widgets[f"{key}_filter_label"] = label
+            angle_grid.addWidget(label, row, col_base)
             s_min = make_spin(suffix, mn, mx, 1, f"Minimum {lbl.strip(':')}")
             s_min.setSpecialValueText("Min")
             self.widgets[f"{key}_filter_min"] = s_min
             angle_grid.addWidget(s_min, row, col_base + 1)
             dash = QLabel("to")
-            dash.setStyleSheet(label_style)
             angle_grid.addWidget(dash, row, col_base + 2)
             s_max = make_spin(suffix, mn, mx, 1, f"Maximum {lbl.strip(':')}")
             s_max.setValue(mx)
@@ -854,9 +1024,13 @@ class MPCVisualizationPanel(BasePanel):
             self.widgets[f"{key}_filter_max"] = s_max
             angle_grid.addWidget(s_max, row, col_base + 3)
 
-        angle_grid.setColumnMinimumWidth(4, 12)
-        angle_grid.setColumnStretch(9, 1)
+        angle_grid.setColumnStretch(1, 1)
+        angle_grid.setColumnStretch(3, 1)
         angle_layout.addLayout(angle_grid)
+        angle_status = QLabel("")
+        angle_status.setWordWrap(True)
+        self.widgets["angle_filter_status"] = angle_status
+        angle_layout.addWidget(angle_status)
         self.widgets["angle_filters_container"] = angle_group
         main_layout.addWidget(angle_group)
 
@@ -867,14 +1041,15 @@ class MPCVisualizationPanel(BasePanel):
         self.widgets["angular_preview_group"] = preview_group
 
         preview_controls = QWidget()
-        footer = QHBoxLayout(preview_controls)
+        preview_controls_layout = QVBoxLayout(preview_controls)
+        preview_controls_layout.setContentsMargins(0, 0, 0, 0)
+        footer = QHBoxLayout()
         footer.setSpacing(6)
         footer.setContentsMargins(0, 0, 0, 0)
 
         aod_cb = QCheckBox("AoD")
         aod_cb.setChecked(False)
         aod_cb.setStyleSheet(
-            "QCheckBox { font-size: 9px; }"
             "QCheckBox::indicator:checked { background-color: #ff4d33; border: 1px solid #cc3d29; }"
         )
         aod_cb.setToolTip("Show the filled AoD filter sector at the TX selected in Context")
@@ -884,31 +1059,13 @@ class MPCVisualizationPanel(BasePanel):
         aoa_cb = QCheckBox("AoA")
         aoa_cb.setChecked(False)
         aoa_cb.setStyleSheet(
-            "QCheckBox { font-size: 9px; }"
             "QCheckBox::indicator:checked { background-color: #3380ff; border: 1px solid #2266cc; }"
         )
         aoa_cb.setToolTip("Show the filled AoA filter sector at the RX selected in Context")
         self.widgets["show_aoa_aperture_cb"] = aoa_cb
         footer.addWidget(aoa_cb)
 
-        global_ref_cb = QCheckBox("Global")
-        global_ref_cb.setChecked(False)
-        global_ref_cb.setStyleSheet("QCheckBox { font-size: 9px; }")
-        global_ref_cb.setToolTip("Show global angular axes at the TX/RX nodes selected in Context")
-        self.widgets["show_global_angular_reference_cb"] = global_ref_cb
-        footer.addWidget(global_ref_cb)
-
-        local_ref_cb = QCheckBox("Local")
-        local_ref_cb.setChecked(False)
-        local_ref_cb.setStyleSheet("QCheckBox { font-size: 9px; }")
-        local_ref_cb.setToolTip(
-            "Show local device angular axes at the TX/RX nodes selected in Context"
-        )
-        self.widgets["show_local_angular_reference_cb"] = local_ref_cb
-        footer.addWidget(local_ref_cb)
-
         radius_label = QLabel("Radius:")
-        radius_label.setStyleSheet("font-size: 9px;")
         self.widgets["aperture_radius_label"] = radius_label
         footer.addWidget(radius_label)
 
@@ -917,18 +1074,17 @@ class MPCVisualizationPanel(BasePanel):
         radius_spin.setRange(0.5, 50.0)
         radius_spin.setValue(5.0)
         radius_spin.setSuffix(" m")
-        radius_spin.setStyleSheet("QDoubleSpinBox { font-size: 9px; max-width: 70px; }")
         radius_spin.setToolTip("Radius of aperture visualization in meters")
         self.widgets["aperture_radius_spin"] = radius_spin
         footer.addWidget(radius_spin)
 
         footer.addStretch()
+        preview_controls_layout.addLayout(wrap_control_row(footer, [1, 1, 2]))
         self.widgets["aperture_controls_container"] = preview_controls
         preview_layout.addWidget(preview_controls)
 
         selection_label = QLabel("")
         selection_label.setWordWrap(True)
-        selection_label.setStyleSheet("font-size: 9px;")
         self.widgets["aperture_selection_label"] = selection_label
         preview_layout.addWidget(selection_label)
 
@@ -939,13 +1095,11 @@ class MPCVisualizationPanel(BasePanel):
 
         aod_status_label = QLabel("")
         aod_status_label.setWordWrap(True)
-        aod_status_label.setStyleSheet("font-size: 9px;")
         self.widgets["aod_aperture_status_label"] = aod_status_label
         status_layout.addWidget(aod_status_label, 1)
 
         aoa_status_label = QLabel("")
         aoa_status_label.setWordWrap(True)
-        aoa_status_label.setStyleSheet("font-size: 9px;")
         self.widgets["aoa_aperture_status_label"] = aoa_status_label
         status_layout.addWidget(aoa_status_label, 1)
         self.widgets["aperture_status_row"] = status_row
@@ -962,20 +1116,8 @@ class MPCVisualizationPanel(BasePanel):
         actions_layout.setSpacing(6)
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.addStretch()
-        reset_btn = QPushButton("Reset Filters")
-        reset_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #95a5a6;
-                color: white;
-                border: none;
-                padding: 3px 8px;
-                border-radius: 3px;
-                font-size: 9px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #7f8c8d; }
-            """)
-        reset_btn.setToolTip("Reset all advanced filters to show all MPCs")
+        reset_btn = QPushButton("Reset property filters")
+        reset_btn.setToolTip("Clear delay, path-loss and angle limits")
         reset_btn.clicked.connect(self._on_reset_range_filters)
         self.widgets["reset_range_filters_btn"] = reset_btn
         actions_layout.addWidget(reset_btn)
@@ -984,8 +1126,6 @@ class MPCVisualizationPanel(BasePanel):
         # Connect aperture control signals
         aod_cb.toggled.connect(self._on_aod_aperture_toggled)
         aoa_cb.toggled.connect(self._on_aoa_aperture_toggled)
-        global_ref_cb.toggled.connect(self._on_global_angular_reference_toggled)
-        local_ref_cb.toggled.connect(self._on_local_angular_reference_toggled)
         radius_spin.valueChanged.connect(self._on_aperture_radius_changed)
 
         # Connect all spin box signals
@@ -1132,14 +1272,97 @@ class MPCVisualizationPanel(BasePanel):
             return True
         return renderer_capabilities(renderer).angular_preview
 
+    def sync_angle_filter_availability(self, canon: CanonicalStepData | None) -> None:
+        """Use saved metrics from the last renderer-accepted frame, keeping limits."""
+        if canon is not self._angle_filter_canonical:
+            self._angle_filter_canonical = canon
+            self._angle_filter_selection = None
+        self._refresh_angle_filter_state()
+
+    def _selected_angle_availability(self, selected_tx, selected_rx) -> dict[str, bool]:
+        """Inspect one sample per selected path, once per immutable frame/selection."""
+        selection = (selected_tx, selected_rx)
+        if selection == self._angle_filter_selection:
+            return self._angle_filter_available
+
+        keys = ("aod_az", "aod_el", "aoa_az", "aoa_el")
+        available = dict.fromkeys(keys, False)
+        canon = self._angle_filter_canonical
+        if canon is not None:
+            indices = canon.path_start_indices
+            if indices is None:
+                indices = np.arange(len(canon.points))
+            if self._is_specific_node_selection(selected_tx):
+                indices = indices[canon.tx_id[indices] == int(selected_tx)]
+            if self._is_specific_node_selection(selected_rx):
+                indices = indices[canon.rx_id[indices] == int(selected_rx)]
+            for key in keys:
+                values = getattr(canon, key)
+                # Canonical projection masks unset metric-validity bits with NaN.
+                # A metric present on another TX/RX pair does not enable this row.
+                available[key] = bool(
+                    values is not None and values.size and np.any(np.isfinite(values[indices]))
+                )
+        self._angle_filter_selection = selection
+        self._angle_filter_available = available
+        return available
+
+    def _refresh_angle_filter_state(self) -> None:
+        """Expose endpoint prerequisites and missing saved metrics without resetting values."""
+        status = self.widgets.get("angle_filter_status")
+        if status is None:
+            return
+        selected_tx, selected_rx = self._aperture_selection_state()
+        available = self._selected_angle_availability(selected_tx, selected_rx)
+        missing_nodes = []
+        for kind, selected, node in (
+            ("aod", selected_tx, "TX"),
+            ("aoa", selected_rx, "RX"),
+        ):
+            node_ready = self._is_specific_node_selection(selected)
+            angle_name = "AoD" if kind == "aod" else "AoA"
+            if not node_ready:
+                missing_nodes.append(f"one {node} for {angle_name}")
+            for axis, name in (("az", "azimuth"), ("el", "elevation")):
+                key = f"{kind}_{axis}"
+                title = f"{angle_name} {name}"
+                reasons = []
+                if not node_ready:
+                    reasons.append(
+                        f"Select one {node} in Context; All {node} disables {title} filtering."
+                    )
+                if not available[key]:
+                    reasons.append(
+                        f"No valid saved {title} values for the current TX/RX selection."
+                    )
+                tooltip = (
+                    " ".join(reasons)
+                    if reasons
+                    else f"Filter {title} in the selected {node}'s local coordinates."
+                )
+                for suffix in ("label", "min", "max"):
+                    widget = self.widgets[f"{key}_filter_{suffix}"]
+                    widget.setEnabled(node_ready and available[key])
+                    widget.setToolTip(tooltip)
+        messages = []
+        if missing_nodes:
+            messages.append(f"Select {' and '.join(missing_nodes)} in Context.")
+        if self._angle_filter_canonical is None:
+            messages.append("Load a path frame to use saved angles.")
+        elif not any(available.values()):
+            messages.append("No valid saved angle data for this TX/RX selection.")
+        elif not all(available.values()):
+            messages.append("Some angles have no valid saved data for this TX/RX selection.")
+        status.setText(" ".join(messages))
+        status.setVisible(bool(messages))
+
     def refresh_aperture_preview_state(self) -> None:
         """Refresh aperture preview controls and user-visible eligibility status."""
         self.refresh_renderer_controls_state()
+        self._refresh_angle_filter_state()
 
         aoa_cb = self.widgets.get("show_aoa_aperture_cb")
         aod_cb = self.widgets.get("show_aod_aperture_cb")
-        global_ref_cb = self.widgets.get("show_global_angular_reference_cb")
-        local_ref_cb = self.widgets.get("show_local_angular_reference_cb")
         radius_spin = self.widgets.get("aperture_radius_spin")
         radius_label = self.widgets.get("aperture_radius_label")
         preview_group = self.widgets.get("angular_preview_group")
@@ -1156,6 +1379,12 @@ class MPCVisualizationPanel(BasePanel):
 
         if radius_label is not None:
             radius_label.setEnabled(True)
+        preview_enabled = any(
+            widget is not None and widget.isChecked() for widget in (aoa_cb, aod_cb)
+        )
+        radius_spin.setVisible(preview_enabled)
+        if radius_label is not None:
+            radius_label.setVisible(preview_enabled)
 
         selected_tx, selected_rx = self._aperture_selection_state()
         aoa_ready = self._is_specific_node_selection(selected_rx)
@@ -1168,10 +1397,6 @@ class MPCVisualizationPanel(BasePanel):
         if not renderer_ready:
             aoa_cb.setEnabled(False)
             aod_cb.setEnabled(False)
-            if global_ref_cb is not None:
-                global_ref_cb.setEnabled(False)
-            if local_ref_cb is not None:
-                local_ref_cb.setEnabled(False)
             radius_spin.setEnabled(False)
             status_label.setText("Angular preview is available in pygfx only")
             status_label.setVisible(False)
@@ -1179,28 +1404,6 @@ class MPCVisualizationPanel(BasePanel):
 
         aoa_cb.setEnabled(renderer_ready and aoa_ready)
         aod_cb.setEnabled(renderer_ready and aod_ready)
-        if global_ref_cb is not None:
-            global_ref_cb.setEnabled(renderer_ready and reference_ready)
-            global_ref_cb.setToolTip(
-                "Angular previews are currently available in pygfx only"
-                if not renderer_ready
-                else (
-                    "Select one TX or RX in Context to enable this reference"
-                    if not reference_ready
-                    else "Show global angular axes at the TX/RX nodes selected in Context"
-                )
-            )
-        if local_ref_cb is not None:
-            local_ref_cb.setEnabled(renderer_ready and reference_ready)
-            local_ref_cb.setToolTip(
-                "Angular previews are currently available in pygfx only"
-                if not renderer_ready
-                else (
-                    "Select one TX or RX in Context to enable this reference"
-                    if not reference_ready
-                    else "Show local device angular axes at the TX/RX nodes selected in Context"
-                )
-            )
         radius_spin.setEnabled(renderer_ready and reference_ready)
         aoa_cb.setToolTip(
             "Angular previews are currently available in pygfx only"
@@ -1234,9 +1437,8 @@ class MPCVisualizationPanel(BasePanel):
             """Apply compact ready/not-ready styling to a preview status label."""
             if label is None:
                 return
-            color = "#2e7d32" if ready else "#8a6d3b"
             label.setText(text)
-            label.setStyleSheet(f"font-size: 9px; color: {color};")
+            set_widget_role(label, "success" if ready else "secondary")
 
         if not renderer_ready:
             aoa_status = "AoA: pygfx only"
@@ -1274,22 +1476,6 @@ class MPCVisualizationPanel(BasePanel):
             self.parent.ui_controller.handle_aoa_aperture_toggled(checked)
         else:
             logger.warning("_on_aoa_aperture_toggled: parent has no ui_controller")
-        self.refresh_aperture_preview_state()
-
-    def _on_global_angular_reference_toggled(self, checked: bool) -> None:
-        """Handle global angular reference visibility toggle."""
-        if not hasattr(self, "parent") or not self.parent:
-            return
-        if hasattr(self.parent, "ui_controller"):
-            self.parent.ui_controller.handle_global_angular_reference_toggled(checked)
-        self.refresh_aperture_preview_state()
-
-    def _on_local_angular_reference_toggled(self, checked: bool) -> None:
-        """Handle local angular reference visibility toggle."""
-        if not hasattr(self, "parent") or not self.parent:
-            return
-        if hasattr(self.parent, "ui_controller"):
-            self.parent.ui_controller.handle_local_angular_reference_toggled(checked)
         self.refresh_aperture_preview_state()
 
     def _on_aod_aperture_toggled(self, checked: bool) -> None:
@@ -1428,9 +1614,8 @@ class MPCVisualizationPanel(BasePanel):
             self.widgets["aod_el_filter_max"].setRange(el_widget_min, el_widget_max)
             self.widgets["aod_el_filter_max"].setValue(el_widget_max)
 
-        # Keep angle controls visible. In normal generated ORCHAV frames,
-        # AoA/AoD metrics are part of the MPC data, and users expect these
-        # filters to remain available across scenarios.
+        # Keep disabled rows visible so their tooltips can explain missing
+        # endpoint selections or saved angle metrics.
         if "angle_filters_container" in self.widgets:
             self.widgets["angle_filters_container"].setVisible(True)
 
@@ -1467,12 +1652,10 @@ class MPCVisualizationPanel(BasePanel):
 
         # Label
         preset_label = QLabel("Preset:")
-        preset_label.setStyleSheet("font-weight: bold; font-size: 10px;")
         layout.addWidget(preset_label)
 
         # Preset dropdown - presets apply immediately on selection
         self.widgets["preset_combo"] = QComboBox()
-        self.widgets["preset_combo"].setStyleSheet("QComboBox { font-size: 10px; }")
         self.widgets["preset_combo"].setToolTip(
             "Select a filter preset - applies immediately.\n"
             "Use the reset preset to show all MPCs."
@@ -1482,23 +1665,6 @@ class MPCVisualizationPanel(BasePanel):
         layout.addWidget(self.widgets["preset_combo"], 1)
 
         self.widgets["save_preset_btn"] = QPushButton("Save...")
-        self.widgets["save_preset_btn"].setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                border: none;
-                padding: 4px 10px;
-                border-radius: 3px;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2ecc71;
-            }
-            QPushButton:pressed {
-                background-color: #229954;
-            }
-            """)
         self.widgets["save_preset_btn"].setToolTip("Save current filters as a new preset")
         self.widgets["save_preset_btn"].clicked.connect(self._on_save_preset)
         layout.addWidget(self.widgets["save_preset_btn"])
@@ -1531,71 +1697,16 @@ class MPCVisualizationPanel(BasePanel):
         bulk_layout.setSpacing(4)
         bulk_layout.setContentsMargins(0, 2, 0, 2)
 
-        # "All" button
-        select_all_btn = QPushButton("All")
-        select_all_btn.setToolTip("Select all materials")
-        select_all_btn.setStyleSheet("""
-            QPushButton {
-                font-size: 9px;
-                padding: 2px 8px;
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:pressed {
-                background-color: #3d8b40;
-            }
-            """)
-        select_all_btn.clicked.connect(self._on_select_all_materials)
-        bulk_layout.addWidget(select_all_btn)
-
-        # "None" button
-        deselect_all_btn = QPushButton("None")
-        deselect_all_btn.setToolTip("Deselect all materials")
-        deselect_all_btn.setStyleSheet("""
-            QPushButton {
-                font-size: 9px;
-                padding: 2px 8px;
-                background-color: #f44336;
-                color: white;
-                border: none;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #da190b;
-            }
-            QPushButton:pressed {
-                background-color: #c4150a;
-            }
-            """)
-        deselect_all_btn.clicked.connect(self._on_deselect_all_materials)
-        bulk_layout.addWidget(deselect_all_btn)
-
-        # "Invert" button
-        invert_btn = QPushButton("Invert")
-        invert_btn.setToolTip("Invert material selection")
-        invert_btn.setStyleSheet("""
-            QPushButton {
-                font-size: 9px;
-                padding: 2px 8px;
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #0b7dda;
-            }
-            QPushButton:pressed {
-                background-color: #0a6bc2;
-            }
-            """)
-        invert_btn.clicked.connect(self._on_invert_material_selection)
-        bulk_layout.addWidget(invert_btn)
+        for text, tooltip, callback in (
+            ("All", "Select all materials", self._on_select_all_materials),
+            ("None", "Deselect all materials", self._on_deselect_all_materials),
+            ("Invert", "Invert material selection", self._on_invert_material_selection),
+        ):
+            button = QPushButton(text)
+            button.setToolTip(tooltip)
+            button.setStyleSheet("QPushButton { padding: 2px 8px; }")
+            button.clicked.connect(callback)
+            bulk_layout.addWidget(button)
 
         bulk_layout.addStretch()
         return bulk_layout
@@ -1914,11 +2025,10 @@ class MPCVisualizationPanel(BasePanel):
 
         # Container for inline legend items
         self.widgets["legend_items_container"] = QWidget()
-        self.widgets["legend_items_layout"] = QHBoxLayout(self.widgets["legend_items_container"])
+        self.widgets["legend_items_layout"] = WrappingLayout(self.widgets["legend_items_container"])
         self.widgets["legend_items_layout"].setSpacing(6)
         self.widgets["legend_items_layout"].setContentsMargins(0, 0, 0, 0)
-        legend_row_layout.addWidget(self.widgets["legend_items_container"])
-        legend_row_layout.addStretch()
+        legend_row_layout.addWidget(self.widgets["legend_items_container"], 1)
 
         self.widgets["color_legend_layout"].addWidget(legend_row)
 
@@ -1934,6 +2044,8 @@ class MPCVisualizationPanel(BasePanel):
     def update_color_legend(self, color_mode: str = "reflection_order") -> None:
         """Refresh legend items for the active MPC color mode."""
         self._current_color_mode = color_mode
+        if "colormap_group" in self.widgets:
+            self._sync_color_palette_visibility()
 
         if "legend_items_layout" not in self.widgets:
             return
@@ -1959,13 +2071,13 @@ class MPCVisualizationPanel(BasePanel):
                 ("6+", order_colors[6]),
             ]
             legend_tooltips = {
-                "LoS": "Direct path without any surface interaction.",
-                "1st": "Paths with exactly one surface bounce.",
-                "2nd": "Paths that include two reflections.",
-                "3rd": "Paths reflecting three times before arrival.",
-                "4th": "Paths with four surface interactions.",
-                "5th": "Paths with five surface interactions.",
-                "6+": "Highly scattered paths with six or more bounces.",
+                "LoS": "Direct path without an interaction.",
+                "1st": "Paths with exactly one interaction, including a native sensing event.",
+                "2nd": "Paths with two interactions.",
+                "3rd": "Paths with three interactions.",
+                "4th": "Paths with four interactions.",
+                "5th": "Paths with five interactions.",
+                "6+": "Paths with six or more interactions.",
             }
         elif color_mode == "mpc_type":
             type_entries = _get_type_legend_entries(self._present_mpc_type_codes)
@@ -2067,7 +2179,6 @@ class MPCVisualizationPanel(BasePanel):
         layout.addWidget(swatch)
 
         label = QLabel(description)
-        label.setStyleSheet(f"font-size: 9px; color: {theme.text_primary}; font-weight: bold;")
         layout.addWidget(label)
 
         if tooltip:

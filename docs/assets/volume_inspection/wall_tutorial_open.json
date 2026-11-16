@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "kind": "visualizer_gui_capture",
+  "image": "wall_tutorial_open.png",
+  "image_sha256": "0f549fc735ace6f2bd1fbf5da4dc431d5bd3dd5302365b3d5bd04918a423b9ae",
+  "output_sha256": "0f549fc735ace6f2bd1fbf5da4dc431d5bd3dd5302365b3d5bd04918a423b9ae",
+  "captured_on": "2026-10-16",
+  "renderer": "pygfx",
+  "pygfx_version": "0.17.0",
+  "wgpu_version": "0.31.1",
+  "tutorial_scenario": "scenarios/sensing/applications/wall_detection_volume/scenario.yaml",
+  "tutorial_scenario_sha256": "e6eac0288ba6ad40ce84c7628b742207915d330702bdb39a3911b2b0636e2471",
+  "source_recording": "wall_tutorial/open",
+  "source_manifest_sha256": "423ccfb0df94039469b43489a84948165e46a49fd4d12410a5f703237f7a17f7",
+  "source_scenario_sha256": "a97d9355d87ca2b369a68feb90fe166b025492314e04c272094a7799dfa93550",
+  "source_volume_recipe_sha256": "41b31bb03f5dbcc1dba0e387b96b4bd87afdf8d39a18dd678fafdbf0eeef4d2c",
+  "counts": {
+    "measured": 11,
+    "tp": 10,
+    "fp": 2,
+    "fn": 1,
+    "no_reports": 0,
+    "reports_but_no_spatial_match": 1,
+    "median_error_m": 0.3479016115345227,
+    "p90_error_m": 0.4764269525716731
+  },
+  "view": {
+    "quantity": "details",
+    "mode": "both",
+    "altitude": 6.0,
+    "x": 0.0,
+    "y": 3.0,
+    "opacity": 0.6,
+    "uniform_colour": true,
+    "readable_sensor": true,
+    "inspect": false,
+    "dim_context": false,
+    "highlight_cell": true,
+    "camera": {
+      "eye": [
+        8.907054901123047,
+        -8.907054901123047,
+        14.407054901123047
+      ],
+      "lookat": [
+        -1.5,
+        1.5,
+        4.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "fov": 60.0
+    },
+    "evaluation": {
+      "expanded": false,
+      "basis": "position",
+      "position_gate": 0.75,
+      "range_gate": 0.75,
+      "velocity_gate": 0.5,
+      "error_max": 1.5
+    },
+    "cutaway": {
+      "active": false,
+      "axis": "z",
+      "keep_lower": true,
+      "coordinate": 6.0
+    },
+    "heading": "Along +X, 1 m/s",
+    "heading_identity": {
+      "name": "Along +X, 1 m/s",
+      "velocity_m_s": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    "visible": true,
+    "cell_edges": true,
+    "unavailable_edges": false,
+    "inspection": {
+      "focus": "all",
+      "threshold": 5.0,
+      "minimum": 1,
+      "categories": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "count_max": 5,
+      "orientation": "xy",
+      "rate": 2.0,
+      "forward": false,
+      "motion": false,
+      "zero": false,
+      "slice_plot": false,
+      "loop": false,
+      "vectors": false,
+      "through": false
+    },
+    "antenna": {
+      "mode": "off",
+      "radius": 3.6,
+      "opacity": 0.4
+    }
+  },
+  "gui_status": "Full heading: TP 10 / FP 2 / FN 1 · 11 measured positions\nMatch, no extras: 9 · Match with extras: 1 · Reports, no match: 1 · No reports: 0",
+  "notes": [
+    "Unedited full GUI screenshots of the exact tutorial grid.",
+    "Existing saved outcomes only; no acquisition, detector or tracker was run.",
+    "Opacity and cell edges affect display only. Matching uses the saved 0.75 m position gate."
+  ],
+  "reproduce": "Open the corresponding campaign condition in the Visualizer; choose Outcome detail, 3D sampled region, opacity 0.6, and Show sampled cell edges. Use Frame sampled region and the existing 0.75 m position gate.",
+  "summary_configuration_equivalence": {
+    "schema_version": 1,
+    "scope": "Current authored YAML enables or selects native summary outputs; acquisition and scientific processing settings are unchanged.",
+    "acquisition_repeated": false,
+    "figure_rerendered": false,
+    "original_receipt_sha256": "4d3b4e92ed7c2bd6bafc8024adc7e031249347980e332f2d950e824176539c71",
+    "original_source_configuration_fields": {
+      "/tutorial_scenario_sha256": "7e887503c44eab05a3899a3261ac69b594bdfd33710b19340c143e678cdaacc2"
+    },
+    "updated_authored_binding_fields": [
+      "/tutorial_scenario_sha256"
+    ],
+    "configurations": [
+      {
+        "scenario": "scenarios/sensing/applications/wall_detection_volume/scenario.yaml",
+        "previous_authored_sha256": "7e887503c44eab05a3899a3261ac69b594bdfd33710b19340c143e678cdaacc2",
+        "current_authored_sha256": "e3576e8f4c060e2a43ecbb9891cb70bc760f42c150259931f66bbda2b1071e00",
+        "excluded_top_level_keys": [
+          "generator_summary"
+        ],
+        "unchanged_non_summary_document_sha256": "3e74fd8923f161bd10ed80dac1c881afb17996cae3671c84913a9939bebb2cb7",
+        "previous_generator_summary": {
+          "create": [
+            "scene2d",
+            "sensing"
+          ],
+          "visualization": {
+            "scene2d_mode": "auto"
+          }
+        },
+        "current_generator_summary": {
+          "create": [
+            "scene2d",
+            "sensing"
+          ],
+          "visualization": {
+            "scene2d_mode": "auto"
+          },
+          "enabled": true,
+          "sensing": {
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "angles",
+              "detection"
+            ],
+            "inspection_figures": [
+              "detection_stages"
+            ]
+          }
+        }
+      }
+    ],
+    "identity_note": "Original acquisition, renderer, source-file and image hashes are preserved. Updated authored bindings certify configuration equivalence only and do not claim regeneration under the new summary selections."
+  },
+  "authored_configuration_binding": {
+    "schema_version": 1,
+    "kind": "summary_only_rebind",
+    "source_revision": "b5874d3bc0e265ea7e781901a6869266a8fd9ae3",
+    "previous_source_revision": "8ac3a55195bbef9f96eb04324a549d5aa49bb077",
+    "original_receipt_sha256": "1ac72a9a2c233b2cf66e94f45de5e651fd73de65f9ebcdbe379347806f876ccf",
+    "original_authored_configuration_fields": {
+      "/tutorial_scenario_sha256": "e3576e8f4c060e2a43ecbb9891cb70bc760f42c150259931f66bbda2b1071e00"
+    },
+    "updated_authored_binding_fields": [
+      "/tutorial_scenario_sha256"
+    ],
+    "configurations": [
+      {
+        "scenario": "scenarios/sensing/applications/wall_detection_volume/scenario.yaml",
+        "previous_authored_sha256": "e3576e8f4c060e2a43ecbb9891cb70bc760f42c150259931f66bbda2b1071e00",
+        "current_authored_sha256": "e6eac0288ba6ad40ce84c7628b742207915d330702bdb39a3911b2b0636e2471",
+        "excluded_top_level_keys": [
+          "generator_summary"
+        ],
+        "unchanged_non_summary_document_sha256": "3e74fd8923f161bd10ed80dac1c881afb17996cae3671c84913a9939bebb2cb7",
+        "previous_generator_summary": {
+          "create": [
+            "scene2d",
+            "sensing"
+          ],
+          "visualization": {
+            "scene2d_mode": "auto"
+          },
+          "enabled": true,
+          "sensing": {
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "angles",
+              "detection"
+            ],
+            "inspection_figures": [
+              "detection_stages"
+            ]
+          }
+        },
+        "current_generator_summary": {
+          "create": [
+            "topology",
+            "sensing"
+          ],
+          "enabled": true,
+          "sensing": {
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "angles",
+              "detection"
+            ],
+            "inspection_figures": [
+              "detection_stages"
+            ]
+          }
+        }
+      }
+    ],
+    "acquisition_repeated": false,
+    "figure_rerendered": false,
+    "identity_note": "Exact historical input bytes and complete non-summary YAML were independently verified. Only generator_summary presentation settings changed; storage-only changes are separately authenticated by the recording bindings. Acquisition, plotting and image identities are unchanged."
+  }
+}

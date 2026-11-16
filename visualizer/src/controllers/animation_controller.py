@@ -117,6 +117,9 @@ class _VisualizerPlaybackControls:
         return self._is_checked(checkbox, default=True)
 
     def frame_stride(self) -> int:
+        plan = getattr(self._visualizer, "sensing_playback", None)
+        if plan is not None and plan.steps is not None:
+            return 1
         combo = getattr(self._visualizer, "stride_combo", None)
         if combo is None:
             return 1
@@ -224,11 +227,17 @@ class AnimationController:
 
     def start_playback(self, start_step: int = 0) -> None:
         """Start service-level playback from a known step."""
+        from ..services.paused_presentation import playback_changed
+
+        playback_changed(self.visualizer, True)
         self.animation_service.start(start_step=start_step)
 
     def stop_playback(self) -> None:
         """Stop any running animation."""
         self.animation_service.stop()
+        from ..services.paused_presentation import playback_changed
+
+        playback_changed(self.visualizer, False)
 
     def advance(self) -> Optional[dict[str, Any]]:
         """Advance the animation service and return its loaded frame, if any."""
@@ -321,12 +330,18 @@ class AnimationController:
         timer = self._ensure_live_timer()
         speed_multiplier = self._playback_controls.live_speed_multiplier()
         base_interval = 1000
+        from ..services.paused_presentation import playback_changed
+
+        playback_changed(viz, True)
         timer.start(int(base_interval / speed_multiplier))
         logger.info("Live streaming: Playback started at %.2fx speed", speed_multiplier)
 
     def stop_live_playback(self) -> None:
         """Stop the live playback timer and detach listeners."""
         logger.info("Live streaming: Stopping live playback")
+        from ..services.paused_presentation import playback_changed
+
+        playback_changed(self.visualizer, False)
         timer = self._live_playback_timer
         if timer is not None:
             timer.stop()
@@ -451,6 +466,14 @@ class AnimationController:
 
     def _cached_timestamp_interval_ms(self, current_step: int, next_step: int) -> Optional[int]:
         """Return timestamp cadence when both adjacent raw frames are cached."""
+        result_playback = getattr(self.visualizer, "result_playback", None)
+        if result_playback is not None:
+            return result_playback.interval_ms(current_step, next_step)
+        sensing_playback = getattr(self.visualizer, "sensing_playback", None)
+        if sensing_playback is not None and sensing_playback.steps is not None:
+            interval = sensing_playback.interval_ms(current_step, next_step)
+            if interval is not None:
+                return interval
         cache_service = getattr(self.animation_service, "cache_service", None)
         if cache_service is None:
             cache_service = getattr(self.visualizer, "cache_service", None)
@@ -717,6 +740,9 @@ class AnimationController:
         self._real_time_next_deadline_s = None
         self._fixed_next_deadline_s = None
         viz.animation_running = False
+        warmer = getattr(viz, "_vm_warmer", None)
+        if warmer is not None:
+            warmer.sync_playback_state()
         self._update_play_button_states()
         logger.error("Playback stopped: frame %s was not accepted by the renderer", step)
         if hasattr(viz, "_set_status_message"):
@@ -782,6 +808,9 @@ class AnimationController:
             self._restore_scenario_summary()
             viz.update_timer.start(viz._idle_poll_interval_ms)
         else:
+            if getattr(getattr(viz, "sensing_playback", None), "preparing", False):
+                self._stop_for_empty_frame_plan()
+                return
             viz.play_direction = requested_direction
             self.reset_playback_cadence()
             viz.animation_running = True
@@ -789,6 +818,9 @@ class AnimationController:
             self._update_play_button_states()
             viz.update_timer.start(viz._active_poll_interval_ms)
 
+        warmer = getattr(viz, "_vm_warmer", None)
+        if warmer is not None:
+            warmer.sync_playback_state()
         self.sync_prefetch_settings()
         viz.ui_controller.refresh_status_telemetry()
 
@@ -813,10 +845,9 @@ class AnimationController:
             self.toggle_animation()
 
         start_step = 0
-        frame_source = getattr(viz, "frame_source", None)
-        if frame_source and hasattr(frame_source, "list_frames"):
+        if hasattr(viz, "get_available_animation_steps"):
             try:
-                frames = frame_source.list_frames()
+                frames = viz.get_available_animation_steps()
                 if frames:
                     start_step = min(frames)
             except OSError:
@@ -928,7 +959,10 @@ class AnimationController:
 
         if delta >= 0 and next_index >= len(available_steps):
             if self._playback_controls.loop_enabled():
-                next_step = available_steps[next_index % len(available_steps)]
+                # Restart the sequence, as manual stepping does. Carrying the
+                # overshoot into the next loop shifts a strided sampling grid
+                # whenever the frame count is not divisible by the stride.
+                next_step = available_steps[0]
                 logger.debug(
                     "Loop mode: wrapping to frame %s (was at frame %s)",
                     next_step,
@@ -953,7 +987,7 @@ class AnimationController:
                 return
         elif delta < 0 and next_index < 0:
             if self._playback_controls.loop_enabled():
-                next_step = available_steps[next_index % len(available_steps)]
+                next_step = available_steps[-1]
                 logger.debug("Loop mode: wrapping to last frame %s", next_step)
                 if self._playback_controls.is_online_mode():
                     self._playback_controls.request_frame_if_needed(next_step)
@@ -968,7 +1002,7 @@ class AnimationController:
 
         # File-backed playback pauses at cache misses until preload catches up;
         # live gRPC sources own their request/buffer policy.
-        if not self._is_online_mode():
+        if not self._is_online_mode() and getattr(viz, "result_playback", None) is None:
             cache_service = getattr(self.animation_service, "cache_service", None)
             if cache_service is not None and not cache_service.has_frame(next_step):
                 self._start_buffering(next_step)
@@ -1000,11 +1034,21 @@ class AnimationController:
             self._update_play_button_states()
         set_status = getattr(viz, "_set_status_message", None)
         if callable(set_status):
-            set_status("No animation frames are available")
+            preparing = getattr(getattr(viz, "sensing_playback", None), "preparing", False)
+            if preparing:
+                set_status("Preparing sensing frames… Press Play when ready.", 6000)
+            else:
+                set_status("No animation frames are available")
+        refresh = getattr(getattr(viz, "ui_controller", None), "refresh_status_telemetry", None)
+        if callable(refresh):
+            refresh()
 
     def _update_play_button_states(self) -> None:
         """Sync play/pause button states with the current playback state."""
         viz = self.visualizer
+        from ..services.paused_presentation import playback_changed
+
+        playback_changed(viz, bool(viz.animation_running))
         playing_forward = viz.animation_running and viz.play_direction >= 0
         playing_backward = viz.animation_running and viz.play_direction < 0
         if hasattr(viz, "play_btn") and viz.play_btn:

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtCore import QCoreApplication
 
+from shared.frames import project_standard_mpc_frame
 from shared.frames.types import StandardMPCFrame
 from tests.visualizer.fixtures.semantic_mpc import build_standard_mpc_frame
 from visualizer.src.controllers.animation_controller import (
@@ -11,7 +12,7 @@ from visualizer.src.controllers.animation_controller import (
     _VisualizerPlaybackControls,
 )
 from visualizer.src.playback import PlaybackMode
-from visualizer.src.services.animation_service import AnimationService
+from visualizer.src.services.animation_service import AnimationService, _PreloadWorker
 from visualizer.src.services.cache_service import CacheService
 
 
@@ -22,6 +23,154 @@ class DummyFrameSource:
     def load_frame(self, step: int) -> StandardMPCFrame:
         self.loaded_steps.append(step)
         return build_standard_mpc_frame(frame_idx=step)
+
+
+@pytest.mark.parametrize("failure", [None, "short", "wrong_order", "io"])
+def test_preload_batches_preserve_order_and_fall_back_for_remaining_frames(failure):
+    requests, fallback, closed = [], [], []
+
+    def batch_loader(steps, request):
+        requests.append(list(steps))
+        try:
+            yield project_standard_mpc_frame(build_standard_mpc_frame(frame_idx=3), request)
+            if failure == "short":
+                return
+            if failure == "io":
+                raise OSError("read interrupted")
+            yield project_standard_mpc_frame(
+                build_standard_mpc_frame(frame_idx=9 if failure == "wrong_order" else 4), request
+            )
+            yield project_standard_mpc_frame(build_standard_mpc_frame(frame_idx=5), request)
+        finally:
+            closed.append(True)
+
+    worker = _PreloadWorker(
+        SimpleNamespace(provider=SimpleNamespace(iter_frame_projections=batch_loader)),
+        None,
+        None,
+        [3, 4, 5],
+        is_current=lambda: True,
+        run_if_current=lambda action: True,
+    )
+    worker._load_one = lambda step: (fallback.append(step) or step, {"fallback": step})
+    results = list(worker._iter_frame_data())
+    assert [step for step, _ in results] == [3, 4, 5]
+    assert requests == [[3, 4, 5]]
+    assert fallback == ([] if failure is None else [4, 5])
+    assert closed == [True]
+
+
+def test_cancelled_batch_preload_does_not_publish_inflight_frame():
+    published, closed = [], []
+    current = True
+
+    def batch_loader(steps, request):
+        nonlocal current
+        try:
+            current = False
+            yield project_standard_mpc_frame(build_standard_mpc_frame(frame_idx=3), request)
+        finally:
+            closed.append(True)
+
+    worker = _PreloadWorker(
+        SimpleNamespace(provider=SimpleNamespace(iter_frame_projections=batch_loader)),
+        None,
+        SimpleNamespace(store_frame=lambda *args, **kw: published.append(args)),
+        [3],
+        is_current=lambda: current,
+        run_if_current=lambda action: action() if current else False,
+    )
+    worker.run()
+    assert not published
+    assert closed == [True]
+
+
+@pytest.mark.parametrize("steps", [(), (0, 128, 256)])
+def test_sensing_only_preload_never_requests_intermediate_scene_frames(monkeypatch, steps):
+    scheduled = []
+    source = SimpleNamespace(list_frames=lambda: list(range(384)))
+    viz = SimpleNamespace(
+        frame_source=source, sensing_playback=SimpleNamespace(steps=steps), animation_step=0
+    )
+    service = AnimationService(DummyPipeline(), viz)
+    monkeypatch.setattr(
+        service,
+        "_install_preloader",
+        lambda: SimpleNamespace(start=lambda **kw: scheduled.append(kw["frame_numbers"])),
+    )
+    assert service.start_preloading() is bool(steps)
+    assert scheduled == ([list(steps)] if steps else [])
+
+
+@pytest.mark.parametrize("steps", [(0, 100, 900), (63, 127, 191), (10**9,), (0, 1, 2)])
+def test_frame_discovery_counts_source_ids_without_loading_or_requiring_zero(steps):
+    listed = []
+    source = SimpleNamespace(list_frames=lambda: listed.append(True) or list(steps))
+    viz = SimpleNamespace(frame_source=source)
+    service = AnimationService(DummyPipeline(), viz)
+    counts = []
+    assert service.detect_mpc_frames(on_frame_count_updated=counts.append) == len(steps)
+    assert counts == [len(steps)]
+    assert listed == [True]
+
+
+@pytest.mark.parametrize("failure", [None, OSError, ValueError, KeyError, AttributeError])
+def test_frame_discovery_does_not_publish_empty_or_failed_inventory(failure):
+    def list_frames():
+        if failure is not None:
+            raise failure("source unavailable")
+        return []
+
+    service = AnimationService(
+        DummyPipeline(), SimpleNamespace(frame_source=SimpleNamespace(list_frames=list_frames))
+    )
+    counts = []
+    assert service.detect_mpc_frames(on_frame_count_updated=counts.append) is None
+    assert counts == []
+
+
+@pytest.mark.parametrize("owner", ["source", "sensing", "fusion"])
+def test_sparse_discovery_preserves_active_navigation_owner(owner):
+    from visualizer.visualizer import OrchavVisualizer
+
+    counts, maxima = [], []
+    active_count = {"source": 99, "sensing": 2, "fusion": 5}[owner]
+    viz = SimpleNamespace(
+        frame_source=SimpleNamespace(list_frames=lambda: [0, 100, 900]),
+        total_animation_steps=active_count,
+        sensing_playback=SimpleNamespace(steps=(0, 900)) if owner == "sensing" else None,
+        result_playback=SimpleNamespace(steps=tuple(range(5))) if owner == "fusion" else None,
+        ui_manager=SimpleNamespace(panels={}, update_total_steps=counts.append),
+        step_slider=SimpleNamespace(setMaximum=maxima.append),
+        ui_controller=SimpleNamespace(update_file_source_summary=lambda: None),
+    )
+    viz.animation_service = AnimationService(DummyPipeline(), viz)
+    OrchavVisualizer.detect_mpc_frames(viz)
+    assert viz.source_animation_steps == 3
+    assert viz.total_animation_steps == (3 if owner == "source" else active_count)
+    assert counts == ([3] if owner == "source" else [])
+    assert maxima == ([2] if owner == "source" else [])
+
+
+def test_sensing_playback_uses_recorded_cadence_before_scene_cache_is_ready():
+    from visualizer.src.playback import timestamp_interval_ms
+
+    timestamps = {0: 0.0, 7: 0.064, 23: 0.201}
+    viz = SimpleNamespace(
+        animation_step=7,
+        play_direction=1,
+        _frame_duration=20.0,
+        get_available_animation_steps=lambda: [0, 7, 23],
+        get_animation_step_index=lambda step: [0, 7, 23].index(step),
+        sensing_playback=SimpleNamespace(
+            steps=(0, 7, 23),
+            interval_ms=lambda a, b: timestamp_interval_ms(timestamps[a], timestamps[b]),
+        ),
+    )
+    controller = make_animation_controller(viz, playback_controls=DummyPlaybackControls())
+    assert controller._real_time_timer_interval_ms() == 137
+    viz.play_direction = -1
+    assert controller._real_time_timer_interval_ms() == 64
 
 
 class BlockingFrameSource:
@@ -557,6 +706,38 @@ def test_animation_controller_maximum_mode_uses_zero_delay_serial_timer():
     controller.toggle_animation()
 
     assert animation_timer.interval == 0
+
+
+@pytest.mark.parametrize("direction", [1, -1])
+@pytest.mark.parametrize("sparse", [False, True])
+def test_strided_playback_repeats_same_frames_after_loop(direction, sparse):
+    # A frame count not divisible by 64 used to shift the next pass by 15.
+    # Sparse frame IDs must still use list positions, not arithmetic on IDs.
+    steps = [3 * i + 10 if sparse else i for i in range(6001)]
+    start = 0 if direction > 0 else len(steps) - 1
+    viz = SimpleNamespace(
+        play_direction=direction,
+        animation_step=steps[start],
+        animation_running=False,
+        total_animation_steps=len(steps),
+        get_available_animation_steps=lambda: steps,
+        get_animation_step_index=lambda step: steps.index(step),
+        ui_controller=SimpleNamespace(update_performance_display=lambda: None),
+    )
+    viz.update_frame = lambda step: setattr(viz, "animation_step", step)
+    controller = AnimationController(
+        viz,
+        SimpleNamespace(cache_service=None),
+        playback_controls=DummyPlaybackControls(stride=64, loop=True),
+    )
+    expected = steps[::64] if direction > 0 else steps[::-64]
+    for _ in range(3):
+        observed = []
+        for _ in expected:
+            observed.append(viz.animation_step)
+            controller.handle_animation_tick()
+        assert observed == expected
+        assert viz.animation_step == steps[start]
 
 
 def test_maximum_mode_rearms_only_after_frame_transaction_completes():
@@ -1318,3 +1499,55 @@ def test_visualizer_prefetch_policy_reads_data_source_controls() -> None:
 
     assert controls.prefetch_enabled(playing=True) is True
     assert controls.prefetch_enabled(playing=False) is False
+
+
+def test_retired_preload_does_not_repopulate_canonical_cache(qapp):
+    current = True
+    canonical_calls = []
+
+    def store(*_args, **_kwargs):
+        nonlocal current
+        current = False  # Scenario is retired between the two mutations.
+
+    def run_if_current(action):
+        if not current:
+            return False
+        action()
+        return True
+
+    worker = _PreloadWorker(
+        None,
+        DummyFrameSource(),
+        SimpleNamespace(store_frame=store),
+        [0],
+        mpc_core=SimpleNamespace(precompute_canonical=lambda *args: canonical_calls.append(args)),
+        is_current=lambda: current,
+        run_if_current=run_if_current,
+    )
+    worker.run()
+    assert canonical_calls == []
+
+
+def test_cancelled_batch_does_not_retry_a_retired_source(qapp):
+    worker = None
+    closed = []
+
+    def batch_loader(*_args):
+        try:
+            worker.request_stop()
+            raise RuntimeError("HDF5 handle pool is closed")
+            yield  # This is a deferred batch iterator, like the provider.
+        finally:
+            closed.append(True)
+
+    worker = _PreloadWorker(
+        SimpleNamespace(provider=SimpleNamespace(iter_frame_projections=batch_loader)),
+        None,
+        None,
+        [0],
+        is_current=lambda: True,
+        run_if_current=lambda action: action() or True,
+    )
+    worker._load_one = lambda step: pytest.fail("Cancelled read attempted fallback I/O")
+    worker.run()
+    assert closed == [True]

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from visualizer.src.controllers.telemetry_controller import TelemetryController
 from visualizer.src.io.frame_sources import FileSource, LiveGrpcSource
 from visualizer.src.playback import PlaybackCadenceTracker
@@ -14,12 +16,16 @@ class _DummyLabel:
     def __init__(self) -> None:
         self.text = ""
         self.tooltip = ""
+        self.visible = False
 
     def setText(self, value: str) -> None:
         self.text = value
 
     def setToolTip(self, value: str) -> None:
         self.tooltip = value
+
+    def setVisible(self, value: bool) -> None:
+        self.visible = value
 
 
 def _cadence(*timestamps: float) -> PlaybackCadenceTracker:
@@ -132,6 +138,75 @@ def test_update_frame_context_allows_missing_cache_service():
     assert viz._last_frame_tooltip_context["source_flags"] == []
 
 
+@pytest.mark.parametrize(
+    "frame, expected",
+    [
+        ({"timestamp_ns": 511000000}, "Simulation time: 0.511000 s"),
+        ({"timestamp_s": 1.024}, "Simulation time: 1.024000 s"),
+        ({"timestamp_ns": 0}, "Simulation time: 0.000000 s"),
+        ({"timestamp_s": float("nan")}, ""),
+        ({"timestamp_s": float("inf")}, ""),
+        ({"timestamp_s": True}, ""),
+        ({"timestamp_s": None}, ""),
+        ({"timestamp": 64}, ""),
+        ({}, ""),
+    ],
+)
+def test_simulation_time_is_shown_only_with_valid_recorded_metadata(frame, expected):
+    label = _DummyLabel()
+    hud_times = []
+    viz = SimpleNamespace(
+        status_time_label=label,
+        renderer=SimpleNamespace(set_simulation_time_label=hud_times.append),
+    )
+    controller = _make_controller(viz)
+    controller.update_frame_context(123, raw_frame=frame)
+    assert label.text == expected
+    assert label.visible is bool(expected)
+    assert viz.scene_time_text == expected
+    assert hud_times == [expected]
+
+
+def test_simulation_time_disappears_when_next_frame_has_no_timestamp():
+    label = _DummyLabel()
+    hud_times = []
+    viz = SimpleNamespace(
+        status_time_label=label,
+        renderer=SimpleNamespace(set_simulation_time_label=hud_times.append),
+    )
+    controller = _make_controller(viz)
+    controller.update_frame_context(0, raw_frame={"timestamp_s": 1.0})
+    controller.update_frame_context(1, raw_frame={})
+
+    assert label.text == ""
+    assert not label.visible
+    assert viz.scene_time_text == ""
+    assert hud_times == ["Simulation time: 1.000000 s", ""]
+
+
+def test_source_change_clears_time_in_status_bar_and_viewport():
+    label = _DummyLabel()
+    hud_times = []
+    viz = SimpleNamespace(
+        frame_source=object(),
+        status_time_label=label,
+        renderer=SimpleNamespace(set_simulation_time_label=hud_times.append),
+    )
+    controller = _make_controller(viz)
+    controller.update_file_source_summary()
+    controller.update_frame_context(0, raw_frame={"timestamp_s": 1.0})
+    controller.update_file_source_summary()
+    assert label.visible
+
+    viz.frame_source = object()
+    controller.update_file_source_summary()
+
+    assert label.text == ""
+    assert not label.visible
+    assert viz.scene_time_text == ""
+    assert hud_times == ["", "Simulation time: 1.000000 s", ""]
+
+
 def test_update_frame_context_accepts_narrow_cache_service():
     slider = _DummyLabel()
     cache = SimpleNamespace(has_frame=lambda step: step == 2)
@@ -149,6 +224,15 @@ def test_update_frame_context_accepts_narrow_cache_service():
 
     assert slider.tooltip == "Frame 3 / 4\nsource: cached"
     assert viz._last_frame_tooltip_context["source_flags"] == ["source: cached"]
+
+
+def test_noop_navigation_keeps_the_displayed_scene_time():
+    label = _DummyLabel()
+    viz = SimpleNamespace(status_time_label=label)
+    controller = _make_controller(viz)
+    controller.update_frame_context(64, raw_frame={"timestamp_s": 0.256})
+    controller.update_frame_context(64)
+    assert label.text == "Simulation time: 0.256000 s"
 
 
 def test_update_frame_context_ignores_faulty_cache_source_predicate():
@@ -190,7 +274,7 @@ def test_online_summary_uses_scene_id_and_source():
     controller = _make_controller(viz)
     controller.update_file_source_summary()
 
-    assert label.text == "etoile/etoile.xml (library) · Online · streaming"
+    assert label.text == "etoile/etoile.xml (library) · Disconnected · stream inactive"
     assert label.tooltip == "grpc://localhost:50051"
 
 
@@ -227,3 +311,13 @@ def test_source_summary_refreshes_data_source_polling_policy() -> None:
     _make_controller(viz).update_file_source_summary()
 
     assert refreshes == ["source"]
+
+
+def test_sparse_playback_reports_ordinal_and_source_id_separately():
+    slider = _DummyLabel()
+    viz = SimpleNamespace(
+        total_animation_steps=3, step_slider=slider, get_animation_step_index=[63, 127, 191].index
+    )
+    _make_controller(viz).update_frame_context(191, raw_frame={"timestamp_ns": 191000000})
+    assert slider.tooltip.startswith("Frame 3 / 3\nSource frame ID: 191")
+    assert viz.scene_time_text == "Simulation time: 0.191000 s"

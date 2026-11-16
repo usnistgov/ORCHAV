@@ -354,6 +354,9 @@ PYTEST_TARGETS=(
     tests/visualizer/unit/test_frame_types.py
     tests/visualizer/unit/test_visualizer_imports.py
 )
+if [[ -f tests/test_sensing_documentation_layout.py ]]; then
+    PYTEST_TARGETS+=(tests/test_sensing_documentation_layout.py)
+fi
 
 echo "ORCHAV release smoke"
 echo "Repo: $REPO_ROOT_PHYSICAL"

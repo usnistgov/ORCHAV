@@ -1,7 +1,5 @@
 # Specular Reflection
 
-[Scenarios](../../../README.md) > [Generator](../../README.md) > Specular Reflection
-
 This scenario isolates specular reflection in a controlled indoor geometry. A
 stationary transmitter and receiver are placed inside an open room, where
 [Sionna RT](https://nvlabs.github.io/sionna/) computes the line-of-sight path
@@ -11,7 +9,7 @@ To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scenario overview](../../../../docs/assets/scenarios/scenarios_generator_propagation_and_materials_specular_reflection_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_generator_propagation_and_materials_specular_reflection_topology.png)
 
 | Element | Role |
 | --- | --- |
@@ -20,6 +18,8 @@ To run it, see [Running](#running).
 | Room surfaces | Front wall: `itu_concrete`, back wall: `itu_wood`, left wall: `itu_brick`, right wall: `itu_plasterboard`, floor: `itu_chipboard` |
 
 ## Configuration Walkthrough
+
+See [scenario.yaml](scenario.yaml) for the complete configuration.
 
 ```yaml
 scene:
@@ -51,9 +51,15 @@ The room is open at the top and intentionally assigns a different ITU radio mate
 
 ## Running
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/propagation_and_materials/specular_reflection
 orchav-generator scenarios/generator/propagation_and_materials/specular_reflection
+```
+
+Open the scenario in the Visualizer:
+
+```bash
 orchav-visualizer --scenario scenarios/generator/propagation_and_materials/specular_reflection
 ```
 
@@ -92,7 +98,5 @@ path loss, and object interaction data for each multipath component.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) | [Generator](../../README.md) |
-> Current: **Specular Reflection**
->
-> Track: **Propagation and Materials** | Next: [Scene Diffuse Scattering](../scene_diffuse_scattering/README.md)
+Up: [Generator](../../README.md) ·
+[Scene Diffuse Scattering](../scene_diffuse_scattering/README.md)

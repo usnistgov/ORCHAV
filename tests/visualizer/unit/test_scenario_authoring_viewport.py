@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -9,7 +10,7 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QWidget
 
-from shared.scenarios.actors import CircularMobilitySpec, LinearMobilitySpec
+from shared.scenarios.actors import CircularMobilitySpec, LinearMobilitySpec, StationaryMobilitySpec
 from visualizer.src.authoring.domain import MobilityControl, MobilityControlKind
 from visualizer.src.authoring.interaction import (
     InteractionSession,
@@ -23,6 +24,7 @@ from visualizer.src.authoring.mobility_control_rig import mobility_control_rig
 from visualizer.src.authoring.viewport import PygfxScenarioAuthoringViewportPort
 from visualizer.src.authoring.viewport_port import (
     ActorOverlaySnapshot,
+    ActorVisualState,
     AuthoringTool,
     OverlaySnapshot,
     OverlayVisibility,
@@ -102,12 +104,16 @@ class _FakeRuntime:
     def __init__(self, backend):
         self.backend = backend
         self.logical_size = (100.0, 100.0)
+        self.live_preview_picking = False
 
     def add_event_handler(self, handler, *events):
         self.backend.add_event_handler(handler, *events)
 
     def remove_event_handler(self, handler, *events):
         self.backend.remove_event_handler(handler, *events)
+
+    def set_live_preview_picking(self, enabled: bool) -> None:
+        self.live_preview_picking = bool(enabled)
 
     def ensure_gizmo(self, *, authoring=True):
         return None
@@ -155,6 +161,7 @@ def test_interaction_router_registration_is_constant_and_sessions_exclusive() ->
         return None
 
     router.activate(InteractionSession.AUTHORING, sink)
+    assert not runtime.live_preview_picking
     router.activate(InteractionSession.AUTHORING, sink)
     assert len(backend.added) == 1
     assert router.handler_count == len(backend.added[0][1])
@@ -163,7 +170,9 @@ def test_interaction_router_registration_is_constant_and_sessions_exclusive() ->
     assert len(backend.removed) == 0
     assert len(backend.added) == 1
     assert router.session is InteractionSession.LIVE_PREVIEW
+    assert runtime.live_preview_picking
     router.deactivate()
+    assert not runtime.live_preview_picking
     assert router.handler_count == 0
 
 
@@ -252,8 +261,65 @@ class _FakeRenderer:
     def reset_camera_bounds(self):
         return None
 
+    def set_overview_camera(self, view, bounds):
+        self.camera_view = view
+        self.camera_bounds = bounds
+        return True
+
     def close(self):
         return None
+
+
+def test_appearance_uses_shared_surface_style_without_changing_source_or_map(qapp):
+    from visualizer.src.materials.view_styles import PRESETS
+    from visualizer.src.model import RenderObject
+    from visualizer.src.types.render_payloads import SurfaceColorSource
+
+    port = PygfxScenarioAuthoringViewportPort(
+        QWidget(), SimpleNamespace(), renderer_factory=_FakeRenderer
+    )
+    mesh = MeshPayload(
+        vertices=np.asarray(((0, 0, 0), (1, 0, 0), (0, 1, 0)), dtype=float),
+        triangles=np.asarray(((0, 1, 2),)),
+        color_source=SurfaceColorSource.VERTEX,
+    )
+    material = MaterialPayload(texture_path="source.png")
+    source = RenderObject(id="scene", payload=mesh, material=material)
+    for preset in PRESETS.values():
+        port._appearance_settings = {**preset, "alpha": 1.0}
+        result = port._styled_object(source, material_type="itu_concrete")
+        assert result.payload.vertices is mesh.vertices
+        assert source.material_payload.texture_path == "source.png"
+        if not preset["textures"]:
+            assert result.material_payload.texture_path is None
+    reference = replace(source, material=replace(material, shader_variant="reference_image"))
+    assert port._styled_object(reference) is reference
+    port.close()
+
+
+def test_configuration_guides_are_not_pickable_and_do_not_expand_camera_bounds(qapp):
+    from visualizer.src.authoring.sensing_guides import line_guide
+
+    port = PygfxScenarioAuthoringViewportPort(
+        QWidget(), SimpleNamespace(), renderer_factory=_FakeRenderer
+    )
+    document_id = uuid4()
+    actor = ActorOverlaySnapshot(uuid4(), "rx", "RX", ((0.0, 0.0, 0.0),))
+    first = line_guide("range", [((0.0, 0.0, 0.0), (1e6, 0.0, 0.0))])
+    port.reconcile(OverlaySnapshot(document_id, 0, actors=(actor,), guides=(first,)))
+    objects = port.renderer_objects()
+    guide = next(o for o in objects.values() if o.metadata.get("component") == "authoring_guide")
+    assert not guide.metadata["pickable"] and not guide.metadata["surface_pickable"]
+    assert port.fit_all()
+    _, extent = port.renderer.camera_bounds
+    assert max(extent) < 10
+    second = line_guide("range", [((0.0, 0.0, 0.0), (0.0, 10.0, 0.0))])
+    port.reconcile(OverlaySnapshot(document_id, 0, actors=(actor,), guides=(second,)))
+    updated = port.renderer_objects()[guide.id]
+    np.testing.assert_allclose(updated.payload.points[-1], [0, 10, 0])
+    port.reconcile(OverlaySnapshot(document_id, 1, actors=(actor,)))
+    assert guide.id not in port.renderer_objects()
+    port.close()
 
 
 def test_overlay_reconciliation_keeps_one_handles_and_path_object_per_actor(
@@ -485,6 +551,139 @@ def _triangle_payload() -> MeshPayload:
         ),
         triangles=np.asarray(((0, 1, 2),), dtype=np.int32),
     )
+
+
+def test_work_plane_fits_offset_scenes_and_rebuilds_when_bounds_change(qapp):
+    port = PygfxScenarioAuthoringViewportPort(
+        QWidget(), SimpleNamespace(), renderer_factory=_FakeRenderer
+    )
+    document_id = uuid4()
+    plane_id = f"authoring:{document_id}:work_plane"
+
+    def display(revision, low, high, snap):
+        scene = SceneOverlayAsset(
+            "district",
+            "district",
+            MeshPayload(np.array((low, high, (low[0], high[1], low[2]))), np.array(((0, 1, 2),))),
+            MaterialPayload(),
+        )
+        port.reconcile(
+            OverlaySnapshot(
+                document_id, revision, scene_assets=(scene,), grid_snap_m=snap, work_plane_z=3.0
+            )
+        )
+        return port.renderer_objects()[plane_id].payload
+
+    initial = display(1, (1200.0, -800.0, 0.0), (2000.0, -200.0, 10.0), 0.01)
+    assert np.all(initial.points[:, :2].min(0) <= (1200, -800))
+    assert np.all(initial.points[:, :2].max(0) >= (2000, -200))
+    assert np.all(initial.points[:, 2] == 3.0)
+    assert len(initial.lines) <= 206
+    # A fine snapping interval must not allocate hundreds of thousands of lines.
+    assert port.router._grid_snap_m == 0.01
+    changed = display(2, (-3000.0, 4000.0, 0.0), (-2000.0, 5000.0, 5.0), 5.0)
+    assert np.all(changed.points[:, :2].min(0) <= (-3000, 4000))
+    assert np.all(changed.points[:, :2].max(0) >= (-2000, 5000))
+    assert len(port._work_plane_scene_bounds) == 1
+    port.reconcile(OverlaySnapshot(document_id, 3))
+    empty = port.renderer_objects()[plane_id].payload
+    np.testing.assert_array_equal(empty.points[:, :2].min(0), (-50, -50))
+    np.testing.assert_array_equal(empty.points[:, :2].max(0), (50, 50))
+    assert not port._work_plane_scene_bounds
+    port.close()
+
+
+def test_camera_fit_separates_actor_routes_from_scene_and_editing_aids(qapp) -> None:
+    port = PygfxScenarioAuthoringViewportPort(
+        QWidget(), SimpleNamespace(), renderer_factory=_FakeRenderer
+    )
+    document_id = uuid4()
+    mesh_transform = np.eye(4)
+    mesh_transform[:3, 3] = (100.0, 0.0, 0.0)
+    scene = SceneOverlayAsset(
+        "district",
+        "district",
+        MeshPayload(
+            np.array(((-1000.0, -2000.0, -3.0), (1000.0, 2000.0, 0.0), (0.0, 0.0, 100.0))),
+            np.array(((0, 1, 2),)),
+        ),
+        MaterialPayload(),
+    )
+    port.reconcile(
+        OverlaySnapshot(
+            document_id,
+            1,
+            scene_assets=(scene,),
+            work_plane_z=9000.0,
+            placement_ghost=(10000.0, 10000.0, 10000.0),
+            actors=(
+                ActorOverlaySnapshot(
+                    uuid4(),
+                    "target",
+                    "AerialRoute",
+                    ((10.0, 20.0, 1.0), (20.0, 30.0, 60.0)),
+                    current_position=(10.0, 20.0, 1.0),
+                    pending_positions=((50.0, 25.0, 65.0),),
+                    target_asset=TargetOverlayAsset(
+                        "target",
+                        _triangle_payload(),
+                        MaterialPayload(),
+                        tuple(tuple(float(x) for x in row) for row in mesh_transform),
+                    ),
+                ),
+                ActorOverlaySnapshot(uuid4(), "rx", "Hidden", ((1e6, 1e6, 1e6),), visible=False),
+                ActorOverlaySnapshot(
+                    uuid4(),
+                    "rx",
+                    "Unresolved",
+                    ((-1e6, -1e6, -1e6),),
+                    status=ActorVisualState.INVALID,
+                    preview_provenance=PreviewProvenance.AUTHORED_DRAFT,
+                ),
+            ),
+        )
+    )
+
+    assert port.fit_actors()
+    center, extent = port.renderer.camera_bounds
+    np.testing.assert_allclose(center, (60.5, 25.0, 33.0))
+    np.testing.assert_allclose(extent, (101.0, 10.0, 64.0))
+    assert port.renderer.camera_view == "isometric"
+
+    assert port.fit_all()
+    center, extent = port.renderer.camera_bounds
+    np.testing.assert_allclose(center, (0.0, 0.0, 48.5))
+    np.testing.assert_allclose(extent, (2000.0, 4000.0, 103.0))
+    port.close()
+
+
+def test_actor_fit_does_not_fall_back_to_scene_or_unresolved_markers(qapp) -> None:
+    port = PygfxScenarioAuthoringViewportPort(
+        QWidget(), SimpleNamespace(), renderer_factory=_FakeRenderer
+    )
+    assert not port.fit_actors()
+    port.reconcile(
+        OverlaySnapshot(
+            uuid4(),
+            1,
+            scene_assets=(
+                SceneOverlayAsset("scene", "scene", _triangle_payload(), MaterialPayload()),
+            ),
+            actors=(
+                ActorOverlaySnapshot(
+                    uuid4(),
+                    "rx",
+                    "PendingRoute",
+                    ((0.0, 0.0, 0.0),),
+                    status=ActorVisualState.PENDING,
+                    preview_provenance=PreviewProvenance.AUTHORED_DRAFT,
+                ),
+            ),
+        )
+    )
+    assert not port.fit_actors()
+    assert port.fit_all()
+    port.close()
 
 
 def test_scene_assets_and_placement_ghost_reconcile_with_stable_ids(qapp) -> None:
@@ -979,6 +1178,67 @@ def test_trajectory_frame_control_layers_and_closed_marker_are_independent(qapp)
     host.close()
 
 
+def test_pending_motion_owns_pickable_handles_path_and_gizmo_pose(qapp) -> None:
+    host = QWidget()
+    port = PygfxScenarioAuthoringViewportPort(
+        host, SimpleNamespace(), renderer_factory=_FakeRenderer
+    )
+    document_id, actor_id = uuid4(), uuid4()
+    committed = StationaryMobilitySpec(position_m=(1.0, 2.0, 3.0))
+    proposed = CircularMobilitySpec(center_m=(6.0, 8.0, 3.0), radius_m=2.0)
+    pending = ((8.0, 8.0, 3.0), (6.0, 10.0, 3.0), (4.0, 8.0, 3.0))
+    actor = ActorOverlaySnapshot(
+        actor_id=actor_id,
+        role="tx",
+        name="TX",
+        positions=(committed.position_m,),
+        current_position=committed.position_m,
+        mobility_control_rig=mobility_control_rig(committed),
+        pending_positions=pending,
+        pending_current_position=pending[0],
+        pending_mobility_control_rig=mobility_control_rig(proposed),
+        selected=True,
+    )
+    port.reconcile(OverlaySnapshot(document_id=document_id, revision=1, actors=(actor,)))
+    objects = port.renderer_objects()
+
+    def obj(component):
+        return objects[stable_renderer_id(document_id, actor_id, component)]
+
+    radius = obj("mobility_control_radius")
+    assert radius.metadata["pickable"] is True
+    np.testing.assert_allclose(
+        radius.payload.points[0], mobility_control_rig(proposed).control("radius").position
+    )
+    np.testing.assert_allclose(
+        np.asarray(obj("mobility_handles").metadata["authoring_actor_pose"])[:3, 3], pending[0]
+    )
+    np.testing.assert_allclose(obj("trajectory_hit").payload.points, pending)
+    assert stable_renderer_id(document_id, actor_id, "mobility_control_position") not in objects
+    port.reconcile(
+        OverlaySnapshot(
+            document_id=document_id,
+            revision=1,
+            actors=(
+                replace(
+                    actor,
+                    pending_positions=(),
+                    pending_current_position=None,
+                    pending_mobility_control_rig=None,
+                ),
+            ),
+        )
+    )
+    objects = port.renderer_objects()
+    np.testing.assert_allclose(
+        np.asarray(obj("mobility_handles").metadata["authoring_actor_pose"])[:3, 3],
+        committed.position_m,
+    )
+    assert stable_renderer_id(document_id, actor_id, "mobility_control_radius") not in objects
+    port.close()
+    host.close()
+
+
 def test_circular_rig_exposes_distinct_radius_and_start_angle_objects(qapp) -> None:
     host = QWidget()
     port = PygfxScenarioAuthoringViewportPort(
@@ -1251,3 +1511,44 @@ def test_selected_path_and_group_context_have_non_pickable_shape_overlays(qapp) 
     assert group_frame.metadata["pickable"] is False
     # Twenty-three route segments plus two sparse chevrons (four lines).
     assert len(path.payload.lines) == 27
+
+
+def test_individual_radio_colours_preserve_poses_and_validation_status(qapp):
+    from dataclasses import replace
+
+    from visualizer.src.authoring.viewport import _INVALID_COLOR
+
+    host = QWidget()
+    port = PygfxScenarioAuthoringViewportPort(
+        host, SimpleNamespace(), renderer_factory=_FakeRenderer
+    )
+    actors = tuple(
+        ActorOverlaySnapshot(
+            actor_id=uuid4(),
+            role=role,
+            name=f"N{i}",
+            positions=((float(i), 0.0, 0.0), (float(i), 2.0, 0.0)),
+            preview_provenance=PreviewProvenance.GENERATOR_PREPARED,
+        )
+        for i, role in enumerate(("rx", "tx", "rx"))
+    )
+    snapshot = OverlaySnapshot(document_id=uuid4(), revision=1, actors=actors)
+    port.reconcile(snapshot)
+    ordinary = port.renderer_objects()
+    port.set_node_color_mode("individual")
+    individual = port.renderer_objects()
+    path_ids = [stable_renderer_id(snapshot.document_id, a.actor_id, "path") for a in actors]
+    assert len({individual[key].material_payload.base_color for key in path_ids}) == 3
+    for key in path_ids:
+        np.testing.assert_array_equal(individual[key].payload.points, ordinary[key].payload.points)
+    invalid = replace(actors[0], status=ActorVisualState.INVALID)
+    port.reconcile(replace(snapshot, revision=2, actors=(invalid, *actors[1:])))
+    assert port.renderer_objects()[path_ids[0]].material_payload.base_color[:3] == _INVALID_COLOR
+    port.set_node_color_mode("role")
+    restored = port.renderer_objects()
+    assert (
+        restored[path_ids[2]].material_payload.base_color
+        == ordinary[path_ids[2]].material_payload.base_color
+    )
+    port.close()
+    host.close()

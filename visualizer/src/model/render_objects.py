@@ -190,13 +190,16 @@ def make_text_label_state(
     position: Any = (0.0, 0.0, 0.0),
     visible: bool = True,
     screen_space: bool = True,
-    outline_color: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    outline_color: tuple[float, float, float] | None = None,
     outline_thickness: float = 0.15,
 ) -> RenderObjectState:
-    """Build one persistent renderer-neutral text label."""
+    """Build a text label with a contrasting outline unless explicitly supplied."""
     rgb = np.asarray(color, dtype=float).reshape(-1)
     if rgb.size < 3 or not np.all(np.isfinite(rgb[:3])):
         raise ValueError("Text label color must contain three finite values")
+    if outline_color is None:
+        brightness = float(np.dot(rgb[:3], (0.2126, 0.7152, 0.0722)))
+        outline_color = (1.0, 1.0, 1.0) if brightness < 0.5 else (0.0, 0.0, 0.0)
     return RenderObjectState(
         id=label_id,
         payload=TextLabelPayload(

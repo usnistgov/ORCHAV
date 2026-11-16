@@ -10,6 +10,9 @@ scene:
   source: sionna
   id: etoile
 
+raytracing:
+  export_path_metrics: false
+
 timeline:
   steps: 1
   duration_s: 0.0
@@ -63,6 +66,6 @@ coverage:
 
 generator_summary:
   enabled: true
-  create: [scene2d]
+  create: [topology]
   visualization:
     actor_label_mode: name

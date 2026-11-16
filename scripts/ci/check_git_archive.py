@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
+import json
 import subprocess
 import sys
 import tarfile
@@ -12,6 +14,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROVENANCE_FILENAME = "RELEASE_PROVENANCE.json"
 
 EXPECTED_SCENARIO_DIRS = frozenset(
     {
@@ -73,8 +76,8 @@ def missing_scenario_archive_paths(members: Iterable[str]) -> list[str]:
     return sorted(required - available)
 
 
-def git_archive_members(repo_root: Path, treeish: str) -> frozenset[str]:
-    """Return member names from a real committed-tree Git archive."""
+def git_archive_bytes(repo_root: Path, treeish: str) -> bytes:
+    """Read the actual committed archive, including Git archive attributes."""
     result = subprocess.run(
         ["git", "archive", "--format=tar", treeish],
         cwd=repo_root,
@@ -84,8 +87,53 @@ def git_archive_members(repo_root: Path, treeish: str) -> frozenset[str]:
     if result.returncode != 0:
         detail = result.stderr.decode("utf-8", errors="replace").strip()
         raise RuntimeError(f"git archive failed for {treeish!r}: {detail}")
-    with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:") as archive:
+    return result.stdout
+
+
+def git_archive_members(repo_root: Path, treeish: str) -> frozenset[str]:
+    """Return member names from a real committed-tree Git archive."""
+    with tarfile.open(
+        fileobj=io.BytesIO(git_archive_bytes(repo_root, treeish)), mode="r:"
+    ) as archive:
         return frozenset(member.name.rstrip("/") for member in archive.getmembers())
+
+
+def release_payload_issues(payload: bytes, *, require_provenance: bool = False) -> list[str]:
+    """Check committed export bytes against their declared release inventory."""
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:") as archive:
+        members = {member.name: member for member in archive.getmembers() if not member.isdir()}
+        if PROVENANCE_FILENAME not in members:
+            return ["release provenance is absent from the archive"] if require_provenance else []
+        provenance_file = archive.extractfile(PROVENANCE_FILENAME)
+        if provenance_file is None:
+            return ["release provenance is not a regular file"]
+        try:
+            provenance = json.load(provenance_file)
+            entries = provenance["payload"]["files"]
+            expected = {entry["path"] for entry in entries}
+        except (ValueError, KeyError, TypeError) as exc:
+            return [f"invalid archived release inventory: {exc}"]
+        issues = []
+        for entry in entries:
+            path = entry["path"]
+            member = members.get(path)
+            if member is None:
+                issues.append(f"missing release payload: {path}")
+                continue
+            if entry["kind"] == "file" and member.isfile():
+                handle = archive.extractfile(member)
+                assert handle is not None
+                data = handle.read()
+            elif entry["kind"] == "symlink" and member.issym():
+                data = member.linkname.encode("utf-8")
+            else:
+                issues.append(f"release payload kind mismatch: {path}")
+                continue
+            if len(data) != entry["size"] or hashlib.sha256(data).hexdigest() != entry["sha256"]:
+                issues.append(f"release payload content mismatch: {path}")
+        for path in sorted(set(members) - expected - {PROVENANCE_FILENAME}):
+            issues.append(f"undeclared release payload: {path}")
+        return issues
 
 
 def parse_args() -> argparse.Namespace:
@@ -97,7 +145,18 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    members = git_archive_members(args.repo_root.resolve(), args.tree_ish)
+    repo_root = args.repo_root.resolve()
+    payload = git_archive_bytes(repo_root, args.tree_ish)
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:") as archive:
+        members = frozenset(member.name.rstrip("/") for member in archive.getmembers())
+    issues = release_payload_issues(
+        payload, require_provenance=(repo_root / PROVENANCE_FILENAME).is_file()
+    )
+    if issues:
+        print("Committed archive does not match the release payload:", file=sys.stderr)
+        for issue in issues:
+            print(f"  - {issue}", file=sys.stderr)
+        return 1
     missing = missing_scenario_archive_paths(members)
     if missing:
         print("Committed archive is missing required public scenario files:", file=sys.stderr)
@@ -110,6 +169,8 @@ def main() -> int:
         "Committed archive contains "
         f"{len(required_scenario_archive_paths())} required scenario files."
     )
+    if PROVENANCE_FILENAME in members:
+        print("Committed archive matches the complete release payload inventory.")
     return 0
 
 

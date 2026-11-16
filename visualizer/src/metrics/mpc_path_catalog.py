@@ -71,6 +71,7 @@ def interaction_type_bit(interaction_type: int) -> np.uint16:
         4: 3,
         8: 4,
         99: 5,
+        16: 7,
     }.get(value, 6)
     return np.uint16(1 << bit_index)
 
@@ -597,6 +598,16 @@ class MpcPathCatalog:
         start, end = self._path_bounds(path_id)
         return values[start + 1 : end - 1]
 
+    def sensing_sequence(self, path_id: int) -> tuple[tuple[int, str, int], ...]:
+        """Return retained (bounce order, target name, point ID) references."""
+        start, end = self._path_bounds(path_id)
+        references = getattr(self._canonical_data, "native_sensing_points", None) or {}
+        return tuple(
+            (point_index - start, references[point_index][1], references[point_index][2])
+            for point_index in range(start + 1, end - 1)
+            if point_index in references
+        )
+
     def first_material_id(self, path_id: int) -> int:
         """Return one first material ID in O(1), without building a full column."""
         start, end = self._path_bounds(path_id)
@@ -642,7 +653,7 @@ class MpcPathCatalog:
         cache_key = f"contains_interaction:{value}"
 
         def build() -> np.ndarray:
-            if value in (0, 1, 2, 4, 8, 99):
+            if value in (0, 1, 2, 4, 8, 16, 99):
                 return (self.interaction_mix_codes & interaction_type_bit(value)) != 0
 
             result = np.zeros((self._path_count,), dtype=bool)
@@ -665,7 +676,7 @@ class MpcPathCatalog:
         def build() -> np.ndarray:
             if value == 0:
                 return self.interaction_counts == 0
-            if value in (1, 2, 4, 8, 99):
+            if value in (1, 2, 4, 8, 16, 99):
                 return self.interaction_mix_codes == interaction_type_bit(value)
             contains = self.contains_interaction(value)
             candidate_ids = np.flatnonzero(contains)
@@ -1066,7 +1077,7 @@ class MpcPathCatalog:
         values = np.asarray(interaction_types)
         result = np.zeros(values.shape, dtype=np.uint16)
         known_nonzero = np.zeros(values.shape, dtype=bool)
-        for interaction_type in (1, 2, 4, 8, 99):
+        for interaction_type in (1, 2, 4, 8, 16, 99):
             matching = values == interaction_type
             result[matching] = interaction_type_bit(interaction_type)
             known_nonzero |= matching

@@ -164,7 +164,7 @@ class TestAppStateFromDict:
 
         result = AppState.from_dict(data)
 
-        assert result.mpc_allowed_types == frozenset({0, 1, 2, 4, 8, 99})
+        assert result.mpc_allowed_types == frozenset({0, 1, 2, 4, 8, 16, 99})
 
         data["mpc_allowed_types"] = []
         assert AppState.from_dict(data).mpc_allowed_types == frozenset()

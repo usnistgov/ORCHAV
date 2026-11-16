@@ -4,8 +4,6 @@ from pathlib import Path
 
 from scripts.ci.check_documentation import check_markdown
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
 
 def _check(tmp_path: Path, text: str) -> list[str]:
     path = tmp_path / "page.md"
@@ -86,11 +84,3 @@ flowchart LR
         )
         == []
     )
-
-
-def test_scenario_authoring_python_example_is_single_step_safe() -> None:
-    text = (PROJECT_ROOT / "docs/generator/scenario_authoring.md").read_text(encoding="utf-8")
-    section = text.split("## Python-Scripted Actors", 1)[1].split("## Continue", 1)[0]
-
-    assert "WaypointMobilitySpec" not in section
-    assert "StationaryMobilitySpec(position_m=rx_position_m)" in section

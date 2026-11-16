@@ -19,6 +19,15 @@ class BeamformingUIController:
         """Bind to the active visualizer shell."""
         self.visualizer = visualizer
 
+    def sync_from_state(self) -> None:
+        """Publish all beam controls atomically at source or workspace boundaries."""
+        viz = self.visualizer
+        session = getattr(viz, "session_service", None)
+        panels = getattr(getattr(viz, "ui_manager", None), "panels", {})
+        if session is not None:
+            session._sync_beam_panel(panels, viz.app_state)
+        self.update_resolution_controls()
+
     def update_resolution_controls(self) -> None:
         """Synchronize beamforming resolution controls with current state."""
         viz = self.visualizer
@@ -44,10 +53,6 @@ class BeamformingUIController:
                 viz.beam_rx_scale_spin.setReadOnly(False)
 
         self.apply_selector_state()
-        self.update_standalone_buttons_state()
-
-    def update_standalone_buttons_state(self) -> None:
-        """Enable or disable standalone helper buttons from current frame state."""
 
     def set_frame_beamforming_available(self, available: bool) -> None:
         """Enable Frame Data mode only when current frames carry beamforming metadata."""

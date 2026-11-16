@@ -8,8 +8,10 @@ backend-specific material tweaks and stale overlay removal.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 from ...scene.surface_payloads import (
     BeamformingSurface,
@@ -255,9 +257,17 @@ class PygfxSurfaceOverlayMixin:
                 succeeded=self._clear_coverage_geometry(),
             )
 
+        mesh = coverage_payloads.mesh
+        if mesh.vertex_colors is not None:
+            # Matplotlib palettes and Qt legends use sRGB. pygfx mesh vertex
+            # colours are already expected in linear light, unlike its texture
+            # palettes. Convert only this backend's upload, not the shared data.
+            colors = mesh.vertex_colors
+            linear = np.where(colors <= 0.04045, colors / 12.92, ((colors + 0.055) / 1.055) ** 2.4)
+            mesh = replace(mesh, vertex_colors=linear)
         if not self.ensure_named_geometry(
             self.COVERAGE_MESH_NAME,
-            coverage_payloads.mesh,
+            mesh,
             visible=True,
         ):
             return self._complete_coverage_plan(plan, succeeded=False)

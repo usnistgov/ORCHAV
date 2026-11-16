@@ -1,0 +1,6 @@
+{
+  "schema": "orchav.target_surface.v1",
+  "texture": "albedo.png",
+  "uv_map": "surface_uv.npz",
+  "description": "Survey quadrotor: light polymer shell, carbon-fiber arms and propellers, machined motors, dark battery and optical camera. Compatible with libraries/targets/uav/large/drone.obj. Visual appearance only; copy this complete folder to reuse on another machine."
+}

@@ -23,6 +23,7 @@ from .live_overrides import (
     LiveOverrideMap,
     category_from_value,
     normalize_live_overrides,
+    resolve_live_actor_name,
 )
 from .raytracing import compute_ray_tracing_step
 
@@ -36,5 +37,6 @@ __all__ = [
     "compute_ray_tracing_step",
     "freeze_frame_paths",
     "normalize_live_overrides",
+    "resolve_live_actor_name",
     "should_update_mesh_for_step",
 ]

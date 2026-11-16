@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Regenerate checked-in 2D preview images for curated ORCHAV scenarios.
+"""Regenerate checked-in topology images for curated ORCHAV scenarios.
 
 The previews are documentation assets, not simulation outputs. The script
-captures the scenario actors, renders the generator's 2D scene summary, and
+captures the scenario actors, renders the combined orthographic topology, and
 embeds the resulting image in each scenario README.
 """
 
@@ -61,7 +61,10 @@ class PreviewTargetManager:
 
     @property
     def meshes(self) -> list[str]:
-        return []
+        return [
+            str(p)
+            for p in sorted(self.config.resolved_mesh_directory.glob(self.config.mesh_pattern))
+        ]
 
 
 def _slug(scenario_dir: Path) -> str:
@@ -252,6 +255,13 @@ def _capture_from_module_constants(scenario_dir: Path) -> CapturedScenario | Non
 
 
 def _capture_scenario(scenario_dir: Path) -> CapturedScenario:
+    import yaml
+
+    scene = yaml.safe_load((scenario_dir / "scenario.yaml").read_text()).get("scene", {})
+    if scene.get("source", "library") not in {"local", "library", "sionna"}:
+        raise ValueError(
+            "Prepare external scene geometry first and use its local XML for the preview; no downloads are performed"
+        )
     captured = _capture_from_script(scenario_dir)
     if captured is not None:
         return captured
@@ -268,18 +278,15 @@ def _render_preview(
     scenario_dir: Path,
     captured: CapturedScenario,
     *,
-    filename_suffix: str = "summary2d",
+    filename_suffix: str = "topology",
+    yaml_only: bool = False,
 ) -> Path:
     from generator.core.scenario_actors.state import ActorStateManager
-    from generator.figures.generator_summary_fig import create_2d_scene_summary_figures
+    from generator.figures.topology import load_runtime_topology, render_topology, write_receipt
 
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
     output_path = ASSET_DIR / f"{_slug(scenario_dir)}_{filename_suffix}.png"
     target_managers = [PreviewTargetManager(config=cfg) for cfg in captured.target_configs]
-    viz_config = {}
-    if captured.scenario_context is not None:
-        summary_config = getattr(captured.scenario_context, "generator_summary", None) or {}
-        viz_config = summary_config.get("visualization", {}) or {}
     actor_state_manager = ActorStateManager(
         tx_configs=captured.tx_configs,
         rx_configs=captured.rx_configs,
@@ -289,18 +296,24 @@ def _render_preview(
         motion_mode="cached",
         mesh_update_interval_s=getattr(captured.simulation_config, "mesh_update_interval_s", None),
     )
-    create_2d_scene_summary_figures(
+    case = load_runtime_topology(
         captured.tx_configs,
         captured.rx_configs,
         target_managers,
         captured.simulation_config,
+        captured.scenario_context,
         actor_state_manager,
-        output_path=output_path,
-        scenario_context=captured.scenario_context,
-        rendering_mode="auto",
-        resolution=0.25,
-        show_material_legend=bool(viz_config.get("scene2d_material_legend", False)),
-        actor_label_mode=str(viz_config.get("actor_label_mode", "role")),
+    )
+    render_topology(case, output_path)
+    write_receipt(
+        case,
+        output_path,
+        [
+            "python",
+            "scripts/docs/generate_scenario_previews.py",
+            *(["--yaml-only"] if yaml_only else []),
+            scenario_dir.relative_to(REPO_ROOT).as_posix(),
+        ],
     )
     return output_path
 
@@ -314,8 +327,9 @@ def _upsert_preview_section(scenario_dir: Path, image_path: Path) -> None:
     if not readme_path.exists():
         return
     rel = _relative_link(readme_path, image_path)
-    section = "## Scene Layout\n\n" f"![2D scene layout]({rel})\n"
+    section = "## Scene Layout\n\n" f"![Scenario topology]({rel})\n"
     text = readme_path.read_text(encoding="utf-8")
+    text = re.sub(r"(?m)^[ \t]*!\[[^\]]*\]\([^)]+_summary[23]d\.png\)[ \t]*\n?", "", text)
     heading = re.search(r"(?im)^## (scene layout|preview)\s*$", text)
     if heading:
         before = text[: heading.start()]
@@ -324,10 +338,9 @@ def _upsert_preview_section(scenario_dir: Path, image_path: Path) -> None:
         body = rest[: next_heading.start()] if next_heading else rest
         after = rest[next_heading.start() :] if next_heading else ""
         preserved = re.sub(
-            r"^\s*!\[[^\]]*\]\([^)]+\)\s*\n?",
+            r"(?m)^[ \t]*!\[[^\]]*\]\([^)]+(?:_summary[23]d|_topology)\.png\)[ \t]*\n?",
             "",
             body,
-            count=1,
         ).lstrip("\n")
         text = before.rstrip() + "\n\n" + section
         if preserved:
@@ -348,7 +361,12 @@ def _upsert_preview_section(scenario_dir: Path, image_path: Path) -> None:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate curated 2D preview images for scenario README files.",
+        description="Generate topology images for scenario README files.",
+    )
+    parser.add_argument(
+        "--yaml-only",
+        action="store_true",
+        help="Render the authored YAML baseline without invoking a generate.py experiment launcher.",
     )
     parser.add_argument(
         "scenarios",
@@ -385,10 +403,12 @@ def main() -> None:
         if not (scenario_dir / "scenario.yaml").exists():
             raise FileNotFoundError(f"Missing scenario.yaml: {scenario_dir}")
         print(f"[preview] {rel}")
-        captured = _capture_scenario(scenario_dir)
+        captured = (
+            _capture_from_yaml(scenario_dir) if args.yaml_only else _capture_scenario(scenario_dir)
+        )
         if not (captured.tx_configs or captured.rx_configs or captured.target_configs):
             raise RuntimeError(f"No previewable actors for {rel}")
-        image_path = _render_preview(scenario_dir, captured)
+        image_path = _render_preview(scenario_dir, captured, yaml_only=args.yaml_only)
         _upsert_preview_section(scenario_dir, image_path)
         generated.append(image_path)
 

@@ -10,6 +10,17 @@ from shared.scenarios.frame_paths import (
 from shared.scenarios.parsers import parse_data_config
 
 
+def test_standalone_scenario_needs_no_enclosing_repository(tmp_path, caplog):
+    from shared.scenarios.paths import PathPolicy
+
+    policy = PathPolicy(tmp_path / "recording/scenario.yaml")
+    absolute_scene = (tmp_path / "external" / "absolute-scene.xml").resolve()
+    with caplog.at_level("WARNING"):
+        assert policy.project_root == (tmp_path / "recording").resolve()
+        assert policy.resolve_path(str(absolute_scene)) == absolute_scene
+    assert not caplog.records
+
+
 def test_parse_data_config_uses_explicit_directory_for_frames_dir(tmp_path: Path) -> None:
     scenario_data = {
         "data": {

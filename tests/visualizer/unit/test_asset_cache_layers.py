@@ -421,3 +421,27 @@ def test_cache_service_keeps_frame_and_static_asset_lifecycles_separate(
     visualizer.material_pbr_service.invalidate_material_resolution_cache.assert_called_once_with()
     visualizer.target_asset_cache.clear_inactive_assets.assert_called_once_with()
     assert result["target_assets"] == {"entries": 2, "bytes": 64, "pending": 1}
+
+
+@pytest.mark.parametrize("mipmaps", [False, True])
+def test_desktop_surface_texture_policy_survives_cache_reuse_and_revision(tmp_path, mipmaps):
+    from visualizer.src.renderers.pygfx.materials import PygfxMaterialMixin
+
+    texture_path = tmp_path / "surface.png"
+    Image.new("RGBA", (8, 8), (30, 60, 90, 255)).save(texture_path)
+    renderer = PygfxMaterialMixin()
+    renderer._texture_cache = {}
+    renderer._texture_source_identities = {}
+    renderer._texture_mipmaps_enabled = mipmaps
+    renderer._gfx = SimpleNamespace(
+        Texture=lambda data, **kwargs: SimpleNamespace(data=data, **kwargs)
+    )
+    first = renderer._load_texture_cached(str(texture_path))
+    assert first.generate_mipmaps is mipmaps
+    assert renderer._load_texture_cached(str(texture_path)) is first
+    Image.new("RGBA", (16, 16), (90, 60, 30, 255)).save(texture_path)
+    revised = renderer._load_texture_cached(str(texture_path))
+    assert revised is not first
+    assert revised.generate_mipmaps is mipmaps
+    assert revised.data.shape[:2] == (16, 16)
+    assert len(renderer._texture_cache) == 1

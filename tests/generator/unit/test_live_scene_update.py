@@ -143,6 +143,16 @@ def _live_service(source: Path, *, reject_candidate: bool = False):
     return service, scenario_config, simulation_config, scene_service
 
 
+def test_live_service_rejects_sensing_when_constructed_directly() -> None:
+    simulation_config = SimpleNamespace(sensing=SimpleNamespace(enabled=True))
+
+    with pytest.raises(ValueError, match="file/HDF5-only"):
+        GeneratorService(
+            GeneratorFrameCache(max_frames=2, ttl_seconds=0, max_size_bytes=0),
+            {"simulation_config": simulation_config},
+        )
+
+
 def test_service_activates_a_staged_scene_without_overwriting_source(tmp_path: Path) -> None:
     source = _write_source_scene(tmp_path)
     service, scenario_config, simulation_config, _scene_service = _live_service(source)
@@ -160,6 +170,18 @@ def test_service_activates_a_staged_scene_without_overwriting_source(tmp_path: P
 
     assert not active.exists()
     assert source.exists()
+
+
+def test_live_rebuild_rejects_sensing_before_scene_mutation(tmp_path: Path) -> None:
+    source = _write_source_scene(tmp_path)
+    service, _scenario_config, simulation_config, scene_service = _live_service(source)
+    simulation_config.sensing = SimpleNamespace(enabled=True)
+
+    with pytest.raises(ValueError, match="file/HDF5-only"):
+        service._rebuild_live_services()
+
+    scene_service.build_scene.assert_not_called()
+    service.raytracing_service.prepare_simulation.assert_not_called()
 
 
 def test_failed_activation_rebuilds_the_previous_scene_and_discards_candidate(

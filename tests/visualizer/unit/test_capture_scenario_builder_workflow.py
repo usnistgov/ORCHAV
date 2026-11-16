@@ -10,7 +10,8 @@ from uuid import uuid4
 
 import pytest
 from PySide6.QtGui import QColor, QImage
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QDialog, QWidget
+from shiboken6 import isValid
 
 from scripts import capture_scenario_builder_workflow as capture_script
 from visualizer.src.authoring.interaction import InteractionSession
@@ -124,6 +125,36 @@ def test_capture_rejects_and_records_unexpected_modal(qapp) -> None:
             "text": "blocking detail",
         }
     ]
+
+
+@pytest.mark.parametrize("shutdown_fails", [False, True])
+def test_owned_capture_cleanup_disposes_dirty_window_without_close_prompt(
+    qapp, monkeypatch, shutdown_fails
+):
+    class DirtyWindow(QWidget):
+        def closeEvent(self, event):
+            pytest.fail("Unattended cleanup must not request interactive close")
+
+    window = DirtyWindow()
+    stopped = []
+    window.authoring_generation_controller = SimpleNamespace(
+        shutdown=lambda: stopped.append("generation")
+    )
+    window.workspace_mode_controller = SimpleNamespace(close=lambda: stopped.append("workspace"))
+
+    def shutdown(owner, *, persist_state):
+        assert owner is window and not persist_state
+        stopped.append("renderer")
+        return not shutdown_fails
+
+    monkeypatch.setattr(capture_script, "shutdown_visualizer", shutdown)
+    if shutdown_fails:
+        with pytest.raises(RuntimeError, match="shutdown failed"):
+            capture_script._dispose_owned_visualizer(window, qapp)
+    else:
+        capture_script._dispose_owned_visualizer(window, qapp)
+    assert stopped == ["generation", "workspace", "renderer"]
+    assert not isValid(window)
 
 
 def test_native_event_is_dispatched_only_through_the_active_authoring_router() -> None:

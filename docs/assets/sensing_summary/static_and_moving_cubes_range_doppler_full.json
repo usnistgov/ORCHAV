@@ -1,0 +1,81 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "scenarios/sensing/foundations/static_and_moving_cubes",
+  "source_identity": {
+    "generation_id": "d678b901-bed6-4f85-b3a4-c5623f529190",
+    "frame_set_id": "55f1579db582ae41cf753b1f322f91f8813bf2d33dbf0eef895959ea8e68bbf7"
+  },
+  "manifest_sha256": "dbc3e3b8b33ac5e6e34c3164b06c6e4e724d724a7dc846ed47920f8baa80762a",
+  "source_files_sha256": {
+    "frames_manifest.json": "dbc3e3b8b33ac5e6e34c3164b06c6e4e724d724a7dc846ed47920f8baa80762a",
+    "mpc_frames_00000-00062.h5": "7d25249f97b966bbede65f2a6dfe85f2ca1df18d32cade12e283dbd08950a046",
+    "mpc_frames_00063-00063.h5": "25ccafb2b544b6585e9c581ce76eec1f494d2096d52e9630fd1e2a655174affc",
+    "mpc_frames_00064-00126.h5": "dde480ad5bb3d62c481a216db17648ac44475df300888c854f1bf47a1c6a3c92",
+    "mpc_frames_00127-00127.h5": "28e0cd0ddc679fecab67a8bd9532d41e12a5892c8fedea91dee97ed48b2bad92",
+    "mpc_frames_00128-00190.h5": "4e717beaf2b3bdc73f46e39de2578667d3d7ddbab20b9e02874fb44e80d67613",
+    "mpc_frames_00191-00191.h5": "1a35952a3501cd26db362cbb841ad0a5753bc26aed2dbe32245ea28a7393af8c"
+  },
+  "figures": [
+    "range_doppler"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 3,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "e5e47415-9646-54c9-9821-cd319b6927c4",
+      "processing_recipe_id": "58603e2a444bde0840082029f8b12c3edf7e39204da17c0ff6a38723b7e61108",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 127,
+      "reference_time_s": 0.064,
+      "acquisition_id": "698bdea4-842d-53e5-8a38-ffaddf15e6df",
+      "processing_recipe_id": "58603e2a444bde0840082029f8b12c3edf7e39204da17c0ff6a38723b7e61108",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 191,
+      "reference_time_s": 0.128,
+      "acquisition_id": "ad3a24a7-720c-56e2-8060-087b8e9b4eb5",
+      "processing_recipe_id": "58603e2a444bde0840082029f8b12c3edf7e39204da17c0ff6a38723b7e61108",
+      "detection_count": 2
+    }
+  ],
+  "outputs": [
+    "sensing/range_doppler.png",
+    "sensing/range_doppler_full.png"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "summary_output": "sensing/range_doppler_full.png",
+  "output": "docs/assets/sensing_summary/static_and_moving_cubes_range_doppler_full.png",
+  "output_sha256": "38e7885b16e3907874ab6c57d2fd797793081d9244905803f3637e2de838f273",
+  "plotting_source_sha256": {
+    "generator/figures/summary/sensing.py": "68714c70423f25301376c173a5b54bd34b640b28aad113d5993120d4bdec9537",
+    "generator/figures/summary/saved_sensing.py": "93c189d60bb2b71ad65a7a454c4379d7830f1b77285dec8daec04781fd0abcd1",
+    "shared/sensing_viz.py": "45def40892a71ec9fddf952ae697673174d8d3bcf4646b67ee79206b61175ef1",
+    "shared/sensing_doppler_summary.py": "673a30d11deef54429c768cc09c61a15b0db00010cd4ce9d594db3edbb2208a3",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.summary.saved_sensing",
+    "scenarios/sensing/foundations/static_and_moving_cubes",
+    "-o",
+    "analysis/public-figure-refresh/summary-19",
+    "--figure",
+    "range_doppler"
+  ],
+  "path_convention": "Repository-relative source paths and reproducible output-directory names.",
+  "image": "static_and_moving_cubes_range_doppler_full.png",
+  "sha256": "38e7885b16e3907874ab6c57d2fd797793081d9244905803f3637e2de838f273",
+  "tutorial_scenario": "scenarios/sensing/foundations/static_and_moving_cubes/scenario.yaml",
+  "tutorial_scenario_sha256": "e30eafa3159b20e4a4290fa03f7cd1e7a209d41b444ba366f025867330fa4b2a",
+  "license_spdx": "GPL-3.0-only",
+  "execution_backend": "CPU LLVM",
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "dc28d3c58e55bf156d0bb3465cad997eabc9c67f073cc3562e60cb6d803ee5e7"
+}

@@ -16,6 +16,11 @@ from typing import Any, Optional
 
 import numpy as np
 
+from ...backends.pygfx_pbr import (
+    apply_display_reflectance,
+    needs_physical_material,
+    pbr_material_classes,
+)
 from ...backends.pygfx_scene_helpers import (
     _is_pygfx_unlit_mode_enabled,
     apply_texture_policy_to_material_payload,
@@ -47,6 +52,33 @@ class PygfxMaterialMixin:
                 ok = self.set_named_material(name, mat_payload) and ok
         return ok
 
+    def set_texture_mipmaps_enabled(self, enabled: bool) -> None:
+        """Rebind surface textures at the requested filtering quality, preserving geometry."""
+        enabled = bool(enabled)
+        if enabled == self.get_texture_mipmaps_enabled():
+            return
+        self._texture_mipmaps_enabled = enabled
+        self.clear_native_asset_cache()
+        with self.batch_updates():
+            for name, material in list(self._materials.items()):
+                if self._kinds.get(name) == "mesh" and any(
+                    getattr(material, key, None)
+                    for key in (
+                        "texture_path",
+                        "normal_map_path",
+                        "roughness_map_path",
+                        "ao_map_path",
+                        "metallic_map_path",
+                        "clearcoat_roughness_map_path",
+                    )
+                ):
+                    self.set_named_material(name, material)
+        self.request_redraw()
+
+    def get_texture_mipmaps_enabled(self) -> bool:
+        """Return the active surface-texture filtering policy."""
+        return bool(getattr(self, "_texture_mipmaps_enabled", True))
+
     def get_color_fidelity_mode(self) -> bool:
         """Return whether unlit color-inspection materials are active."""
         return bool(self._unlit_mode_enabled)
@@ -68,6 +100,7 @@ class PygfxMaterialMixin:
             type(obj_mat).__name__,
             bool(getattr(self, "_unlit_mode_enabled", False)),
             bool(getattr(self, "_ibl_loaded", False)),
+            self.get_texture_mipmaps_enabled(),
             tuple(getattr(self, "_clipping_planes", ()) or ()),
         )
 
@@ -104,6 +137,7 @@ class PygfxMaterialMixin:
                 roughness_map_path=None,
                 ao_map_path=None,
                 metallic_map_path=None,
+                clearcoat_roughness_map_path=None,
             )
         if not bool(getattr(self, "_rf_xray_applying_overlay", False)) and name in getattr(
             self, "_rf_xray_overlaid_names", set()
@@ -166,8 +200,8 @@ class PygfxMaterialMixin:
         # defaultUnlit behavior. The env var seeds startup state; the Render
         # panel toggles this at runtime through set_color_fidelity_mode().
         basic_cls = getattr(gfx, "MeshBasicMaterial", None)
-        physical_cls = getattr(gfx, "MeshPhysicalMaterial", None)
-        standard_cls = getattr(gfx, "MeshStandardMaterial", None)
+        standard_cls, physical_cls, _ = pbr_material_classes(gfx)
+        use_physical_material = needs_physical_material(mat)
         unlit_mode_enabled = bool(
             getattr(self, "_unlit_mode_enabled", _is_pygfx_unlit_mode_enabled())
         )
@@ -190,7 +224,7 @@ class PygfxMaterialMixin:
                 return False
         elif not use_unlit_material and basic_cls is not None and is_exact_basic and is_mesh:
             try:
-                if mat.has_advanced_pbr and physical_cls is not None:
+                if use_physical_material and physical_cls is not None:
                     new_mat = physical_cls(pick_write=True)
                 elif standard_cls is not None:
                     new_mat = standard_cls(pick_write=True)
@@ -207,13 +241,11 @@ class PygfxMaterialMixin:
                 material_apply_signatures.pop(name, None)
                 return False
 
-        # If a Wave A slider promoted this mesh to MeshPhysicalMaterial, return
-        # to the fast MeshStandardMaterial path once those advanced fields are
-        # neutral again. Otherwise a clearcoat 0 -> N -> 0 round-trip keeps a
-        # different shader than the initial scene build.
+        # Keep the Standard fast path for default dielectric reflectance and
+        # neutral advanced fields, including after a Physical round-trip.
         if (
-            not unlit_mode_enabled
-            and not mat.has_advanced_pbr
+            not use_unlit_material
+            and not use_physical_material
             and physical_cls is not None
             and isinstance(obj_mat, physical_cls)
             and is_mesh
@@ -234,13 +266,11 @@ class PygfxMaterialMixin:
                 material_apply_signatures.pop(name, None)
                 return False
 
-        # If the payload requests advanced PBR (Wave A) and the current
-        # material is not already MeshPhysicalMaterial, swap it. This is the
-        # only place that incurs the heavier-shader cost; meshes with default
-        # advanced PBR keep MeshStandardMaterial for the fast path.
+        # Physical supplies adjustable dielectric IOR as well as advanced PBR.
+        # Explicit unlit payloads must never be promoted by these fields.
         if (
-            not unlit_mode_enabled
-            and mat.has_advanced_pbr
+            not use_unlit_material
+            and use_physical_material
             and physical_cls is not None
             and not isinstance(obj_mat, physical_cls)
             and is_mesh
@@ -277,6 +307,12 @@ class PygfxMaterialMixin:
         )
         texture_bind_ms = 0.0
         try:
+            # New target poses and lit/unlit swaps must keep the selected style.
+            # Quantitative meshes, antennas and markers are never wireframes.
+            if hasattr(obj_mat, "wireframe"):
+                obj_mat.wireframe = bool(
+                    self._wireframe_enabled and self._is_wireframe_candidate(name)
+                )
             # Preserve vertex colors for colored point/line overlays. Without
             # this, material updates turn sensing detections/tracks white even
             # though their payloads carry per-vertex colors.
@@ -295,20 +331,14 @@ class PygfxMaterialMixin:
                 except (AttributeError, ValueError):
                     pass
             if hasattr(obj_mat, "color"):
-                obj_mat.color = (r, g, b, a)
+                obj_mat.color = (r, g, b, 1.0)  # Payload alpha is applied once, through opacity.
             if hasattr(obj_mat, "opacity"):
                 obj_mat.opacity = a
             if self._apply_material_alpha_state(name, obj_mat, mat) is False:
                 raise RuntimeError("required alpha/depth material state was rejected")
             if hasattr(obj_mat, "roughness"):
                 obj_mat.roughness = max(0.0, min(1.0, mat.roughness))
-            reflectance = max(0.0, min(1.0, float(mat.reflectance)))
-            for attr in ("reflectivity", "specular_intensity"):
-                if hasattr(obj_mat, attr):
-                    try:
-                        setattr(obj_mat, attr, reflectance)
-                    except (AttributeError, RuntimeError, TypeError, ValueError):
-                        pass
+            apply_display_reflectance(obj_mat, mat.reflectance)
             # With IBL active, full metallic range is safe because surfaces have
             # environment reflections. Without IBL, clamp to 0.9 to avoid black.
             max_metallic = 1.0 if self._ibl_loaded else 0.9
@@ -318,14 +348,23 @@ class PygfxMaterialMixin:
             if hasattr(obj_mat, "metallic"):
                 obj_mat.metallic = metallic_clamped
             # Advanced PBR is only meaningful on MeshPhysicalMaterial.
-            # Anisotropy is intentionally skipped on pygfx: the tested 0.16.0
-            # stack can compile an invalid WGSL shader when anisotropy > 0
-            # and no normal map is bound. The
+            # Anisotropy remains disabled: pygfx 0.17 shader generation reads
+            # unassigned texcoords when anisotropy > 0 without a normal map.
             # Open3D renderer applies anisotropy via base_anisotropy as usual.
             if hasattr(obj_mat, "clearcoat"):
                 obj_mat.clearcoat = max(0.0, min(1.0, mat.clearcoat))
             if hasattr(obj_mat, "clearcoat_roughness"):
                 obj_mat.clearcoat_roughness = max(0.0, min(1.0, mat.clearcoat_roughness))
+            if hasattr(obj_mat, "clearcoat_roughness_map"):
+                t_tex_start = time.perf_counter()
+                obj_mat.clearcoat_roughness_map = (
+                    self._load_texture_binding(
+                        mat.clearcoat_roughness_map_path, uv_repeat_scale=mat.uv_repeat_scale
+                    )
+                    if mat.clearcoat_roughness_map_path is not None
+                    else None
+                )
+                texture_bind_ms += (time.perf_counter() - t_tex_start) * 1000.0
             if hasattr(obj_mat, "emissive"):
                 er, eg, eb = mat.emissive_color
                 try:
@@ -589,14 +628,9 @@ class PygfxMaterialMixin:
                 )
                 return False
 
-        tracked_materials = getattr(getattr(self, "_ibl_manager", None), "_tracked_materials", None)
-        if tracked_materials is not None:
-            try:
-                tracked_materials[:] = [
-                    tracked for tracked in tracked_materials if tracked is not mat
-                ]
-            except (AttributeError, TypeError, ValueError):
-                pass
+        manager = getattr(self, "_ibl_manager", None)
+        if manager is not None:
+            manager.cleanup_material(mat)
 
         payload = MaterialPayload(
             base_color=(1.0, 1.0, 1.0, alpha),
@@ -635,7 +669,14 @@ class PygfxMaterialMixin:
         if previous_identity is not None and previous_identity != asset.identity:
             self._texture_cache.pop(previous_identity, None)
         try:
-            tex = self._gfx.Texture(np.array(asset.rgba, copy=True), dim=2)
+            # Prefilter detailed facades and ripples for distant/grazing views.
+            # Levels are generated once per cached native texture (about 1/3
+            # additional texture storage); source pixels remain unchanged.
+            tex = self._gfx.Texture(
+                np.array(asset.rgba, copy=True),
+                dim=2,
+                generate_mipmaps=getattr(self, "_texture_mipmaps_enabled", True),
+            )
         except (RuntimeError, TypeError, ValueError) as exc:
             logger.debug("PygfxRenderer: failed to create texture %s: %s", asset.path, exc)
             return None
@@ -724,12 +765,16 @@ class PygfxMaterialMixin:
             mat = getattr(obj, "material", None)
             if mat is not None:
                 self._apply_clipping_to_material(mat)
+        # Transient presentation materials are weakly registered only while enabled.
+        for mat in getattr(self, "_presentation_materials", ()):
+            self._apply_clipping_to_material(mat)
         self._update_status_chip_overlay()
         self.request_redraw()
 
     def _build_mesh_material(self, has_vertex_colors: bool = False) -> Any:
         """Build the default mesh material before any payload material is applied."""
         gfx = self._gfx
+        standard_cls, _, _ = pbr_material_classes(gfx)
         kwargs: dict[str, Any] = {
             "color": (0.8, 0.8, 0.8, 1.0),
             "roughness": 0.6,
@@ -739,11 +784,11 @@ class PygfxMaterialMixin:
         if has_vertex_colors:
             kwargs["color_mode"] = "vertex"
         try:
-            mat = gfx.MeshStandardMaterial(**kwargs)
+            mat = standard_cls(**kwargs)
         except TypeError:
             kwargs.pop("color_mode", None)
             try:
-                mat = gfx.MeshStandardMaterial(**kwargs)
+                mat = standard_cls(**kwargs)
             except Exception:
                 mat = gfx.MeshPhongMaterial(color=(0.8, 0.8, 0.8, 1.0), shininess=20)
                 self._apply_clipping_to_material(mat)
@@ -754,8 +799,6 @@ class PygfxMaterialMixin:
             return mat
         if self._ibl_loaded:
             self._ibl_manager.apply_to_material(mat)
-        if self._wireframe_enabled and hasattr(mat, "wireframe"):
-            mat.wireframe = True
         self._apply_clipping_to_material(mat)
         return mat
 
@@ -855,6 +898,7 @@ class PygfxMaterialMixin:
                 texture_path=material.texture_path,
                 clearcoat=float(material.clearcoat),
                 clearcoat_roughness=float(material.clearcoat_roughness),
+                clearcoat_roughness_map_path=material.clearcoat_roughness_map_path,
                 anisotropy=float(material.anisotropy),
                 emissive_color=tuple(material.emissive_color),  # type: ignore[arg-type]
                 emissive_intensity=float(material.emissive_intensity),
@@ -919,6 +963,7 @@ class PygfxMaterialMixin:
             texture_path=_opt_str("texture_path"),
             clearcoat=float(material.get("clearcoat", 0.0)),
             clearcoat_roughness=float(material.get("clearcoat_roughness", 0.0)),
+            clearcoat_roughness_map_path=_opt_str("clearcoat_roughness_map_path"),
             anisotropy=float(material.get("anisotropy", 0.0)),
             emissive_color=emissive_tuple,
             emissive_intensity=float(material.get("emissive_intensity", 0.0)),
@@ -972,6 +1017,9 @@ class PygfxMaterialMixin:
                 # Wave A — parity advanced PBR
                 "clearcoat": kwargs.get("clearcoat", 0.0),
                 "clearcoat_roughness": kwargs.get("clearcoat_roughness", 0.0),
+                "clearcoat_roughness_map_path": (
+                    kwargs.get("clearcoat_roughness_map_path") if mesh_has_uvs else None
+                ),
                 "anisotropy": kwargs.get("anisotropy", 0.0),
                 "emissive_color": kwargs.get("emissive_color", (0.0, 0.0, 0.0)),
                 "emissive_intensity": kwargs.get("emissive_intensity", 0.0),

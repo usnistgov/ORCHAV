@@ -1,0 +1,40 @@
+{
+  "path": "orchav_sensing.mp4",
+  "decoded_frames": 1470,
+  "full_decode_passed": true,
+  "bytes": 15851283,
+  "sha256": "edde42bc4d90c3bee6d9ce07531a059a410a8bb2d1ecc79e8231936911b80213",
+  "fps": 30,
+  "dimensions": [
+    1600,
+    900
+  ],
+  "duration_s": 49.0,
+  "chapters": [
+    {
+      "clip": "tracks",
+      "start_s": 2.0,
+      "duration_s": 10.0,
+      "title": "Follow the estimates through time"
+    },
+    {
+      "clip": "uncertainty",
+      "start_s": 12.0,
+      "duration_s": 8.0,
+      "title": "Make uncertainty visible"
+    },
+    {
+      "clip": "cinematic",
+      "start_s": 20.0,
+      "duration_s": 12.0,
+      "title": "From a range bin to a spatial estimate"
+    },
+    {
+      "clip": "volume",
+      "start_s": 32.0,
+      "duration_s": 14.0,
+      "title": "Where does the radar find the drone?"
+    }
+  ],
+  "audio": false
+}

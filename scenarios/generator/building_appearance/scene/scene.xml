@@ -1,0 +1,6 @@
+<scene version="2.1.0">
+<bsdf type="itu-radio-material" id="mat-itu_concrete"><string name="type" value="concrete"/><float name="thickness" value="1"/><rgb name="color" value="0.7 0.7 0.7"/></bsdf>
+<shape type="ply" id="building-0"><string name="filename" value="building_0.ply"/><ref id="mat-itu_concrete" name="bsdf"/></shape>
+<shape type="ply" id="building-1"><string name="filename" value="building_1.ply"/><ref id="mat-itu_concrete" name="bsdf"/></shape>
+<shape type="ply" id="building-2"><string name="filename" value="building_3.ply"/><ref id="mat-itu_concrete" name="bsdf"/></shape>
+</scene>

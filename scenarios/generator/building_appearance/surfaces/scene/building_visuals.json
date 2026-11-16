@@ -1,0 +1,87 @@
+{
+  "description": "Original synthetic strips with explicit example surface tags, not an OSM extraction. All strips share the same radio material.",
+  "visual_road_faces": {
+    "surfaces.ply": {
+      "total_triangles": 14,
+      "segments": [
+        {
+          "first_triangle": 0,
+          "start_m": 0.0,
+          "end_m": 30.0,
+          "length_m": 30.0,
+          "width_m": 3.0,
+          "highway": "footway",
+          "surface": "concrete",
+          "lanes": "",
+          "oneway": false
+        },
+        {
+          "first_triangle": 2,
+          "start_m": 0.0,
+          "end_m": 30.0,
+          "length_m": 30.0,
+          "width_m": 3.0,
+          "highway": "footway",
+          "surface": "paving_stones",
+          "lanes": "",
+          "oneway": false
+        },
+        {
+          "first_triangle": 4,
+          "start_m": 0.0,
+          "end_m": 30.0,
+          "length_m": 30.0,
+          "width_m": 3.0,
+          "highway": "footway",
+          "surface": "cobblestone",
+          "lanes": "",
+          "oneway": false
+        },
+        {
+          "first_triangle": 6,
+          "start_m": 0.0,
+          "end_m": 30.0,
+          "length_m": 30.0,
+          "width_m": 3.0,
+          "highway": "footway",
+          "surface": "gravel",
+          "lanes": "",
+          "oneway": false
+        },
+        {
+          "first_triangle": 8,
+          "start_m": 0.0,
+          "end_m": 30.0,
+          "length_m": 30.0,
+          "width_m": 3.0,
+          "highway": "footway",
+          "surface": "earth",
+          "lanes": "",
+          "oneway": false
+        },
+        {
+          "first_triangle": 10,
+          "start_m": 0.0,
+          "end_m": 30.0,
+          "length_m": 30.0,
+          "width_m": 3.0,
+          "highway": "footway",
+          "surface": "",
+          "lanes": "",
+          "oneway": false
+        },
+        {
+          "first_triangle": 12,
+          "start_m": 0.0,
+          "end_m": 30.0,
+          "length_m": 30.0,
+          "width_m": 3.0,
+          "highway": "residential",
+          "surface": "asphalt",
+          "lanes": "2",
+          "oneway": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,127 @@
+schema_version: 2
+scene:
+  id: empty/empty.xml
+data:
+  files:
+    chunk_size: 64
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 28000000000.0
+  quality:
+    custom:
+      samples_per_src: 10000
+      max_depth: 1
+      los: false
+      specular_reflection: true
+      diffuse_reflection: false
+      refraction: false
+      seed: 42
+timeline:
+  steps: 1024
+  sample_rate_hz: 1000.0
+actors:
+  tx:
+  - name: RadarTX
+    mobility:
+      type: stationary
+      position_m:
+      - 0.0
+      - 0.0
+      - 0.5
+  rx:
+  - name: RadarRX
+    mobility:
+      type: stationary
+      position_m:
+      - 0.0
+      - 0.0
+      - 0.5
+  targets:
+  - name: Cube
+    asset:
+      source: directory
+      path: libraries/targets/cube
+      pattern: cube.ply
+      material_type: metal
+    mobility:
+      type: linear
+      start_m:
+      - 0.0
+      - 5.0
+      - 0.5
+      end_m:
+      - 0.0
+      - 3.977
+      - 0.5
+  - name: RecedingCube
+    asset:
+      source: directory
+      path: libraries/targets/cube
+      pattern: cube.ply
+      material_type: metal
+    mobility:
+      type: linear
+      start_m:
+      - 0.0
+      - -8.0
+      - 0.5
+      end_m:
+      - 0.0
+      - -9.023
+      - 0.5
+sensing:
+  enabled: true
+  preset: coherent_hann
+  acquisition:
+    bandwidth_hz: 500000000.0
+    frequency_samples: 128
+    sample_rate_hz: 1000.0
+    samples_per_cpi: 64
+  processing:
+    range:
+      interpretation: monostatic
+      fft_size: 128
+    clutter:
+      coherent_mode: none
+  detection:
+    cfar:
+      threshold_scale: 2.0
+      range_doppler:
+        reference_range_cells: 6
+    filters:
+      minimum_snr_db: 3.0
+      maximum_dynamic_range_db: 12.0
+    clustering:
+      range_gate_m: 0.5
+      velocity_gate_m_s: 0.3
+  recording:
+    profile: maps
+    detection_stages: true
+    tracking_diagnostics: true
+  tracking:
+    enabled: true
+    type: kalman
+    confirmation:
+      hits: 2
+      window: 3
+    max_missed_updates: 1
+    association:
+      range_gate_m: 0.5
+      velocity_gate_m_s: 0.3
+generator_summary:
+  enabled: true
+  create:
+  - topology
+  - speed
+  - sensing
+  sensing:
+    figures:
+    - range_profile
+    - range_doppler
+    - doppler
+    - detection
+    - truth
+    - tracking
+    inspection_figures:
+    - detection_stages
+    - tracking_decisions

@@ -1,0 +1,78 @@
+schema_version: 2
+scene:
+  id: empty/empty.xml
+data:
+  files:
+    chunk_size: 64
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 28000000000.0
+  quality:
+    custom:
+      samples_per_src: 1000000
+      max_depth: 1
+      los: false
+      specular_reflection: true
+      diffuse_reflection: true
+      refraction: false
+      seed: 42
+  materials:
+    metal:
+      scattering_coefficient: 0.99
+      scattering_pattern: lambertian
+timeline:
+  steps: 8192
+  sample_rate_hz: 4000.0
+actors:
+  tx:
+  - name: RadarTX
+    mobility:
+      type: stationary
+      position_m: [0.0, 0.0, 1.5]
+  rx:
+  - name: RadarRX
+    mobility:
+      type: stationary
+      position_m: [0.0, 0.0, 1.5]
+  targets:
+  - name: Person
+    asset:
+      source: animated_asset
+      path: ../assets/asset/animated_target.json
+      material_type: metal
+      playback:
+        scenario_clock_id: scenario:marching_person
+        motion_clock_id: motion:marching_person
+        playback_rate: 1.0
+        playback_offset_s: 0.0
+    mobility:
+      type: stationary
+      position_m: [0.0, 0.0, 0.0]
+sensing:
+  enabled: true
+  preset: coherent_hann
+  acquisition:
+    mode: sequential_stft
+    bandwidth_hz: 500000000.0
+    frequency_samples: 128
+    sample_rate_hz: 4000.0
+  processing:
+    range:
+      interpretation: monostatic
+      fft_size: 128
+    doppler:
+      fft_size: 256
+      hop_samples: 64
+    clutter:
+      coherent_mode: none
+  detection:
+    enabled: false
+  recording:
+    profile: maps
+generator_summary:
+  enabled: true
+  create: [topology, speed, sensing]
+  visualization:
+    topology_pose_samples: 5
+  sensing:
+    figures: [range_profile, range_doppler, doppler, truth]

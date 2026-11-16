@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1020" height="710" viewBox="0 0 1020 710" role="img" aria-labelledby="title desc">
+<title id="title">Sionna and ORCHAV Sensing workflow</title>
+<desc id="desc">ORCHAV configures scenes, motion and acquisition timing. Sionna RT computes mesh and native RCS target paths. ORCHAV processes the complex channels into range, Doppler, angle, detections and tracks, then stores, replays and visualizes results.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#526878"/></marker></defs>
+<rect width="1020" height="710" fill="#f8fafc"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#172b3a}.head{font-size:25px;font-weight:700}.body{font-size:20px}.small{font-size:18px}.arrow{stroke:#526878;stroke-width:3;marker-end:url(#arrow)}</style>
+<text x="42" y="53" class="head">Sionna + ORCHAV Sensing</text>
+<rect x="42" y="87" width="936" height="113" rx="12" fill="#e5f4ee" stroke="#94bdaa"/>
+<text x="66" y="124" class="head">ORCHAV: acquisition setup</text>
+<text x="66" y="158" class="body">Scene and motion settings · solve timing</text>
+<text x="66" y="185" class="small">Coherent or sequential channel acquisition</text>
+<path d="M510 201V242" class="arrow"/>
+<rect x="42" y="252" width="936" height="103" rx="12" fill="#e4f1fa" stroke="#91b6cd"/>
+<text x="66" y="289" class="head">Sionna RT: propagation</text>
+<text x="66" y="323" class="body">Mesh / native RCS paths · complex coefficients · delays · angles · Doppler</text>
+<path d="M510 356V397" class="arrow"/>
+<rect x="42" y="407" width="936" height="116" rx="12" fill="#e5f4ee" stroke="#94bdaa"/>
+<text x="66" y="444" class="head">ORCHAV: sensing processing</text>
+<text x="66" y="479" class="body">Delay-bin accumulation or frequency-domain synthesis (CFR / IFFT)</text>
+<text x="66" y="507" class="body">Range, Doppler and angle → detection → tracking</text>
+<path d="M510 524V565" class="arrow"/>
+<rect x="42" y="575" width="936" height="94" rx="12" fill="#e5f4ee" stroke="#94bdaa"/>
+<text x="66" y="612" class="head">ORCHAV: results</text>
+<text x="66" y="646" class="body">HDF5 storage · CPU replay · evaluation · interactive visualization</text>
+</svg>

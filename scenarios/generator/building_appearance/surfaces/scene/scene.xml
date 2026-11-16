@@ -1,0 +1,4 @@
+<scene version="2.1.0">
+<bsdf type="itu-radio-material" id="mat-itu_concrete"><string name="type" value="concrete"/><float name="thickness" value="1"/><rgb name="color" value="0.6 0.6 0.6"/></bsdf>
+<shape type="ply" id="surface-comparison"><string name="filename" value="surfaces.ply"/><ref id="mat-itu_concrete" name="bsdf"/></shape>
+</scene>

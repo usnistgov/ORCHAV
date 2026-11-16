@@ -1,0 +1,13 @@
+{
+  "source_obj_sha256": "8905c3c0f362e51f738bdaeec1f3190b4907ec12dc8cbc387c57b6bfc7a1d1c5",
+  "output_ply_sha256": "b43fceebdf899af1001709bef39c920eb36a8980f8d820e94ac1c8a87a32402d",
+  "triangles": 355786,
+  "vertices": 319188,
+  "dimensions_m": [
+    4.5,
+    1.9699762331959512,
+    1.5181355035338753
+  ],
+  "transform": "Y-up/-X-front to Z-up/+X-front; AABB centered; length 4.5 m; no geometry simplification",
+  "appearance": "Source material colors with blue paint and dark opaque windows, baked to palette; one Satin visual material. RF material independent."
+}

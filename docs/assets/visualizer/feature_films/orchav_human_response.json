@@ -1,0 +1,131 @@
+{
+  "title": "ORCHAV Sensing: human target response",
+  "layout": {
+    "left": "Native human RCS",
+    "right": "Articulated human mesh"
+  },
+  "dimensions": [
+    1600,
+    900
+  ],
+  "fps": 30,
+  "seconds": 28,
+  "chapters": [
+    {
+      "start_s": 0,
+      "duration_s": 14,
+      "mpcs_visible": false,
+      "sha256": "036396d0de03cdafdb782dc6590df0b5267b66b073834101e328e5289c7a2a5c"
+    },
+    {
+      "start_s": 14,
+      "duration_s": 14,
+      "mpcs_visible": true
+    }
+  ],
+  "normalization": "Fixed peak of this entire recording; range-summed linear power; -40 to 0 dB",
+  "alignment": "Geometry nearest STFT midpoint (error <= 0.125 ms); 64 ms window centered on cursor",
+  "plot_velocity_limits_m_s": [
+    -4,
+    6
+  ],
+  "plot_time_limits_s": [
+    0,
+    2.048
+  ],
+  "comparison_scope": "The rigid human preset and this articulated metal mesh; spectral shape, not absolute RCS or a solver-version benchmark",
+  "sources": [
+    {
+      "case": "native_rcs",
+      "clip_sha256": "fe7fcf0e80a3bb040d1d2b9d3b29e1e11e5f6f2256000a7f91022c4f50133533",
+      "spectra_sha256": "507015f05123294ab72e2a94f2274671a7214d66b211b75e5e400679acbff8ee",
+      "frames_manifest_sha256": "ccd62159cd4eb1b220ed1981c2c657ce9a30749f9bf1d339714db7504d2f7534",
+      "acquisition_sionna_rt": "2.2.0",
+      "verified_saved_rd_end_frames": [
+        255,
+        2239,
+        4223,
+        6207,
+        8191
+      ],
+      "visible_mpcs": true,
+      "mpc_source_checks": [
+        {
+          "saved_paths": 1,
+          "rendered_segments": 2,
+          "all_paths_verified": true
+        },
+        {
+          "saved_paths": 1,
+          "rendered_segments": 2,
+          "all_paths_verified": true
+        },
+        {
+          "saved_paths": 1,
+          "rendered_segments": 2,
+          "all_paths_verified": true
+        },
+        {
+          "saved_paths": 1,
+          "rendered_segments": 2,
+          "all_paths_verified": true
+        },
+        {
+          "saved_paths": 1,
+          "rendered_segments": 2,
+          "all_paths_verified": true
+        }
+      ]
+    },
+    {
+      "case": "mesh",
+      "clip_sha256": "f5c9a1b1156e5605bdcc949077b65c122ef4a31afed205970f95562040d61752",
+      "spectra_sha256": "cf8e27a94a0e442f91500011d7a050b5eb752036df30a150e4427c635dc9be8b",
+      "frames_manifest_sha256": "d9eb111b9cef927f6e099378268ae47b74b7176c8cab3a24191404616d4dcf85",
+      "acquisition_sionna_rt": "2.0.1",
+      "verified_saved_rd_end_frames": [
+        255,
+        2239,
+        4223,
+        6207,
+        8191
+      ],
+      "visible_mpcs": true,
+      "mpc_source_checks": [
+        {
+          "saved_paths": 620,
+          "rendered_segments": 1240,
+          "all_paths_verified": true
+        },
+        {
+          "saved_paths": 762,
+          "rendered_segments": 1524,
+          "all_paths_verified": true
+        },
+        {
+          "saved_paths": 900,
+          "rendered_segments": 1800,
+          "all_paths_verified": true
+        },
+        {
+          "saved_paths": 1312,
+          "rendered_segments": 2624,
+          "all_paths_verified": true
+        },
+        {
+          "saved_paths": 1445,
+          "rendered_segments": 2890,
+          "all_paths_verified": true
+        }
+      ]
+    }
+  ],
+  "matching_replay_timeline_verified": true,
+  "video": {
+    "path": "orchav_human_response.mp4",
+    "decoded_frames": 840,
+    "full_decode_passed": true,
+    "bytes": 8700199,
+    "sha256": "2a3a5eac209fb6c0cb4d7e3625ef95359b79be84c69b83b67e79f084e097ae04"
+  }
+}

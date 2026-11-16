@@ -23,6 +23,7 @@ from shared.frames.providers import Hdf5Provider
 from shared.logging import get_logger
 
 from ..app.theme import current_theme
+from ..widgets.responsive import ResponsiveRow
 from .base import BasePanel
 from .live_grpc_mode_panel import LiveGrpcModePanel
 from .ui_theme import EMPTY_DISPLAY_VALUE, compact_button_style, configure_label, set_widget_role
@@ -109,16 +110,14 @@ class DataSourcePanel(BasePanel):
 
     def _create_file_mode_content(self) -> QWidget:
         """Create file-mode status fields for local HDF5 frame sources."""
-        container = QWidget()
-        columns = QHBoxLayout(container)
-        columns.setSpacing(12)
-        columns.setContentsMargins(0, 0, 0, 0)
+        container = ResponsiveRow(spacing=12)
+        columns = container.row
 
         # --- Column 1: Format Information ---
         col1 = QVBoxLayout()
         col1.setSpacing(2)
         col1_header = QLabel("Format")
-        configure_label(col1_header, font_size=10, bold=True)
+        configure_label(col1_header, bold=True)
         col1.addWidget(col1_header)
 
         for field_label, widget_key in [
@@ -130,10 +129,9 @@ class DataSourcePanel(BasePanel):
             row.setSpacing(4)
             row.setContentsMargins(0, 0, 0, 0)
             lbl = QLabel(field_label)
-            configure_label(lbl, role="secondary", font_size=10)
+            configure_label(lbl, role="secondary")
             row.addWidget(lbl)
             val = QLabel(EMPTY_VALUE)
-            configure_label(val, font_size=10)
             self.widgets[widget_key] = val
             row.addWidget(val)
             row.addStretch()
@@ -144,10 +142,10 @@ class DataSourcePanel(BasePanel):
         path_row.setSpacing(4)
         path_row.setContentsMargins(0, 0, 0, 0)
         path_lbl = QLabel("Path:")
-        configure_label(path_lbl, role="secondary", font_size=10)
+        configure_label(path_lbl, role="secondary")
         path_row.addWidget(path_lbl)
         self.widgets["file_path"] = QLabel(EMPTY_VALUE)
-        configure_label(self.widgets["file_path"], font_size=10, word_wrap=True)
+        configure_label(self.widgets["file_path"], word_wrap=True)
         path_row.addWidget(self.widgets["file_path"], 1)
         col1.addLayout(path_row)
 
@@ -158,7 +156,7 @@ class DataSourcePanel(BasePanel):
         col2 = QVBoxLayout()
         col2.setSpacing(2)
         col2_header = QLabel("Loading")
-        configure_label(col2_header, font_size=10, bold=True)
+        configure_label(col2_header, bold=True)
         col2.addWidget(col2_header)
 
         for field_label, widget_key in [
@@ -171,10 +169,9 @@ class DataSourcePanel(BasePanel):
             row.setSpacing(4)
             row.setContentsMargins(0, 0, 0, 0)
             lbl = QLabel(field_label)
-            configure_label(lbl, role="secondary", font_size=10)
+            configure_label(lbl, role="secondary")
             row.addWidget(lbl)
             val = QLabel(EMPTY_VALUE)
-            configure_label(val, font_size=10)
             self.widgets[widget_key] = val
             row.addWidget(val)
             row.addStretch()
@@ -187,7 +184,7 @@ class DataSourcePanel(BasePanel):
         col3 = QVBoxLayout()
         col3.setSpacing(2)
         col3_header = QLabel("Frames")
-        configure_label(col3_header, font_size=10, bold=True)
+        configure_label(col3_header, bold=True)
         col3.addWidget(col3_header)
 
         for field_label, widget_key in [
@@ -200,10 +197,9 @@ class DataSourcePanel(BasePanel):
             row.setSpacing(4)
             row.setContentsMargins(0, 0, 0, 0)
             lbl = QLabel(field_label)
-            configure_label(lbl, role="secondary", font_size=10)
+            configure_label(lbl, role="secondary")
             row.addWidget(lbl)
             val = QLabel(EMPTY_VALUE)
-            configure_label(val, font_size=10)
             self.widgets[widget_key] = val
             row.addWidget(val)
             row.addStretch()
@@ -241,7 +237,7 @@ class DataSourcePanel(BasePanel):
         configure_label(server_label, role="secondary", min_width=100)
         server_row.addWidget(server_label)
         self.widgets["remote_server_address"] = QLabel(EMPTY_VALUE)
-        configure_label(self.widgets["remote_server_address"], font_size=10, word_wrap=True)
+        configure_label(self.widgets["remote_server_address"], word_wrap=True)
         server_row.addWidget(self.widgets["remote_server_address"], 1)
         layout.addLayout(server_row)
 
@@ -593,15 +589,11 @@ class DataSourcePanel(BasePanel):
         else:
             self.widgets["loading_mode"].setText(EMPTY_VALUE)
 
-        # Memory usage (estimated)
-        if anim_service is not None and anim_service.preload_frame_count > 0:
-            estimated_mb = anim_service.preload_frame_count * 1.0
-            if estimated_mb < 1024:
-                self.widgets["memory_usage"].setText(f"~{estimated_mb:.1f} MB")
-            else:
-                self.widgets["memory_usage"].setText(f"~{estimated_mb/1024:.2f} GB")
-        else:
-            self.widgets["memory_usage"].setText("Minimal")
+        self.widgets["memory_usage"].setText("Not measured")
+        self.widgets["memory_usage"].setToolTip(
+            "Frame count is not a memory measurement. Frame sizes vary with path and sensing data; "
+            "this source does not expose allocated cache bytes."
+        )
 
     def _update_frame_statistics(self, provider: Any) -> None:
         """Update frame count, loaded count, and frame-index range labels."""

@@ -16,13 +16,12 @@ scene:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
   quality:
     preset: ultra-low
 
 timeline:
-  steps: 33
-  duration_s: 8.0
+  steps: 38
+  duration_s: 5.285714285714286
 
 actors:
   tx:
@@ -65,12 +64,13 @@ actors:
     - name: Pedestrian
       asset:
         source: directory
-        path: libraries/targets/nist_human_walking
-        pattern: "fitted_*.ply"
+        path: libraries/targets/digital_twin_update1
+        pattern: "DT_Pjh_02_*.ply"
+        mesh_end_behavior: hold_last
       mobility:
         type: linear
-        start_m: [-15.0, 5.0, 0.85]
-        end_m: [15.0, 5.0, 0.85]
+        start_m: [-0.938, 5.0, 0.98]
+        end_m: [0.938, 5.0, 0.98]
       orientation:
         type: align_motion
         allow_pitch: false
@@ -78,7 +78,7 @@ actors:
     - name: ParkedCar
       asset:
         source: directory
-        path: libraries/targets/car
+        path: libraries/targets/procedural_car
         pattern: "car.ply"
         material_type: metal
         switch_meshes: false
@@ -88,7 +88,7 @@ actors:
 
 generator_summary:
   enabled: true
-  create: [scene2d, speed, orientation]
+  create: [topology, speed, orientation]
   visualization:
     scene2d_mode: auto
     actor_label_mode: name

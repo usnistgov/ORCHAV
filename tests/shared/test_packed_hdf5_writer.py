@@ -4,13 +4,23 @@ from __future__ import annotations
 
 import gc
 import weakref
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+from uuid import UUID, uuid5
 
 import h5py
 import numpy as np
 import pytest
 
+from shared.extensions.sensing import (
+    SENSING_SCHEMA_VERSION,
+    UnsupportedSensingSchemaError,
+    build_sensing_temporal_contract,
+    canonical_processing_recipe_id,
+    canonical_sensing_hash,
+    finalize_sensing_v4_publication,
+)
 from shared.frames import packed_hdf5_writer
 from shared.frames.contracts import (
     MPC_HDF5_LAYOUT,
@@ -26,6 +36,198 @@ from shared.frames.packed_hdf5_writer import (
     write_packed_mpc_frame_chunk,
 )
 from shared.frames.types import StandardMPCFrame
+from shared.sensing.products import (
+    SENSING_PRODUCT_CONTRACT_VERSION,
+    TEMPORAL_SUPPORT_LAST_VALID_SAMPLE,
+    add_product_spec,
+    catalog_axis,
+    dense_axis,
+    materialize_product_specs,
+)
+
+_SENSING_GENERATION_ID = "9dced48a-334f-48c5-a359-e39071a90e73"
+
+
+def _writer_execution_config() -> dict:
+    """Return one complete coherent native-v4 execution envelope."""
+
+    return {
+        "contract_version": 1,
+        "fft_size_range": 128,
+        "fft_size_doppler": 2,
+        "sampling_frequency": 100e6,
+        "prf_hz": 1000.0,
+        "carrier_freq_hz": 3.5e9,
+        "range_mode": "monostatic",
+        "processing_mode": "coherent_cpi",
+        "processing_recipe": {
+            "window_range": "hann",
+            "window_doppler": "hann",
+        },
+        "acquisition": {
+            "sample_source": "coherent_one_solve",
+            "rt_solve_stride_scene_steps": 2,
+            "sample_period_s": 0.001,
+            "sample_rate_hz": 1000.0,
+            "cpi_length_samples": 2,
+            "cpi_hop_samples": 2,
+            "overlap_samples": 0,
+            "partial_window_policy": "retain_unprocessed",
+            "phase_contract": "sionna_intra_solve_phase_coherent",
+        },
+        "processing": {
+            "mode": "coherent_cpi",
+            "strategy": "coherent_cpi_fft",
+            "fft_size_doppler": 2,
+            "result_stride_samples": 2,
+            "product_semantics": "cir_point_bin_slow_time_fft",
+            "evidence_status": "explicit_writer_fixture",
+        },
+        "topology": {
+            "pair_count": 1,
+            "pair_index": 0,
+            "tx_device_count": 1,
+            "rx_device_count": 1,
+            "tx_elements": 1,
+            "rx_elements": 2,
+            "rx_array_processing": "planar_fft",
+        },
+    }
+
+
+def _schema_v4_sensing(frame_idx: int, sensing: dict | None) -> dict | None:
+    """Add valid temporal identity to sensing payloads used by codec tests."""
+    if not sensing:
+        return sensing
+    if sensing.get("schema_version") == SENSING_SCHEMA_VERSION:
+        return {
+            **sensing,
+            "product_contract_version": sensing.get(
+                "product_contract_version", SENSING_PRODUCT_CONTRACT_VERSION
+            ),
+            "products": sensing.get("products", {}),
+        }
+    config_resolved = _writer_execution_config()
+    sample_time_s = 1.5 + frame_idx
+    sample_times_s = (sample_time_s - 0.001, sample_time_s)
+    acquisition_id = str(uuid5(UUID(_SENSING_GENERATION_ID), f"writer-test:{frame_idx}"))
+    temporal = build_sensing_temporal_contract(
+        clock_id=_SENSING_GENERATION_ID,
+        acquisition_id=acquisition_id,
+        acquisition_config_id=canonical_sensing_hash(config_resolved),
+        pair_id=canonical_sensing_hash({"tx_sensor_id": "writer-tx", "rx_sensor_id": "writer-rx"}),
+        tx_sensor_id="writer-tx",
+        rx_sensor_id="writer-rx",
+        samples=[
+            {
+                "sample_index": sample_index,
+                "sample_time_s": sample_epoch_s,
+                "valid": True,
+                "phase_coherent": True,
+                "source": {
+                    "source_generation_id": _SENSING_GENERATION_ID,
+                    "scene_frame_id": frame_idx,
+                    "sample_offset": sample_index,
+                },
+            }
+            for sample_index, sample_epoch_s in enumerate(sample_times_s)
+        ],
+        processing_run_id=_SENSING_GENERATION_ID,
+        processing_recipe_id=canonical_processing_recipe_id(config_resolved["processing_recipe"]),
+        reference_time_s=0.5 * (sample_times_s[0] + sample_times_s[-1]),
+        reference_time_policy="cpi_center",
+        display_scene_frame_id=frame_idx,
+        display_policy="nearest_at_or_after_reference",
+        display_reason="The frame carries the scene state at the final CPI sample.",
+    )
+    result = {
+        **sensing,
+        "schema_version": SENSING_SCHEMA_VERSION,
+        "temporal": temporal,
+        "config": deepcopy(config_resolved),
+        "config_resolved": config_resolved,
+        "product_contract_version": SENSING_PRODUCT_CONTRACT_VERSION,
+        "products": {},
+    }
+    pair_axis = catalog_axis("pair", size=1, catalog_key="pair_axis")
+    cir = result.get("cir_by_pair_rx_element")
+    if isinstance(cir, np.ndarray):
+        element_count = int(cir.shape[1])
+        range_count = int(cir.shape[2])
+        result["rx_element_axis"] = [
+            {"element_index": index, "row": 0, "column": index} for index in range(element_count)
+        ]
+        result["cir_range_axis_m"] = np.arange(range_count, dtype=np.float64)
+        add_product_spec(
+            result,
+            data_key="cir_by_pair_rx_element",
+            kind="delay_domain_cir",
+            axes=(
+                pair_axis,
+                catalog_axis("rx_element", size=element_count, catalog_key="rx_element_axis"),
+                dense_axis(
+                    "range",
+                    size=range_count,
+                    unit="m",
+                    coordinate_key="cir_range_axis_m",
+                ),
+            ),
+            representation="complex_voltage",
+            unit="1",
+            temporal_support=TEMPORAL_SUPPORT_LAST_VALID_SAMPLE,
+        )
+    profile = result.get("range_profile_by_pair")
+    if isinstance(profile, np.ndarray):
+        range_count = int(profile.shape[1])
+        result["range_profile_axis_m"] = np.arange(range_count, dtype=np.float64)
+        add_product_spec(
+            result,
+            data_key="range_profile_by_pair",
+            kind="range_profile",
+            axes=(
+                pair_axis,
+                dense_axis(
+                    "range",
+                    size=range_count,
+                    unit="m",
+                    coordinate_key="range_profile_axis_m",
+                ),
+            ),
+            representation="power_linear",
+            unit="1",
+            temporal_support=TEMPORAL_SUPPORT_LAST_VALID_SAMPLE,
+        )
+    range_doppler = result.get("range_doppler_by_pair")
+    if isinstance(range_doppler, np.ndarray):
+        doppler_count = int(range_doppler.shape[1])
+        range_count = int(range_doppler.shape[2])
+        result["range_doppler_axis_hz"] = np.arange(doppler_count, dtype=np.float64)
+        result["range_doppler_range_axis_m"] = np.arange(range_count, dtype=np.float64)
+        add_product_spec(
+            result,
+            data_key="range_doppler_by_pair",
+            kind="range_doppler",
+            axes=(
+                pair_axis,
+                dense_axis(
+                    "doppler_frequency",
+                    size=doppler_count,
+                    unit="Hz",
+                    coordinate_key="range_doppler_axis_hz",
+                ),
+                dense_axis(
+                    "range",
+                    size=range_count,
+                    unit="m",
+                    coordinate_key="range_doppler_range_axis_m",
+                ),
+            ),
+            representation="power_linear",
+            unit="1",
+        )
+    materialize_product_specs(result)
+    finalize_sensing_v4_publication(result)
+    return result
 
 
 def _frame(frame_idx: int, *, sensing: dict | None = None) -> StandardMPCFrame:
@@ -74,7 +276,7 @@ def _frame(frame_idx: int, *, sensing: dict | None = None) -> StandardMPCFrame:
             },
         ),
         beamforming={"mode": "test", "weights": np.asarray([1.0, 2.0])},
-        sensing=sensing,
+        sensing=_schema_v4_sensing(frame_idx, sensing),
         timestamp_s=1.5 + frame_idx,
         recomputed_from_stored_positions=bool(frame_idx),
         provenance={
@@ -134,6 +336,47 @@ def test_writer_rejects_noncanonical_mapping_input(tmp_path: Path) -> None:
         writer.discard()
 
 
+def test_writer_rejects_old_sensing_without_mutating_the_chunk(tmp_path: Path) -> None:
+    writer = PackedMPCChunkWriter(
+        tmp_path,
+        generation_id="writer-schema-boundary",
+    )
+    try:
+        legacy = replace(_frame(0), sensing={"schema_version": 2, "range_profile": [1.0]})
+        with pytest.raises(UnsupportedSensingSchemaError, match="Regenerate this sensing dataset"):
+            writer.append(legacy)
+        assert writer.frame_ids == ()
+        assert writer.frame_count == 0
+    finally:
+        writer.discard()
+
+
+def test_writer_rejects_undescribed_v4_numeric_payload_without_mutating_chunk(
+    tmp_path: Path,
+) -> None:
+    source = _frame(
+        0,
+        sensing={"range_profile_by_pair": np.ones((1, 3), dtype=np.float32)},
+    )
+    invalid_sensing = dict(source.sensing or {})
+    invalid_sensing["unpublished_debug_array"] = np.ones((2,), dtype=np.float32)
+    invalid = replace(source, sensing=invalid_sensing)
+    writer = PackedMPCChunkWriter(
+        tmp_path,
+        generation_id="writer-described-product-boundary",
+    )
+    try:
+        with pytest.raises(
+            ValueError,
+            match="forbids undeclared numeric payloads: unpublished_debug_array",
+        ):
+            writer.append(invalid)
+        assert writer.frame_ids == ()
+        assert writer.frame_count == 0
+    finally:
+        writer.discard()
+
+
 def test_prepare_does_not_repeat_complete_frame_validation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -179,22 +422,20 @@ def test_writer_appends_global_offsets_sensing_and_material_catalog(
     first = _frame(
         0,
         sensing={
-            "range_profile": np.asarray([1.0, 2.0, 3.0], dtype=np.float32),
-            "cir": np.asarray(
-                [[1.0 + 2.0j, 3.0 + 4.0j], [5.0 + 6.0j, 7.0 + 8.0j]],
+            "range_profile_by_pair": np.asarray([[1.0, 2.0, 3.0]], dtype=np.float32),
+            "cir_by_pair_rx_element": np.asarray(
+                [[[1.0 + 2.0j, 3.0 + 4.0j], [5.0 + 6.0j, 7.0 + 8.0j]]],
                 dtype=np.complex64,
             ),
-            "config": {"bandwidth_hz": np.float64(100e6)},
-            "config_resolved": {"bandwidth_hz": np.float64(100e6), "fft_size": 128},
         },
     )
     second = _frame(
         1,
         sensing={
-            "range_doppler_map": np.arange(4, dtype=np.float32).reshape((2, 2)),
-            "cir": np.asarray([[9.0j], [10.0j], [11.0j]], dtype=np.complex64),
-            "config": {"bandwidth_hz": 100e6},
-            "config_resolved": {"bandwidth_hz": 100e6, "fft_size": 128},
+            "range_doppler_by_pair": np.arange(4, dtype=np.float32).reshape((1, 2, 2)),
+            "cir_by_pair_rx_element": np.asarray(
+                [[[9.0j, 10.0j], [11.0j, 12.0j]]], dtype=np.complex64
+            ),
         },
     )
 
@@ -267,51 +508,100 @@ def test_writer_appends_global_offsets_sensing_and_material_catalog(
         assert handle["paths/metric_valid_bits"].shape == (6,)
 
         np.testing.assert_array_equal(
-            handle["sensing/fixed/range_profile/present"][:],
+            handle["sensing/fixed/range_profile_by_pair/present"][:],
             [1, 0],
         )
         np.testing.assert_array_equal(
-            handle["sensing/fixed/range_profile/data"][0],
-            [1.0, 2.0, 3.0],
+            handle["sensing/fixed/range_profile_by_pair/data"][0],
+            [[1.0, 2.0, 3.0]],
         )
         np.testing.assert_array_equal(
-            handle["sensing/fixed/range_doppler_map/present"][:],
+            handle["sensing/fixed/range_doppler_by_pair/present"][:],
             [0, 1],
         )
         np.testing.assert_array_equal(
-            handle["sensing/fixed/range_doppler_map/data"][1],
-            np.arange(4, dtype=np.float32).reshape((2, 2)),
+            handle["sensing/fixed/range_doppler_by_pair/data"][1],
+            np.arange(4, dtype=np.float32).reshape((1, 2, 2)),
         )
         np.testing.assert_array_equal(
-            handle["sensing/ragged/cir/offsets"][:],
-            [0, 4, 7],
-        )
-        assert handle["sensing/ragged/cir/offsets"].chunks[0] > 1
-        np.testing.assert_array_equal(
-            handle["sensing/ragged/cir/shapes"][:],
-            [[2, 2], [3, 1]],
-        )
-        np.testing.assert_array_equal(
-            handle["sensing/ragged/cir/present"][:],
-            [1, 1],
-        )
-        np.testing.assert_allclose(
-            handle["sensing/ragged/cir/values"][:],
-            np.concatenate(
+            handle["sensing/fixed/cir_by_pair_rx_element/data"][:],
+            np.stack(
                 [
-                    first.sensing["cir"].reshape(-1),
-                    second.sensing["cir"].reshape(-1),
+                    first.sensing["cir_by_pair_rx_element"],
+                    second.sensing["cir_by_pair_rx_element"],
                 ]
             ),
         )
-        assert handle["sensing/ragged/cir/values"].dtype == np.dtype(np.complex64)
+        assert handle["sensing/fixed/cir_by_pair_rx_element/data"].dtype == np.dtype(np.complex64)
         metadata = loads_frame_json(handle["frames/sensing_metadata_json"][0])
-        assert metadata == {}
+        assert metadata["schema_version"] == SENSING_SCHEMA_VERSION
+        assert metadata["temporal"]["clock"]["clock_id"] == _SENSING_GENERATION_ID
+        assert metadata["temporal"]["acquisition"]["samples"] == [
+            {
+                "sample_index": 0,
+                "sample_time_s": 1.499,
+                "valid": True,
+                "phase_coherent": True,
+                "source": {
+                    "source_generation_id": _SENSING_GENERATION_ID,
+                    "scene_frame_id": 0,
+                    "sample_offset": 0,
+                },
+            },
+            {
+                "sample_index": 1,
+                "sample_time_s": 1.5,
+                "valid": True,
+                "phase_coherent": True,
+                "source": {
+                    "source_generation_id": _SENSING_GENERATION_ID,
+                    "scene_frame_id": 0,
+                    "sample_offset": 1,
+                },
+            },
+        ]
+        expected_config = _writer_execution_config()
         assert loads_frame_json(handle["static/sensing_config_json"][()]) == {
-            "config": {"bandwidth_hz": 100e6},
-            "config_resolved": {"bandwidth_hz": 100e6, "fft_size": 128},
+            "config": expected_config,
+            "config_resolved": expected_config,
         }
         assert loads_frame_json(handle["targets/metadata_json"][0])["name"] == "vehicle"
+
+
+@pytest.mark.parametrize("prior_frames", [0, 3])
+def test_large_sensing_products_append_without_rewriting_other_frames(
+    tmp_path: Path, prior_frames: int
+) -> None:
+    """One large product must occupy its own chunks, including late readiness."""
+
+    values = np.arange(128 * 256, dtype=np.float64).reshape(1, 128, 256)
+    frames = [
+        _frame(index, sensing={"range_profile_by_pair": np.ones((1, 256))})
+        for index in range(prior_frames)
+    ]
+    frames.extend(
+        _frame(
+            prior_frames + offset,
+            sensing={"range_doppler_by_pair": values + offset},
+        )
+        for offset in range(3)
+    )
+    chunk = write_packed_mpc_frame_chunk(
+        tmp_path, frames, generation_id="writer-independent-sensing-frames"
+    )
+
+    with h5py.File(tmp_path / chunk.file, "r") as handle:
+        group = handle["sensing/fixed/range_doppler_by_pair"]
+        data = group["data"]
+        assert data.chunks is not None
+        # No compressed chunk may span adjacent large sensing frames: that
+        # causes every append to repeatedly recompress preceding products.
+        assert data.chunks[0] == 1
+        np.testing.assert_array_equal(group["present"][:], [0] * prior_frames + [1] * 3)
+        for index in range(prior_frames):
+            np.testing.assert_array_equal(data[index], np.zeros_like(values))
+        for offset in range(3):
+            np.testing.assert_array_equal(data[prior_frames + offset], values + offset)
 
 
 def test_writer_rebases_independent_material_catalogs_without_repacking(
@@ -360,8 +650,8 @@ def test_incompatible_topology_and_fixed_sensing_shape_require_new_chunk(
         _frame(
             0,
             sensing={
-                "range_profile": np.ones((3,), dtype=np.float32),
-                "cir": np.ones((2, 2), dtype=np.complex64),
+                "range_profile_by_pair": np.ones((1, 3), dtype=np.float32),
+                "cir_by_pair_rx_element": np.ones((1, 2, 2), dtype=np.complex64),
             },
         )
     )
@@ -373,7 +663,7 @@ def test_incompatible_topology_and_fixed_sensing_shape_require_new_chunk(
 
     changed_sensing_shape = _frame(
         1,
-        sensing={"range_profile": np.ones((4,), dtype=np.float32)},
+        sensing={"range_profile_by_pair": np.ones((1, 4), dtype=np.float32)},
     )
     with pytest.raises(PackedMPCChunkBoundaryError, match="shape or dtype"):
         writer.append(changed_sensing_shape)
@@ -382,11 +672,11 @@ def test_incompatible_topology_and_fixed_sensing_shape_require_new_chunk(
     changed_cir_dtype = _frame(
         1,
         sensing={
-            "range_profile": np.ones((3,), dtype=np.float32),
-            "cir": np.ones((2, 2), dtype=np.complex128),
+            "range_profile_by_pair": np.ones((1, 3), dtype=np.float32),
+            "cir_by_pair_rx_element": np.ones((1, 2, 2), dtype=np.complex128),
         },
     )
-    with pytest.raises(PackedMPCChunkBoundaryError, match="cir dtype"):
+    with pytest.raises(PackedMPCChunkBoundaryError, match="shape or dtype"):
         writer.append(changed_cir_dtype)
     assert writer.frame_ids == (0,)
 

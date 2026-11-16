@@ -1,7 +1,5 @@
 # MPC Inspection
 
-[Scenarios](../../README.md) > [Visualizer](../README.md) > MPC Inspection
-
 This Visualizer-focused scenario uses the
 [Sionna RT](https://nvlabs.github.io/sionna/) `munich` scene, which represents
 Munich's historic Frauenkirche district with dense urban streets and building
@@ -11,9 +9,9 @@ resulting multipath components in the Visualizer.
 
 To run it, see [Running](#running).
 
-## Scene Setup
+## Scene Layout
 
-![2D scene layout](../../../docs/assets/scenarios/scenarios_visualizer_mpc_inspection_summary2d.png)
+![Scenario topology](../../../docs/assets/scenarios/scenarios_visualizer_mpc_inspection_topology.png)
 
 | Element | Role |
 | --- | --- |
@@ -23,6 +21,8 @@ To run it, see [Running](#running).
 
 ## Scenario Configuration
 
+See [scenario.yaml](scenario.yaml) for the complete configuration.
+
 ```yaml
 timeline:
   steps: 1
@@ -30,11 +30,10 @@ timeline:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
 
 generator_summary:
   enabled: true
-  create: [scene2d]
+  create: [topology]
 ```
 
 The scenario uses the default `low` ray-tracing profile and omits
@@ -51,6 +50,11 @@ From the repository root, generate and inspect frame 0:
 
 ```bash
 orchav-generator scenarios/visualizer/mpc_inspection
+```
+
+Inspect frame 0's MPCs:
+
+```bash
 orchav-inspect scenarios/visualizer/mpc_inspection --frame 0
 ```
 
@@ -69,8 +73,8 @@ orchav-visualizer --scenario scenarios/visualizer/mpc_inspection
 - The same tab can restrict the displayed paths by reflection order,
   interaction type, delay, path loss, material, and angles without changing the
   underlying HDF5 frame.
-- Enable **Limit rendered MPCs**, then set **Max MPCs** to reduce the number of
-  strongest displayed paths while keeping the standard frame available for
+- Open **Paths → Filtering → Top K**, enable **Keep strongest paths**, then set
+  **K** to reduce the number of strongest displayed paths while keeping the standard frame available for
   inspection.
 - Renderer selection changes drawing behavior, not the stored frame data.
 
@@ -88,15 +92,11 @@ view_defaults:
 For backend comparison, use the [Renderer guide](../../../docs/visualizer/renderers.md)
 rather than changing the scenario itself.
 
-In **Paths**, choose **Open MPC Explorer...** to sort the frame's paths, select
+In **Paths → Appearance → Path tools**, choose **Path Explorer…** to sort the frame's paths, select
 one path, and inspect its ordered interactions and materials. See the
-[MPC Explorer guide](../../../docs/visualizer/mpc_explorer.md) for the complete
+[MPC Explorer guide](../../../docs/visualizer/path_inspection.md) for the complete
 workflow.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../README.md) | [Visualizer](../README.md) |
-> Current: **MPC Inspection**
->
-> Up: [Visualizer Scenarios](../README.md) | Next:
-> [Metrics Evolution](../metrics_evolution/README.md)
+Up: [Visualizer scenarios](../README.md) | Next: [Metrics Evolution](../metrics_evolution/README.md) | Related: [Path inspection guide](../../../docs/visualizer/path_inspection.md)

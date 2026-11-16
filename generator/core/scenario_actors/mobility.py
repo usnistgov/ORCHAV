@@ -433,6 +433,7 @@ def _spiral(
     timeline: Timeline,
     path: str,
 ) -> tuple[list[Position3], bool]:
+    """Evaluate a helix with either retained polyline or exact curve geometry."""
     center = vec3(value(spec, "center_m"), name=f"{path}.center_m")
     radius = float(value(spec, "radius_m"))
     start_altitude = float(value(spec, "start_altitude_m"))
@@ -442,6 +443,25 @@ def _spiral(
     direction = -1.0 if bool(value(spec, "clockwise", default=False)) else 1.0
     if radius <= 0.0 or turns <= 0.0:
         raise ValueError(f"{path} radius and turns must be positive")
+    interpolation = str(value(spec, "interpolation", default="linear")).lower()
+    if interpolation == "analytic":
+        angle_extent = 2.0 * math.pi * turns
+        height = end_altitude - start_altitude
+        length = float(np.hypot(radius * angle_extent, height))
+        distances = _traversal_distances(length, spec, timeline, path=path)
+        fraction = np.asarray(distances, dtype=np.float64) / length
+        angles = start_angle + direction * angle_extent * fraction
+        positions = np.column_stack(
+            (
+                center[0] + radius * np.cos(angles),
+                center[1] + radius * np.sin(angles),
+                start_altitude + height * fraction,
+            )
+        )
+        return [_as_position(position) for position in positions], True
+    if interpolation != "linear":
+        raise ValueError(f"{path}.interpolation must be linear or analytic")
+    # Preserve existing default samples, including their polyline arc lengths.
     parameters = np.linspace(0.0, 1.0, max(129, int(128 * turns)))
     dense: list[Position3] = []
     for fraction in parameters:

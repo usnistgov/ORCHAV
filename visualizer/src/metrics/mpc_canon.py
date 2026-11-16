@@ -238,6 +238,8 @@ class CanonicalStepData:
     material_id_to_name: Optional[dict[int, str]] = None
     material_id_to_itu: Optional[dict[int, str]] = None
     material_id_to_bare: Optional[dict[int, str]] = None
+    # Sparse canonical point index -> frame target index, target name, point ID.
+    native_sensing_points: Optional[dict[int, tuple[int, str, int]]] = None
 
     # Ranges (stable color scaling)
     delay_min: float = 0.0
@@ -1010,6 +1012,8 @@ def colorize(
     type_palette: np.ndarray,  # float32 [max_type+1, 3]
     viridis256: np.ndarray,  # float32 [256,3]
     material_colors: Optional[dict[str, np.ndarray]] = None,  # material_name -> [r,g,b]
+    *,
+    continuous_lut: np.ndarray | None = None,
 ) -> np.ndarray:
     """Return per-point RGB colors for the selected color mode."""
     if mode == "reflection_order":
@@ -1028,10 +1032,10 @@ def colorize(
         colors[other_mask] = np.array([0.5, 0.5, 0.5], dtype=np.float32)
         return colors
     if mode == "delay":
-        lut = ensure_continuous_lut()
+        lut = ensure_continuous_lut() if continuous_lut is None else continuous_lut
         return map_values_to_lut(canon.delay[mask], canon.delay_min, canon.delay_max, lut)
     if mode == "path_loss":
-        lut = ensure_continuous_lut()
+        lut = ensure_continuous_lut() if continuous_lut is None else continuous_lut
         return map_values_to_lut(canon.loss[mask], canon.loss_min, canon.loss_max, lut)
     if mode == "material":
         # Colors are per point; rendering samples each segment's start node.
@@ -1163,6 +1167,8 @@ def colorize_segments(
     type_palette: np.ndarray,
     viridis256: np.ndarray,
     material_colors: Optional[dict[str, np.ndarray]] = None,
+    *,
+    continuous_lut: np.ndarray | None = None,
 ) -> np.ndarray:
     """Color line segments directly from per-segment canonical attributes."""
     if canon.lines.size == 0 or segment_mask.size == 0:
@@ -1220,7 +1226,12 @@ def colorize_segments(
             )
         else:
             values = canon.delay[starts]
-        return map_values_to_lut(values, canon.delay_min, canon.delay_max, ensure_continuous_lut())
+        return map_values_to_lut(
+            values,
+            canon.delay_min,
+            canon.delay_max,
+            ensure_continuous_lut() if continuous_lut is None else continuous_lut,
+        )
 
     if mode == "path_loss":
         if canon.segment_loss is not None:
@@ -1229,7 +1240,12 @@ def colorize_segments(
             )
         else:
             values = canon.loss[starts]
-        return map_values_to_lut(values, canon.loss_min, canon.loss_max, ensure_continuous_lut())
+        return map_values_to_lut(
+            values,
+            canon.loss_min,
+            canon.loss_max,
+            ensure_continuous_lut() if continuous_lut is None else continuous_lut,
+        )
 
     if mode != "material":
         return np.full(

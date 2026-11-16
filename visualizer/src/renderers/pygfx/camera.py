@@ -21,6 +21,47 @@ __all__ = ["PygfxCameraMixin", "SceneBounds"]
 logger = logging.getLogger(__name__)
 
 
+def _visible_scene_bounds(scene: Any) -> Optional[np.ndarray]:
+    """Enclose visible geometry without recursively bounding hidden annotations.
+
+    Native aggregate bounds include invisible children. A cached street-label
+    layer can therefore add hundreds of text/card bounds calculations after it
+    is hidden. Traverse visibility once and transform geometry-only bounds;
+    their native cache still follows position-buffer revisions. World matrices
+    include every parent transform, and visible lines and labels remain part
+    of the clipping envelope.
+    """
+    boxes, transforms = [], []
+    for obj in scene.iter(skip_invisible=True):
+        bounds = obj.get_geometry_bounding_box()
+        if bounds is None:
+            continue
+        bounds = np.asarray(bounds, dtype=np.float64)
+        if bounds.shape != (2, 3) or not np.all(np.isfinite(bounds)):
+            continue
+        world = obj.world.matrix
+        instances = getattr(obj, "instance_buffer", None)
+        if instances is None:
+            if np.all(np.isfinite(world)):
+                boxes.append(bounds)
+                transforms.append(world)
+        else:
+            # Native instance matrices are stored transposed for the shader.
+            # Geometry-only bounds do not include these extra transforms.
+            matrices = world @ instances.data["matrix"].transpose(0, 2, 1)
+            matrices = matrices[np.isfinite(matrices).all(axis=(1, 2))]
+            boxes.extend([bounds] * len(matrices))
+            transforms.extend(matrices)
+    if not boxes:
+        return None
+    boxes, transforms = np.asarray(boxes), np.asarray(transforms)
+    linear = transforms[:, :3, :3]
+    centers = np.einsum("nij,nj->ni", linear, (boxes[:, 0] + boxes[:, 1]) * 0.5)
+    centers += transforms[:, :3, 3]
+    radii = np.einsum("nij,nj->ni", np.abs(linear), (boxes[:, 1] - boxes[:, 0]) * 0.5)
+    return np.stack(((centers - radii).min(axis=0), (centers + radii).max(axis=0)))
+
+
 def _pygfx_overview_distance_scale(aspect: float) -> float:
     """Return the distance scale that maps vertical-FOV fit math to pygfx FOV."""
     try:
@@ -138,6 +179,73 @@ class SceneBounds:
 class PygfxCameraMixin:
     """Mixin providing pygfx camera state and follow/look-at operations."""
 
+    def get_depth_precision_enabled(self) -> bool:
+        """Return whether automatic distant-view depth precision is active."""
+        return bool(getattr(self, "_depth_precision_enabled", False))
+
+    def set_depth_precision_enabled(self, enabled: bool) -> None:
+        """Toggle correction immediately, releasing only our managed clip range."""
+        enabled = bool(enabled)
+        if enabled == self.get_depth_precision_enabled():
+            return
+        self._depth_precision_enabled = enabled
+        if enabled:
+            self._update_camera_depth_precision()
+        else:
+            camera = getattr(self, "_camera", None)
+            managed = getattr(self, "_managed_camera_depth_range", None)
+            if camera is not None and managed is not None and camera.depth_range == managed:
+                camera.depth_range = None
+            self._managed_camera_depth_range = None
+        self.request_redraw()
+
+    def _update_camera_depth_precision(self) -> None:
+        """Improve distant depth precision without fitting a tight clip volume.
+
+        Raise the near plane only when the *entire* visible scene bounds lie
+        in front of it, leaving a 100-fold margin. Never shorten pygfx's native
+        far range. Recompute from the current pose, including controller motion,
+        so zooming back into a scene cannot retain an overview's near plane.
+        Native bounds use cached geometry bounds, not copies of mesh vertices.
+        Hidden subtrees contribute neither bounds nor per-object layout work.
+        Opt in at renderer creation with ORCHAV_PYGFX_DEPTH_PRECISION=1.
+        """
+        if not getattr(self, "_depth_precision_enabled", False):
+            return
+        camera = getattr(self, "_camera", None)
+        scene = getattr(self, "_scene", None)
+        if camera is None or scene is None or camera.fov <= 0:
+            return
+        previous = getattr(self, "_managed_camera_depth_range", None)
+        if camera.depth_range is not None and camera.depth_range != previous:
+            return  # Respect an explicitly supplied clipping range.
+
+        signature = (float(camera.fov), float(camera.depth))
+        if signature != getattr(self, "_native_camera_depth_signature", None):
+            camera.depth_range = None
+            self._native_camera_depth_range = (float(camera.near), float(camera.far))
+            self._native_camera_depth_signature = signature
+        near, far = self._native_camera_depth_range
+        desired = None
+        bounds = _visible_scene_bounds(scene)
+        if bounds is not None:
+            bounds = np.asarray(bounds, dtype=np.float64)
+            if bounds.shape == (2, 3) and np.all(np.isfinite(bounds)):
+                # Project an enclosing world AABB onto camera forward (-Z).
+                view = np.asarray(camera.world.inverse_matrix, dtype=np.float64)
+                center = (bounds[0] + bounds[1]) * 0.5
+                radius = (bounds[1] - bounds[0]) * 0.5
+                depth = -float(view[2, :3] @ center + view[2, 3])
+                half_depth = float(np.abs(view[2, :3]) @ radius)
+                nearest, farthest = depth - half_depth, depth + half_depth
+                fitted_near = max(near, 0.01 * nearest)
+                fitted_far = max(far, 2.0 * farthest)
+                if fitted_near > near or fitted_far > far:
+                    desired = (fitted_near, fitted_far)
+        if camera.depth_range != desired:
+            camera.depth_range = desired
+        self._managed_camera_depth_range = desired
+
     def get_camera_state(self) -> Optional[CameraState]:
         """Return the current renderer-neutral camera state."""
         if not self._initialized or self._camera is None:
@@ -203,6 +311,10 @@ class PygfxCameraMixin:
         if not self._initialized or not isinstance(state, CameraState):
             return False
 
+        tools = getattr(self, "camera_tools", None)
+        if tools is not None and tools.intercept(state):
+            return True
+
         eye_arr = np.asarray(state.eye, dtype=np.float32)
         look_arr = np.asarray(state.lookat, dtype=np.float32)
         up_arr = np.asarray(state.up, dtype=np.float32)
@@ -253,11 +365,16 @@ class PygfxCameraMixin:
             fov_deg=float(state.fov_deg),
         )
         self._last_camera_look_distance = float(np.linalg.norm(eye_arr - look_arr))
+        from .controller_sync import rebase_controller
+
+        rebase_controller(self._controller, self._camera)
         # Only steal focus for interactive (user-initiated) camera changes.
         # During animation, _focus_canvas() calls activateWindow() which on
         # Windows deactivates the control panel window and swallows button
         # clicks (play/pause becomes unresponsive in follow/POV mode).
-        if not getattr(self.visualizer, "animation_running", False):
+        if not getattr(self.visualizer, "animation_running", False) and not (
+            tools is not None and tools.applying
+        ):
             self._focus_canvas()
         self.request_redraw()
         return True
@@ -331,7 +448,19 @@ class PygfxCameraMixin:
 
     def update_follow_camera(self, target_position: Any) -> bool:
         """Move follow mode's look-at point while preserving camera offset."""
-        return self.set_lookat(np.asarray(target_position, dtype=np.float64))
+        target = np.asarray(target_position, dtype=np.float64)
+        previous = getattr(self, "_follow_target_lookat", None)
+        current = self.get_camera_state()
+        # Translate by actor motion, preserving a user's screen-space pan too.
+        lookat = (
+            target
+            if previous is None or current is None
+            else (np.asarray(current.lookat) + target - previous)
+        )
+        result = self.set_lookat(lookat)
+        if result:
+            self._follow_target_lookat = target.copy()
+        return result
 
     def _viewport_aspect(self) -> float:
         """Return current viewport aspect with a stable fallback."""
@@ -371,12 +500,17 @@ class PygfxCameraMixin:
             )
         )
         if ok and self._controller is not None and hasattr(self._controller, "target"):
-            self._controller.target = tuple(float(x) for x in new_lookat)
+            # set_camera_state owns native state. A queued transition must not
+            # rotate the controller toward its destination ahead of the tween.
             self._follow_target_lookat = new_lookat.copy()
         return ok
 
     def reset_follow_state(self) -> None:
         """Reset follow bookkeeping to the current camera state."""
+        tools = getattr(self, "camera_tools", None)
+        if tools is not None:
+            tools.follow_position = None
+            tools.last_yaw = None
         self._camera_state = self.get_camera_state()
         self._follow_target_lookat = None
         if self._controller is not None and hasattr(self._controller, "target"):
@@ -384,6 +518,34 @@ class PygfxCameraMixin:
                 self._controller.target = tuple(float(x) for x in self._camera_state.lookat)
             else:
                 self._controller.target = (0.0, 0.0, 0.0)
+
+    def set_camera_input_callback(self, callback) -> None:
+        """Observe navigation without consuming events or exposing native objects."""
+        source = getattr(self, "_renderer", None)
+        old_source = getattr(self, "_camera_input_source", None)
+        old_callback = getattr(self, "_camera_input_callback", None)
+        if old_source is source and callback == old_callback:
+            return
+        events = ("pointer_down", "wheel", "key_down")
+        if old_source is not None and old_callback is not None:
+            old_source.remove_event_handler(old_callback, *events)
+        self._camera_input_source = source if callback is not None else None
+        self._camera_input_callback = callback
+        if source is not None and callback is not None:
+            source.add_event_handler(callback, *events)
+
+    def cancel_camera_gestures(self) -> None:
+        """End pending native gestures before a deliberate camera move."""
+        from .controller_sync import rebase_controller
+
+        rebase_controller(self._controller, self._camera, cancel=True)
+
+    def set_camera_input_enabled(self, enabled: bool) -> bool:
+        """Suspend native input for deterministic export; return its previous state."""
+        previous = bool(getattr(self._controller, "enabled", True))
+        if self._controller is not None:
+            self._controller.enabled = bool(enabled)
+        return previous
 
     @staticmethod
     def _quat_rotate(q: np.ndarray, vector: np.ndarray) -> np.ndarray:

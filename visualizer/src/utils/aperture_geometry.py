@@ -400,6 +400,7 @@ LOCAL_REFERENCE_COLOR = [1.0, 0.85, 0.2]
 AXIS_X_COLOR = [1.0, 0.2, 0.2]
 AXIS_Y_COLOR = [0.2, 0.9, 0.35]
 AXIS_Z_COLOR = [0.35, 0.55, 1.0]
+REFERENCE_RING_STEP_DEG = 5.0
 
 
 def create_angular_reference_line_payload(
@@ -444,7 +445,7 @@ def create_angular_reference_line_payload(
         """Append one signed axis ray from the overlay center."""
         add_segment(0, add_point(axis_radius * direction), segment_color)
 
-    circle_angles = _sample_degrees(-180.0, 180.0, step_deg=15.0)
+    circle_angles = _sample_degrees(-180.0, 180.0, step_deg=REFERENCE_RING_STEP_DEG)
     add_polyline(
         [_spherical_to_cartesian(np.radians(az), 0.0, ring_radius) for az in circle_angles],
         ref_color,
@@ -480,14 +481,14 @@ def angular_reference_label_positions(
     """Return label text, position, and color for an angular reference overlay."""
     center = np.asarray(center, dtype=np.float64)
     label_radius = max(float(radius) * 1.03, 0.1)
-    prefix = "L" if local else "G"
+    prefix = "Local" if local else "Global"
     labels = [
-        ("0", np.array([1.0, 0.0, 0.0], dtype=np.float64), AXIS_X_COLOR),
-        ("90", np.array([0.0, 1.0, 0.0], dtype=np.float64), AXIS_Y_COLOR),
-        ("180", np.array([-1.0, 0.0, 0.0], dtype=np.float64), AXIS_X_COLOR),
-        ("-90", np.array([0.0, -1.0, 0.0], dtype=np.float64), AXIS_Y_COLOR),
-        ("+El", np.array([0.0, 0.0, 1.0], dtype=np.float64), AXIS_Z_COLOR),
-        ("-El", np.array([0.0, 0.0, -1.0], dtype=np.float64), AXIS_Z_COLOR),
+        ("+X", np.array([1.0, 0.0, 0.0], dtype=np.float64), AXIS_X_COLOR),
+        ("+Y", np.array([0.0, 1.0, 0.0], dtype=np.float64), AXIS_Y_COLOR),
+        ("-X", np.array([-1.0, 0.0, 0.0], dtype=np.float64), AXIS_X_COLOR),
+        ("-Y", np.array([0.0, -1.0, 0.0], dtype=np.float64), AXIS_Y_COLOR),
+        ("+Z", np.array([0.0, 0.0, 1.0], dtype=np.float64), AXIS_Z_COLOR),
+        ("-Z", np.array([0.0, 0.0, -1.0], dtype=np.float64), AXIS_Z_COLOR),
     ]
     points = np.asarray([center + label_radius * direction for _, direction, _ in labels])
     points = _apply_orientation(points, center, orientation if local else None)

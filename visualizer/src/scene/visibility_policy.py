@@ -29,7 +29,12 @@ def effective_entry_visibility(
                 frame_visible=frame_visible,
             )
         )
-    return bool(state_visible and entry.get("visible", True))
+    return bool(
+        state_visible
+        and entry.get("visible", True)
+        and entry.get("_geographic_layer_visible", True)
+        and entry.get("_plan_view_visible", True)
+    )
 
 
 def effective_entry_label_visibility(

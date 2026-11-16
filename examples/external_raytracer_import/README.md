@@ -28,10 +28,17 @@ python -m examples.external_raytracer_import.import_to_orchav external_raytracer
 
 The command creates HDF5 chunks and `frames_manifest.json`, reloads both frames
 through `Hdf5Provider`, and prints the frame-set identity. Inspect the result
-without opening the Visualizer:
+without opening the Visualizer.
+
+Inspect the imported first frame:
 
 ```bash
 orchav-inspect external_raytracer_frames --frame 0
+```
+
+Inspect the second frame to check the time-varying data:
+
+```bash
 orchav-inspect external_raytracer_frames --frame 1
 ```
 

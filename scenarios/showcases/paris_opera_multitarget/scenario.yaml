@@ -1,0 +1,326 @@
+# Complete acquisition template. Run prepare.py with explicit external walking input.
+schema_version: 2
+scene:
+  source: local
+  id: scene_clean/scene.xml
+data:
+  files:
+    chunk_size: 128
+    directory: frames
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 28.0e9
+  antenna:
+    rx:
+      num_rows: 16
+      num_cols: 16
+  quality:
+    preset: low
+    custom:
+      diffuse_reflection: true
+      specular_reflection: true
+      los: false
+      samples_per_src: 800000
+      max_num_paths_per_src: 50000
+      max_depth: 1
+      seed: 20261023
+  materials:
+    itu_metal_Car_Outbound:
+      scattering_coefficient: 0.8
+      scattering_pattern: lambertian
+    itu_metal_Car_Inbound:
+      scattering_coefficient: 0.8
+      scattering_pattern: lambertian
+    itu_metal_Scooter:
+      scattering_coefficient: 0.8
+      scattering_pattern: lambertian
+    itu_metal_Drone:
+      scattering_coefficient: 0.8
+      scattering_pattern: lambertian
+    itu_glass_Pedestrian:
+      scattering_coefficient: 0.8
+      scattering_pattern: lambertian
+timeline:
+  steps: 10240
+  sample_rate_hz: 2000.0
+actors:
+  tx:
+  - name: RadarTX
+    mobility:
+      type: stationary
+      position_m:
+      - -36.50568975108494
+      - -44.60653584028523
+      - 5.5
+    orientation:
+      type: fixed
+      yaw_deg: -100.0
+  rx:
+  - name: RadarRX
+    mobility:
+      type: stationary
+      position_m:
+      - -36.50568975108494
+      - -44.60653584028523
+      - 5.5
+    orientation:
+      type: fixed
+      yaw_deg: -100.0
+  targets:
+  - name: Car_Outbound
+    asset:
+      source: directory
+      path: assets/vehicles/bmw
+      pattern: target.ply
+      switch_meshes: false
+      material_type: metal
+    mobility:
+      type: linear
+      start_m:
+      - -62.0
+      - -65.0
+      - 0.9090677518
+      end_m:
+      - -73.67246
+      - -55.016975
+      - 0.9090677518
+    orientation:
+      type: align_motion
+      allow_pitch: false
+  - name: Car_Inbound
+    asset:
+      source: directory
+      path: assets/vehicles/bmw
+      pattern: target.ply
+      switch_meshes: false
+      material_type: metal
+    mobility:
+      type: linear
+      start_m:
+      - -4.4
+      - -94.0
+      - 0.9090677518
+      end_m:
+      - -8.90516
+      - -78.385525
+      - 0.9090677518
+    orientation:
+      type: align_motion
+      allow_pitch: false
+  - name: Scooter
+    asset:
+      source: directory
+      path: assets/vehicles/scooter
+      pattern: target.ply
+      switch_meshes: false
+      material_type: metal
+    mobility:
+      type: linear
+      start_m:
+      - -9.2
+      - -78.0
+      - 0.7339999914
+      end_m:
+      - -11.86214
+      - -68.7849
+      - 0.7339999914
+    orientation:
+      type: align_motion
+      allow_pitch: false
+  - name: Drone
+    asset:
+      source: directory
+      path: assets/drone
+      pattern: drone.obj
+      switch_meshes: false
+      material_type: metal
+    mobility:
+      type: linear
+      start_m:
+      - -25.0
+      - -82.0
+      - 11.0
+      end_m:
+      - -26.43346
+      - -73.552825
+      - 12.63824
+    orientation:
+      type: align_motion
+      allow_pitch: true
+  - name: Pedestrian
+    asset:
+      source: animated_asset
+      path: assets/walker/animated_target.json
+      material_type: glass
+      playback:
+        scenario_clock_id: opera_showcase
+        motion_clock_id: supplied_walk
+        playback_rate: 1.0
+        playback_offset_s: 0.0
+    mobility:
+      type: stationary
+      position_m:
+      - 0.0
+      - 0.0
+      - 0.0
+sensing:
+  enabled: true
+  preset: coherent_hann
+  acquisition:
+    bandwidth_hz: 500000000.0
+    frequency_samples: 256
+    sample_rate_hz: 2000.0
+    samples_per_cpi: 128
+  processing:
+    range:
+      interpretation: monostatic
+      fft_size: 256
+    clutter:
+      coherent_mode: windowed_mean
+  detection:
+    mode: beam_scan
+    angle_oversampling: 8
+    cfar:
+      threshold_scale: 20.0
+      range_doppler:
+        guard_range_cells: 4
+        guard_doppler_cells: 2
+        reference_range_cells: 16
+    exclusions:
+      doppler_dc_bins: 5
+    filters:
+      minimum_snr_db: 16.0
+      maximum_dynamic_range_db: 25.0
+      minimum_range_m: 5.0
+      maximum_range_m: 70.0
+    shortest_range_filter:
+      velocity_gate_m_s: 0.45
+      azimuth_gate_deg: 12.0
+    clustering:
+      range_gate_m: 1.3
+      velocity_gate_m_s: 0.3
+  tracking:
+    enabled: true
+    type: cartesian3d
+    output_tentative: true
+    confirmation:
+      hits: 2
+      window: 3
+    max_missed_updates: 3
+    association:
+      position_gate_m: 4.0
+      velocity_gate_m_s: 0.6
+  evaluation:
+    range_gate_m: 3.0
+    velocity_gate_m_s: 0.35
+  recording:
+    profile: reprocessing
+    detection_stages: true
+    tracking_diagnostics: true
+view_defaults:
+  camera_view: isometric
+  mpc_visibility:
+    enabled: false
+    paths: false
+    bounce_points: false
+  color_mode: path_loss
+  camera_dist: 110.0
+  building_appearance: varied
+  facade_theme: haussmann
+  road_appearance: marked
+  authored_surface_textures: true
+  visual_profiles:
+  - match:
+      name: Car_.*
+      type: target
+    preset: Satin
+    surface: assets/vehicles/bmw/surface.json
+  - match:
+      name: Drone
+      type: target
+    preset: Satin
+    surface: assets/drone_surface/surface.json
+  - match:
+      name: Scooter
+      type: target
+    preset: Satin
+    surface: assets/vehicles/scooter/surface.json
+  camera_pose:
+    eye:
+    - -6
+    - -129
+    - 16
+    lookat:
+    - -38
+    - -55
+    - 9
+    up:
+    - 0
+    - 0
+    - 1
+    fov: 60
+  appearance_recipe: appearance.json
+  dusk:
+    label: Paris blue hour
+    facade_lights:
+    - {position: [-60, -70, 3], lookat: [-48, -39, 18], color: [1.0, 0.72, 0.43], intensity: 5.5, distance: 85, angle_deg: 42}
+    - {position: [-14, -57, 3], lookat: [-30, -30, 18], color: [1.0, 0.72, 0.43], intensity: 5.5, distance: 85, angle_deg: 42}
+    targets:
+    - object_id: target:car_inbound::mesh
+      light: {position: [2.15, 0, -0.04], lookat: [16, 0, -0.70], color: [0.85, 0.91, 1.0], intensity: 2.8, distance: 24, angle_deg: 28}
+      palette_slots: 19
+      emissive_slots: {3: [1.0, 0.025, 0.006], 9: [0.65, 0.75, 1.0], 11: [0.85, 0.93, 1.0]}
+    - object_id: target:car_outbound::mesh
+      light: {position: [2.15, 0, -0.04], lookat: [16, 0, -0.70], color: [0.85, 0.91, 1.0], intensity: 2.8, distance: 24, angle_deg: 28}
+      palette_slots: 19
+      emissive_slots: {3: [1.0, 0.025, 0.006], 9: [0.65, 0.75, 1.0], 11: [0.85, 0.93, 1.0]}
+    window_accents: true
+  demo_tour:
+    label: Paris Opéra
+    views:
+      Opéra approach:
+        pose: {eye: [-6, -129, 16], lookat: [-38, -55, 9], up: [0, 0, 1], fov: 60}
+        actor: null
+      Paris overview:
+        pose: {eye: [-5, -142, 42], lookat: [-36, -59, 10], up: [0, 0, 1], fov: 56}
+        actor: null
+      Garnier façade:
+        pose: {eye: [-15, -112, 22], lookat: [-36, -45, 14], up: [0, 0, 1], fov: 58}
+        actor: null
+      Street view:
+        pose: {eye: [-14, -98, 6], lookat: [-36, -45, 11], up: [0, 0, 1], fov: 65}
+        actor: null
+    shots:
+    - {view: Opéra approach, hold: 5, move: 4}
+    - {view: Paris overview, hold: 5, move: 4}
+    - {view: Garnier façade, hold: 5, move: 4}
+    - {view: Street view, hold: 5, move: 4}
+  playback:
+    mode: fixed_fps
+    fps: 25
+    stride: 32
+  show_labels: false
+  show_target_labels: false
+  viewport_hud_enabled: false
+  label_callout:
+    mode: card
+    background: ink
+    opacity: 0.92
+    offset_x: 12
+    offset_y: 24
+    marker_size: 10
+    leader: true
+    on_top: true
+  sensing:
+    show_detections: true
+    scene_mode: tracks
+    show_track_labels: true
+    show_truth: false
+    full_history: false
+    history_frames: 32
+    pin_freshest: true
+generator_summary:
+  enabled: true
+  create: [topology, sensing]
+  sensing:
+    figures: [range_doppler, detection, tracking_cartesian, tracking_xyz]

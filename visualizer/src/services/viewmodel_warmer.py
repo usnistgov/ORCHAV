@@ -90,9 +90,8 @@ class ViewModelWarmer(QObject):
         self._queue.append(step)
         if not self._active:
             self._activate()
-        elif not self._timer.isActive():
-            # Session still open but timer paused after queue drained — resume.
-            self._timer.start()
+        else:
+            self.sync_playback_state()
 
     def invalidate(self, reason: str = "") -> None:
         """Discard all queued work because the cache key changed."""
@@ -138,8 +137,15 @@ class ViewModelWarmer(QObject):
         self._active = True
         self._warmed_count = 0
         self._renderer_warmed_count = 0
-        self._timer.start()
+        self.sync_playback_state()
         logger.info("ViewModel warmer activated (snapshot taken)")
+
+    def sync_playback_state(self) -> None:
+        """Suspend idle work during playback and resume retained work when paused."""
+        if getattr(self._viz, "animation_running", False) or not self._queue:
+            self._timer.stop()
+        elif self._active and not self._timer.isActive():
+            self._timer.start()
 
     def _current_snapshot_key(self) -> tuple:
         """Return the non-step portion of the VM cache key for the current state."""
@@ -204,6 +210,7 @@ class ViewModelWarmer(QObject):
 
         # Yield to animation — don't compete with the render loop.
         if getattr(self._viz, "animation_running", False):
+            self._timer.stop()
             return
 
         if self._standalone_beamforming_is_visible():
@@ -288,6 +295,7 @@ class ViewModelWarmer(QObject):
                     aod_el_filter_min_deg=state.aod_el_filter_min_deg,
                     aod_el_filter_max_deg=state.aod_el_filter_max_deg,
                     use_distinct_material_colors=state.use_distinct_material_colors,
+                    include_frame_details=state.show_mpc_frame_details,
                 )
             except (ValueError, TypeError, KeyError, IndexError, RuntimeError) as exc:
                 logger.debug("ViewModel warmer: failed for step %d: %s", step, exc)

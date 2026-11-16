@@ -1,7 +1,5 @@
 # Single-Transmitter Coverage Map
 
-[Scenarios](../../../README.md) > [Generator](../../README.md) > Single-Transmitter Coverage Map
-
 This scenario generates coverage maps over the built-in
 [Sionna RT](https://nvlabs.github.io/sionna/) Etoile scene. It is a static
 radio-map workflow: one transmitter is placed above the scene and the Generator
@@ -12,7 +10,7 @@ To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scenario overview](../../../../docs/assets/scenarios/scenarios_generator_coverage_single_tx_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_generator_coverage_single_tx_topology.png)
 
 | Element | Role |
 | --- | --- |
@@ -21,6 +19,8 @@ To run it, see [Running](#running).
 | Coverage heights | 1.5 m and 30 m |
 
 ## Configuration Walkthrough
+
+See [scenario.yaml](scenario.yaml) for the complete configuration.
 
 The scenario is intentionally small:
 
@@ -47,14 +47,19 @@ coverage:
 ```
 
 The coverage block uses automatic scene bounds and the default `medium`
-coverage solver. The explicit seed keeps its sampling repeatable.
+coverage solver. An explicit seed is supplied to the coverage solver.
 
 ## Running
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/coverage/single_tx
 orchav-generator scenarios/generator/coverage/single_tx
-orchav-inspect scenarios/generator/coverage/single_tx --coverage
+```
+
+Open the scenario in the Visualizer:
+
+```bash
 orchav-visualizer --scenario scenarios/generator/coverage/single_tx
 ```
 
@@ -80,6 +85,23 @@ heights, so their colors can be compared directly.
 The output names include both the one-based height order and physical height,
 such as `coverage_maps_height-01_1.5m.png` and
 `coverage_maps_height-02_30m.png`.
+
+Standalone 3D views use the same saved coverage values:
+
+| 3D view at 1.5 m | 3D view at 30 m |
+| --- | --- |
+| ![3D coverage at 1.5 meters](../../../../docs/assets/scenarios/scenarios_generator_coverage_single_tx_coverage_3d.png) | ![3D coverage at 30 meters](../../../../docs/assets/scenarios/scenarios_generator_coverage_single_tx_coverage_3d_height-02_30m.png) |
+
+To export a standalone 3D coverage slice:
+
+```bash
+python -m generator.tools.coverage_figure --scenario scenarios/generator/coverage/single_tx --output coverage_3d.png
+```
+
+Use `--height-index 1` for the 30 m slice. This command runs without opening the
+Visualizer or rerunning the solver. See [Standalone 3D Coverage
+Slices](../../../../docs/generator/generated_figures.md#standalone-3d-coverage-slices)
+for metric and camera controls.
 
 ## View Coverage In The Visualizer
 
@@ -111,7 +133,5 @@ transmitter placement.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) | [Generator](../../README.md) |
-> Current: **Single-Transmitter Coverage Map**
->
-> Track: **Coverage** | Next: [Multi-Transmitter Coverage](../multi_tx/README.md)
+Up: [Generator](../../README.md) ·
+[Multi-Transmitter Coverage](../multi_tx/README.md)

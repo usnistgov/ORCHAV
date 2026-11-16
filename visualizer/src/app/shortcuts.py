@@ -22,6 +22,9 @@ class ShortcutSpec:
 
 
 SHORTCUTS: tuple[ShortcutSpec, ...] = (
+    ShortcutSpec("open_scenario", "Ctrl+O", "Ctrl+O", "Open scenario"),
+    ShortcutSpec("find_control", "Ctrl+K", "Ctrl+K", "Find a control"),
+    ShortcutSpec("help", "F1", "F1", "Help and controls"),
     ShortcutSpec("play_pause", "Space", "Space", "Play / Pause animation"),
     ShortcutSpec("previous_frame", "Left", "Left Arrow", "Previous frame"),
     ShortcutSpec("next_frame", "Right", "Right Arrow", "Next frame"),
@@ -33,7 +36,7 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "Save workspace snapshot",
     ),
     ShortcutSpec("load_session", "Ctrl+L", "Ctrl+L", "Open workspace snapshot"),
-    ShortcutSpec("toggle_metrics", "M", "M", "Toggle metrics window"),
+    ShortcutSpec("toggle_metrics", "M", "M", "Show / hide live frame metrics"),
 )
 
 _SHORTCUTS_BY_ID = {shortcut.identifier: shortcut for shortcut in SHORTCUTS}

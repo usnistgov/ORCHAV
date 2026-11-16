@@ -23,6 +23,7 @@ from .contracts import (
     _coerce_metrics,
     _component_closure,
 )
+from .sionna_metadata import SIONNA_INTERACTION_SENSING
 from .types import (
     FRAME_FORMAT_VERSION,
     PATH_METRIC_ARRAY_FIELDS,
@@ -176,6 +177,24 @@ class ProjectedMPCFrame(_CompactFrameProperties):
         self._validate_material_catalog()
         self._validate_metrics()
         self._validate_targets()
+        if (
+            self.interactions is not None
+            and np.any(self.interactions == SIONNA_INTERACTION_SENSING)
+            and self.provenance is not None
+            and "sionna_sensing" not in self.provenance
+        ):
+            raise ValueError("Sensing interactions require retained sionna_sensing identity")
+        if (
+            self.provenance
+            and "sionna_sensing" in self.provenance
+            and self.interactions is not None
+            and self.targets_metadata is not None
+        ):
+            from .sensing_identity import validate_sensing_identity
+
+            validate_sensing_identity(
+                self.provenance["sionna_sensing"], self.interactions, self.targets_metadata
+            )
         for name, value in (
             ("sensing", self.sensing),
             ("beamforming", self.beamforming),
@@ -368,6 +387,16 @@ class FrameProjection:
 
     def _validate_loaded_component_fields(self) -> None:
         frame = self.frame
+        if (
+            FrameComponent.PROVENANCE in self.loaded_components
+            and frame.interactions is not None
+            and np.any(frame.interactions == SIONNA_INTERACTION_SENSING)
+            and (
+                not isinstance(frame.provenance, Mapping)
+                or "sionna_sensing" not in frame.provenance
+            )
+        ):
+            raise ValueError("Loaded sensing interactions require retained sionna_sensing identity")
         required_by_component: dict[FrameComponent, tuple[str, ...]] = {
             FrameComponent.DEVICES: (
                 "tx_positions",

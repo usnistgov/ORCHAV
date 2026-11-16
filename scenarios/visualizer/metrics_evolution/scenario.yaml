@@ -15,7 +15,6 @@ scene:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
   quality:
     preset: custom
     custom:

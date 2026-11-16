@@ -1,0 +1,308 @@
+{
+  "scenario": "scenarios/sensing/applications/wall_detection_volume/scenario.yaml",
+  "scene_source": {
+    "id": "scene/wall.xml",
+    "source": "local"
+  },
+  "source_files": {
+    "libraries/targets/cube/cube.ply": "92b4c49988762b9f7e425596c2b071dc3ba8ecb2d281df7985e32249bb6ed437",
+    "scenarios/sensing/applications/wall_detection_volume/scenario.yaml": "e6eac0288ba6ad40ce84c7628b742207915d330702bdb39a3911b2b0636e2471",
+    "scenarios/sensing/applications/wall_detection_volume/scene/wall.ply": "033ee63e513e3e9d7c83600efc0cfceb85ec6c5119ce40c144eb90d1183d81f2",
+    "scenarios/sensing/applications/wall_detection_volume/scene/wall.xml": "b192f3654bc12ebb11244fb67d76ca341d485ed4c5d4fb41779429654f9d0841"
+  },
+  "sample_indices": [
+    0,
+    63
+  ],
+  "sample_times_s": [
+    0.0,
+    0.063
+  ],
+  "steps": 64,
+  "actors": [
+    {
+      "name": "Monostatic radar",
+      "role": "radar",
+      "members": [
+        "RadarTX",
+        "RadarRX"
+      ],
+      "sample_positions_m": [
+        [
+          -6.0,
+          0.0,
+          2.0
+        ],
+        [
+          -6.0,
+          0.0,
+          2.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -6.0,
+            0.0,
+            2.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cube",
+      "role": "target",
+      "members": [
+        "Cube"
+      ],
+      "sample_positions_m": [
+        [
+          3.0,
+          0.0,
+          2.0
+        ],
+        [
+          3.063,
+          0.0,
+          2.0
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 32,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 0.032,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 63,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 0.063,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            3.0,
+            0.0,
+            2.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Mat-Itu Concrete",
+      "display_rgb": [
+        0.6940000000000001,
+        0.728,
+        0.7824000000000001
+      ]
+    }
+  ],
+  "output_sha256": "19e671becccbd9050e3da38bb1b0421f7821286ccc98837c017082ddfedbd30e",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -6.37252,
+        -2.16,
+        -0.16
+      ],
+      [
+        3.6855200000000004,
+        2.16,
+        4.16
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [
+    {
+      "name": "Cube",
+      "projection_axes": [
+        "X",
+        "Y"
+      ],
+      "displacement_m": 0.06300000000000017,
+      "start_position_m": [
+        3.0,
+        0.0,
+        2.0
+      ],
+      "end_position_m": [
+        3.063,
+        0.0,
+        2.0
+      ],
+      "start_time_s": 0.0,
+      "end_time_s": 0.063,
+      "pose_times_s": {
+        "Start": 0.0,
+        "Middle": 0.032,
+        "End": 0.063
+      }
+    }
+  ],
+  "mesh_snapshot_styles": [
+    {
+      "name": "Cube",
+      "index": 63,
+      "time_s": 0.063,
+      "style": "filled",
+      "label": "End",
+      "opacity": 0.88
+    },
+    {
+      "name": "Cube",
+      "index": 32,
+      "time_s": 0.032,
+      "style": "filled",
+      "label": "Middle",
+      "opacity": 0.42
+    },
+    {
+      "name": "Cube",
+      "index": 0,
+      "time_s": 0.0,
+      "style": "filled",
+      "label": "Start",
+      "opacity": 0.16
+    }
+  ],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "8832ee6a74cf03bfac1434a265d6ca1d887e04f7f95394323e31955b255118e1",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "motion_renderer_sha256": "8fea0d9a9ed108fe662e2941ee7b19df5b36b935bd1ac67b13769c343795aa58",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.topology",
+    "--scenario",
+    "scenarios/sensing/applications/wall_detection_volume/scenario.yaml",
+    "--output",
+    "docs/assets/scenarios/scenarios_sensing_applications_wall_detection_volume_topology.png",
+    "--view",
+    "both",
+    "--dpi",
+    "170"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

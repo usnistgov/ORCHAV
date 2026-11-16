@@ -461,3 +461,20 @@ def test_warmer_cross_thread_signal_delivery(dummy_viz: SimpleNamespace) -> None
 
     assert warmer._warmed_count == 3
     assert len(dummy_viz.mpc_view_cache) == 3
+
+
+def test_warmer_suspends_timer_and_retains_queue_during_playback(dummy_viz, qapp):
+    dummy_viz.animation_running = True
+    dummy_viz.cache_service.store_frame(1, _make_raw_frame(1))
+    warmer = ViewModelWarmer(dummy_viz)
+    warmer.enqueue(1)
+    assert not warmer._timer.isActive()
+    assert list(warmer._queue) == [1]
+    qapp.processEvents()
+    assert dummy_viz.mpc_core.calls == []
+    dummy_viz.animation_running = False
+    warmer.sync_playback_state()
+    assert warmer._timer.isActive()
+    warmer._process_tick()
+    assert dummy_viz.mpc_core.calls == [1]
+    warmer.stop()

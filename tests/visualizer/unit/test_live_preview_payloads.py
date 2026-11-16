@@ -5,12 +5,33 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from generator.core.propagation.live_overrides import apply_live_overrides
 from visualizer.src.services.live_preview_payloads import (
     build_live_overrides,
     decode_orientation_array,
     decode_position_array,
     encode_live_preview_arrays,
 )
+
+
+@pytest.mark.parametrize("category", ["tx", "rx", "target"])
+def test_preview_payload_preserves_distinct_poses_for_case_distinct_names(category) -> None:
+    configs = [SimpleNamespace(name=name) for name in ("Station", "station")]
+    simulation = SimpleNamespace(**{f"{category}_configs": configs})
+    edited = np.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    arrays = {
+        f"{kind}_positions": edited if kind == category else np.empty((0, 3))
+        for kind in ("tx", "rx", "target")
+    }
+    payload = build_live_overrides(simulation, **arrays)
+    state = {}
+    for kind in ("tx", "rx", "target"):
+        state[f"{kind}_configs"] = configs if kind == category else []
+        state[f"{kind}_positions"] = [(0.0, 0.0, 0.0)] * (2 if kind == category else 0)
+        state[f"{kind}_orientations"] = []
+    applied = apply_live_overrides(payload, **state)
+    assert list(applied[category]) == ["Station", "station"]
+    np.testing.assert_allclose(state[f"{category}_positions"], edited)
 
 
 def test_decode_position_array_accepts_flat_and_nested_payloads() -> None:

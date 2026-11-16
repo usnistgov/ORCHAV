@@ -13,9 +13,10 @@ from visualizer.src.io.config_handlers import RecentFilesHandler
 from visualizer.visualizer import OrchavVisualizer
 
 
-def test_menu_actions_call_controller_and_scene_appearance_owners(qapp) -> None:
+def test_menu_actions_call_controller_and_scene_appearance_owners(qapp, qtbot) -> None:
     """Metrics/background actions should not require root command delegates."""
     window = QMainWindow()
+    qtbot.addWidget(window)
     scene_appearance = SimpleNamespace(
         set_background_color=Mock(),
         pick_custom_background_color=Mock(),
@@ -33,11 +34,13 @@ def test_menu_actions_call_controller_and_scene_appearance_owners(qapp) -> None:
     )
 
     MenuController(ui_controller).setup_menus(window, metrics_available=True)
+    assert window.status_time_label.text() == ""
+    assert window.status_time_label.isHidden()
     actions = {
         action.text(): action for action in window.findChildren(QAction) if not action.isSeparator()
     }
 
-    actions["&Metrics Window"].trigger()
+    actions["&Live Frame Metrics"].trigger()
     actions["&Black"].trigger()
     actions["&Custom..."].trigger()
     actions["&Reset to Default (Dark Gray)"].trigger()
@@ -49,9 +52,10 @@ def test_menu_actions_call_controller_and_scene_appearance_owners(qapp) -> None:
     window.close()
 
 
-def test_workspace_menu_describes_recent_snapshot(qapp, tmp_path) -> None:
+def test_workspace_menu_describes_recent_snapshot(qapp, tmp_path, qtbot) -> None:
     """Recent workspaces should identify their scenario and saved frame."""
     window = QMainWindow()
+    qtbot.addWidget(window)
     snapshot_path = tmp_path / "munich_filtering_dense_autosave_abcd1234.json"
     summary = SimpleNamespace(
         path=snapshot_path,
@@ -79,7 +83,7 @@ def test_workspace_menu_describes_recent_snapshot(qapp, tmp_path) -> None:
     actions = [action for action in window.findChildren(QAction) if not action.isSeparator()]
     recent_action = next(action for action in actions if "Munich Filtering Dense" in action.text())
 
-    assert "frame 27" in recent_action.text()
+    assert "frame 28" in recent_action.text()
     assert "(Auto)" in recent_action.text()
     assert str(summary.scenario_root) in recent_action.toolTip()
     recent_action.trigger()
@@ -89,9 +93,10 @@ def test_workspace_menu_describes_recent_snapshot(qapp, tmp_path) -> None:
     window.close()
 
 
-def test_manual_workspace_menu_includes_name_time_and_kind(qapp, tmp_path) -> None:
+def test_manual_workspace_menu_includes_name_time_and_kind(qapp, tmp_path, qtbot) -> None:
     """Named snapshots should remain recognizable without exposing raw paths."""
     window = QMainWindow()
+    qtbot.addWidget(window)
     summary = SimpleNamespace(
         path=tmp_path / "roof_analysis.json",
         scenario_root=tmp_path / "munich_filtering_dense",
@@ -120,7 +125,7 @@ def test_manual_workspace_menu_includes_name_time_and_kind(qapp, tmp_path) -> No
     )
 
     assert "Munich Filtering Dense" in recent_action.text()
-    assert "frame 12" in recent_action.text()
+    assert "frame 13" in recent_action.text()
     assert "Jul 18 09:05" in recent_action.text()
     assert "(Manual)" in recent_action.text()
     window.close()
@@ -214,3 +219,13 @@ def test_open_recent_xml_reports_load_failure_without_recording_it(tmp_path, mon
     visualizer.main_controller.load_scene.assert_called_once_with(str(xml_path))
     controller.add_recent_file.assert_not_called()
     assert "parse-fail" in critical.call_args.args[2]
+
+
+def test_open_recent_yaml_preserves_variant(tmp_path, monkeypatch):
+    variant = tmp_path / "scenario_personal.yaml"
+    variant.write_text("schema_version: 1\n")
+    visualizer = SimpleNamespace(open_scenario=Mock(), recent_files=[])
+    controller = MenuController(SimpleNamespace(visualizer=visualizer))
+    monkeypatch.setattr(scenario_config, "find_project_root", lambda: tmp_path)
+    controller.open_recent_file(str(variant))
+    visualizer.open_scenario.assert_called_once_with("scenario_personal.yaml")

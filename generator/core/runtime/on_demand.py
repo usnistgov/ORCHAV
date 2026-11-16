@@ -67,6 +67,7 @@ def build_on_demand_objects(
         simulation_config.num_steps,
         simulation_config.duration,
         motion_mode,
+        sample_rate_hz=getattr(simulation_config, "scene_sample_rate_hz", None),
     )
     actor_state_cache = actor_state_manager.prepare_cached()
 

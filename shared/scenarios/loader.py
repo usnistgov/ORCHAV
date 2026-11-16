@@ -18,6 +18,7 @@ from shared.logging import get_logger
 from shared.scenarios.actors import ActorsSpec, GroupSpec, TimelineSpec
 from shared.scenarios.model import ScenarioModel
 from shared.scenarios.paths import create_path_policy, normalize_path
+from shared.scenarios.sensing_groups import normalize_scenario_sensing
 
 from .app_paths import load_live_grpc_endpoints
 from .extensions import apply_registered_extensions, parse_registered_extensions
@@ -27,6 +28,7 @@ from .parsers import (
     parse_generator_summary_config,
     parse_raytracing_config,
     parse_scene_config,
+    parse_sensing_config,
 )
 from .yaml import load_scenario_yaml, validate_scenario_data
 
@@ -63,6 +65,7 @@ class ScenarioConfiguration:
     generator_summary: Dict[str, Any]  # Generator summary config (optional)
     summary_yaml_hash: str  # Normalized authored YAML identity for summary reuse
     visualizer_cfg: Dict[str, Any]  # Visualizer overrides (panel toggles, defaults)
+    sensing: Dict[str, Any]  # Sensing configuration
     debug_level: Optional[str]  # Logging level (e.g., DEBUG, INFO, WARNING) if explicitly set
     live_grpc_endpoints: Dict[str, Any]  # Endpoints loaded from app.toml [live_grpc]
     scene_source_config: Optional[Dict[str, Any]] = None
@@ -126,6 +129,7 @@ def load_scenario_configuration(
     project_root_path = policy.project_root
     scenario_data = load_scenario_yaml(resolved_yaml)
     scenario = validate_scenario_data(scenario_data)
+    scenario_data = normalize_scenario_sensing(scenario_data)
 
     if scenario_path.is_dir():
         scenario_root = scenario_path.resolve()
@@ -158,6 +162,7 @@ def load_scenario_configuration(
     )
 
     raytracing = parse_raytracing_config(scenario_data)
+    sensing = parse_sensing_config(scenario_data)
     generator_summary = parse_generator_summary_config(scenario_data, scenario_root)
     coverage_cfg = parse_coverage_config(scenario_data, scenario_root)
     extension_cfg = parse_registered_extensions(scenario_data, scenario_root)
@@ -186,6 +191,7 @@ def load_scenario_configuration(
         generator_summary=generator_summary,
         summary_yaml_hash=_summary_yaml_hash(scenario_data),
         visualizer_cfg=scenario_data.get("visualizer", {}) or {},
+        sensing=sensing,
         raytracing=raytracing,
         coverage_cfg=coverage_cfg,
         debug_level=debug_level,

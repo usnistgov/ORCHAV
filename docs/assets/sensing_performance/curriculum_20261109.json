@@ -1,0 +1,825 @@
+{
+  "schema": "orchav.curriculum.elapsed.v1",
+  "measured_date": "2026-11-09",
+  "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+  "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+  "source_revisions": [
+    "2069230d8aeebe6a94d997c2a3eed99cbcd6cc7c",
+    "221a41e2ac31d352f7ac2b24cd044a969ec09979",
+    "80a1f42516f1d26bde90050958449475ec2d6391"
+  ],
+  "export_revisions": [
+    "2bda5d946ee9b042ea0e7d2735731806d87854a8",
+    "ac2035c21bfee70ac3c57b0dadeb2ea5ff7855a6",
+    "fcc65affd49402b12a598b36b54f9f77e6f3b36f"
+  ],
+  "environment": {
+    "orchav": "0.2.0",
+    "python": "3.12.16",
+    "sionna_rt": "2.2.0",
+    "mitsuba": "3.9.1",
+    "drjit": "1.5.0",
+    "gpu": "NVIDIA L40S",
+    "cpu": "Intel Xeon Platinum 8480+",
+    "mitsuba_variant": "cuda_ad_mono_polarized",
+    "thread_limits": {
+      "OMP_NUM_THREADS": 8,
+      "OPENBLAS_NUM_THREADS": 8,
+      "MKL_NUM_THREADS": 8,
+      "DRJIT_NUM_THREADS": 8
+    }
+  },
+  "method": "One time.monotonic interval around each complete subprocess. Generation includes interpreter startup, asset validation/loading, acquisition, configured sensing, frame writing and normal summary figures. Asset preparation precedes generation. No component time inferred.",
+  "concurrency": "Native acquisitions used up to four concurrent generator processes, one per GPU. CPU reprocessing and documentation checks overlapped some acquisitions. The wall campaign used two GPU workers. Elevation and rigid-person acquisitions ran together after that campaign. Paris ran alone. OS caches were not cleared.",
+  "asset_preparation": "Marching person uses the documented CMU 08/08_03 SMPL preparation. Paris uses the documented historical walking-library alternative, 80 epochs and 800000 rays. No licensed model/motion payload is included here.",
+  "runs": [
+    {
+      "id": "showcases__paris_opera_multitarget__runs__my_run",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/showcases/paris_opera_multitarget/runs/my_run"
+      ],
+      "output": "scenarios/showcases/paris_opera_multitarget/runs/my_run",
+      "authored_config": "scenarios/showcases/paris_opera_multitarget/scenario.yaml",
+      "settings_sha256": "627ca57b1a73101654905bd2f4542f1a6cb33be5ffa1f06195140774d589c093",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:46:24.887342+00:00",
+      "returncode": 0,
+      "source_revision": "221a41e2ac31d352f7ac2b24cd044a969ec09979",
+      "export_revision": "2bda5d946ee9b042ea0e7d2735731806d87854a8",
+      "elapsed_s": 2201.548,
+      "executed_configuration_sha256": "fb330ae5ef79462b351067ab6d1518f1740e99acd3f2c5f6cc650428cead68be",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__targets_motion__marching_person__sequential",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/targets_motion/marching_person/sequential"
+      ],
+      "output": "scenarios/sensing/targets_motion/marching_person/sequential",
+      "authored_config": "scenarios/sensing/targets_motion/marching_person/sequential/scenario.yaml",
+      "settings_sha256": "d3e81c6cd4a6434426c2a71d56e58c4d89677f464b16dcaa0990d44fc55dc814",
+      "status": "completed",
+      "gpu": 1,
+      "started_utc": "2026-11-09T21:47:32.949770+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 1960.627,
+      "executed_configuration_sha256": "d3e81c6cd4a6434426c2a71d56e58c4d89677f464b16dcaa0990d44fc55dc814",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__targets_motion__marching_person__coherent",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/targets_motion/marching_person/coherent"
+      ],
+      "output": "scenarios/sensing/targets_motion/marching_person/coherent",
+      "authored_config": "scenarios/sensing/targets_motion/marching_person/coherent/scenario.yaml",
+      "settings_sha256": "00f717794c5f63b28f62a88bfeec4900d7d4678017a96bb5b428b921d871a188",
+      "status": "completed",
+      "gpu": 2,
+      "started_utc": "2026-11-09T21:47:32.951249+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 439.784,
+      "executed_configuration_sha256": "00f717794c5f63b28f62a88bfeec4900d7d4678017a96bb5b428b921d871a188",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__applications__drone_tracking__munich",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/applications/drone_tracking/munich"
+      ],
+      "output": "scenarios/sensing/applications/drone_tracking/munich",
+      "authored_config": "scenarios/sensing/applications/drone_tracking/munich/scenario.yaml",
+      "settings_sha256": "fbbf7aa5caa1b4935d08aeecd22940c37f66c37c82ab01705f95dc7ca2f8b965",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T21:47:32.952116+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 676.615,
+      "executed_configuration_sha256": "fbbf7aa5caa1b4935d08aeecd22940c37f66c37c82ab01705f95dc7ca2f8b965",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__applications__drone_tracking__munich__south",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/applications/drone_tracking/munich/south"
+      ],
+      "output": "scenarios/sensing/applications/drone_tracking/munich/south",
+      "authored_config": "scenarios/sensing/applications/drone_tracking/munich/south/scenario.yaml",
+      "settings_sha256": "182414744996e8c43a1284d10eeaa6976b3db35516310a79150fbadd17aafb59",
+      "status": "completed",
+      "gpu": 2,
+      "started_utc": "2026-11-09T21:54:52.739757+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 671.871,
+      "executed_configuration_sha256": "182414744996e8c43a1284d10eeaa6976b3db35516310a79150fbadd17aafb59",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__applications__drone_tracking__munich__two_drones",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/applications/drone_tracking/munich/two_drones"
+      ],
+      "output": "scenarios/sensing/applications/drone_tracking/munich/two_drones",
+      "authored_config": "scenarios/sensing/applications/drone_tracking/munich/two_drones/scenario.yaml",
+      "settings_sha256": "0c6d63dd11167151d2f7d611c1eae4182bfd3bc1493dbef9f51ead6973eb126c",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T21:58:49.572168+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 873.837,
+      "executed_configuration_sha256": "0c6d63dd11167151d2f7d611c1eae4182bfd3bc1493dbef9f51ead6973eb126c",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__applications__drone_tracking__munich__two_drones__south",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/applications/drone_tracking/munich/two_drones/south"
+      ],
+      "output": "scenarios/sensing/applications/drone_tracking/munich/two_drones/south",
+      "authored_config": "scenarios/sensing/applications/drone_tracking/munich/two_drones/south/scenario.yaml",
+      "settings_sha256": "6b904992fe68d2740dd37529f3085413158b8c4079460300ceba1d819b68b8b1",
+      "status": "completed",
+      "gpu": 2,
+      "started_utc": "2026-11-09T22:06:04.613457+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 908.712,
+      "executed_configuration_sha256": "6b904992fe68d2740dd37529f3085413158b8c4079460300ceba1d819b68b8b1",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__applications__wall_detection_volume",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/applications/wall_detection_volume"
+      ],
+      "output": "scenarios/sensing/applications/wall_detection_volume",
+      "authored_config": "scenarios/sensing/applications/wall_detection_volume/scenario.yaml",
+      "settings_sha256": "9e9bc4538db338fb84c057cad83afb92d23efa21306fbc908e66810b5153342a",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:13:23.411447+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 5.741,
+      "executed_configuration_sha256": "9e9bc4538db338fb84c057cad83afb92d23efa21306fbc908e66810b5153342a",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__cube_radar__azimuth",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/cube_radar/azimuth"
+      ],
+      "output": "scenarios/sensing/cube_radar/azimuth",
+      "authored_config": "scenarios/sensing/cube_radar/azimuth/scenario.yaml",
+      "settings_sha256": "1bbf0b452445ab9bb944cc8fcf2a4e8daeea7c5b6e0e28cd6c06ab6980ca077c",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:13:29.155606+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 20.626,
+      "executed_configuration_sha256": "1bbf0b452445ab9bb944cc8fcf2a4e8daeea7c5b6e0e28cd6c06ab6980ca077c",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__cube_radar__moving",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/cube_radar/moving"
+      ],
+      "output": "scenarios/sensing/cube_radar/moving",
+      "authored_config": "scenarios/sensing/cube_radar/moving/scenario.yaml",
+      "settings_sha256": "815f716e3b62b9d6ba10d8b4e0bd2fd21d18ea65c5c10fedfc87f15ae0f1f7bf",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:13:49.785293+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 23.47,
+      "executed_configuration_sha256": "815f716e3b62b9d6ba10d8b4e0bd2fd21d18ea65c5c10fedfc87f15ae0f1f7bf",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__cube_radar__moving_tracking",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/cube_radar/moving_tracking"
+      ],
+      "output": "scenarios/sensing/cube_radar/moving_tracking",
+      "authored_config": "scenarios/sensing/cube_radar/moving_tracking/scenario.yaml",
+      "settings_sha256": "f1c4cee80237f42a3d3bb7e427a92bddb9a688abc490cd3f73a604f911ed2c94",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:14:13.258641+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 16.602,
+      "executed_configuration_sha256": "f1c4cee80237f42a3d3bb7e427a92bddb9a688abc490cd3f73a604f911ed2c94",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__cube_radar__moving_tracking_3d",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/cube_radar/moving_tracking_3d"
+      ],
+      "output": "scenarios/sensing/cube_radar/moving_tracking_3d",
+      "authored_config": "scenarios/sensing/cube_radar/moving_tracking_3d/scenario.yaml",
+      "settings_sha256": "9cbbbd1523daab6b2a32d162995d268e54598f3b3e0ddf1187b1f92977fd2ccc",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:14:29.864081+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 63.521,
+      "executed_configuration_sha256": "9cbbbd1523daab6b2a32d162995d268e54598f3b3e0ddf1187b1f92977fd2ccc",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__cube_radar__oscillating_coherent",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/cube_radar/oscillating_coherent"
+      ],
+      "output": "scenarios/sensing/cube_radar/oscillating_coherent",
+      "authored_config": "scenarios/sensing/cube_radar/oscillating_coherent/scenario.yaml",
+      "settings_sha256": "186fad0f7aab7a7687429bf3162ecc09b5fa3639b1cc94277c7e9eba5540d9b6",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:15:33.387417+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 23.49,
+      "executed_configuration_sha256": "186fad0f7aab7a7687429bf3162ecc09b5fa3639b1cc94277c7e9eba5540d9b6",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__cube_radar__oscillating_sequential",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/cube_radar/oscillating_sequential"
+      ],
+      "output": "scenarios/sensing/cube_radar/oscillating_sequential",
+      "authored_config": "scenarios/sensing/cube_radar/oscillating_sequential/scenario.yaml",
+      "settings_sha256": "59f3ad733a7fef336ab4c843b8474f65272ba8eefecb6ff6fbd3ef6470c9a761",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:15:56.880221+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 167.371,
+      "executed_configuration_sha256": "59f3ad733a7fef336ab4c843b8474f65272ba8eefecb6ff6fbd3ef6470c9a761",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__cube_radar__stationary",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/cube_radar/stationary"
+      ],
+      "output": "scenarios/sensing/cube_radar/stationary",
+      "authored_config": "scenarios/sensing/cube_radar/stationary/scenario.yaml",
+      "settings_sha256": "560a30769a74d3a730ab9d3fdadaa40199587d20beb919669a5281468685cea4",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:18:44.254513+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 5.269,
+      "executed_configuration_sha256": "560a30769a74d3a730ab9d3fdadaa40199587d20beb919669a5281468685cea4",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__cube_radar__two_moving",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/cube_radar/two_moving"
+      ],
+      "output": "scenarios/sensing/cube_radar/two_moving",
+      "authored_config": "scenarios/sensing/cube_radar/two_moving/scenario.yaml",
+      "settings_sha256": "e7804f1f9e6923b87ca8959e84eaeb7b0c092812cec4334cab0557dcb99de6ec",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:18:49.526579+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 16.541,
+      "executed_configuration_sha256": "e7804f1f9e6923b87ca8959e84eaeb7b0c092812cec4334cab0557dcb99de6ec",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__foundations__RCS__06_vehicle_multi",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/foundations/RCS/06_vehicle_multi"
+      ],
+      "output": "scenarios/sensing/foundations/RCS/06_vehicle_multi",
+      "authored_config": "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+      "settings_sha256": "bca8ab8e3693c6f513b95e4541d1996fca43185d7229ae6a4dc2d86867425d8d",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:19:06.069844+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 11.03,
+      "executed_configuration_sha256": "bca8ab8e3693c6f513b95e4541d1996fca43185d7229ae6a4dc2d86867425d8d",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__foundations__RCS__08_human_model1",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/foundations/RCS/08_human_model1"
+      ],
+      "output": "scenarios/sensing/foundations/RCS/08_human_model1",
+      "authored_config": "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml",
+      "settings_sha256": "1adbd9a5d349228604a705a9634ea78927d9d4ba481a2197c6461fb1c562568e",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:19:17.104702+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 10.673,
+      "executed_configuration_sha256": "1adbd9a5d349228604a705a9634ea78927d9d4ba481a2197c6461fb1c562568e",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__foundations__static_and_moving_cubes",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/foundations/static_and_moving_cubes"
+      ],
+      "output": "scenarios/sensing/foundations/static_and_moving_cubes",
+      "authored_config": "scenarios/sensing/foundations/static_and_moving_cubes/scenario.yaml",
+      "settings_sha256": "155b4fdd2aa2544ede478c163aaaafcf66eb1ca3e9313f309744282586d081fc",
+      "status": "completed",
+      "gpu": 3,
+      "started_utc": "2026-11-09T22:19:27.780918+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 7.505,
+      "executed_configuration_sha256": "155b4fdd2aa2544ede478c163aaaafcf66eb1ca3e9313f309744282586d081fc",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__cube_radar__azimuth__elevation",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/cube_radar/azimuth/elevation"
+      ],
+      "output": "scenarios/sensing/cube_radar/azimuth/elevation",
+      "authored_config": "scenarios/sensing/cube_radar/azimuth/elevation/scenario.yaml",
+      "settings_sha256": "4bb49cd974104b142facaddd588541a7cab4fedf536b49d6e6fade2d5fe527ce",
+      "status": "completed",
+      "gpu": 0,
+      "started_utc": "2026-11-09T22:26:20.162097+00:00",
+      "returncode": 0,
+      "source_revision": "2069230d8aeebe6a94d997c2a3eed99cbcd6cc7c",
+      "export_revision": "ac2035c21bfee70ac3c57b0dadeb2ea5ff7855a6",
+      "elapsed_s": 27.725,
+      "executed_configuration_sha256": "4bb49cd974104b142facaddd588541a7cab4fedf536b49d6e6fade2d5fe527ce",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "sensing__targets_motion__marching_person__rigid",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "generator",
+        "scenarios/sensing/targets_motion/marching_person/rigid"
+      ],
+      "output": "scenarios/sensing/targets_motion/marching_person/rigid",
+      "authored_config": "scenarios/sensing/targets_motion/marching_person/rigid/scenario.yaml",
+      "settings_sha256": "7e084f22a96a355c84ebd6b34cf8681bf6fb80cb0a0e26a129ca4a0c593dc7be",
+      "status": "completed",
+      "gpu": 1,
+      "started_utc": "2026-11-09T22:26:20.163380+00:00",
+      "returncode": 0,
+      "source_revision": "2069230d8aeebe6a94d997c2a3eed99cbcd6cc7c",
+      "export_revision": "ac2035c21bfee70ac3c57b0dadeb2ea5ff7855a6",
+      "elapsed_s": 19.684,
+      "executed_configuration_sha256": "7e084f22a96a355c84ebd6b34cf8681bf6fb80cb0a0e26a129ca4a0c593dc7be",
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "filtering",
+      "kind": "processing",
+      "command": [
+        "python",
+        "-m",
+        "shared.sensing_postprocessor",
+        "scenarios/sensing/cube_radar/stationary/frames",
+        "--recipes",
+        "scenarios/sensing/cube_radar/filtering.json",
+        "--output-dir",
+        "analysis/cube-radar-filtering"
+      ],
+      "output": "analysis/cube-radar-filtering",
+      "sources": [
+        "scenarios/sensing/cube_radar/stationary"
+      ],
+      "status": "completed",
+      "started_utc": "2026-11-09T22:19:22.385342+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 5.757,
+      "device": "CPU"
+    },
+    {
+      "id": "window_boxcar",
+      "kind": "processing",
+      "command": [
+        "python",
+        "-m",
+        "shared.sensing_postprocessor",
+        "scenarios/sensing/cube_radar/moving/frames",
+        "--frequency-window",
+        "boxcar",
+        "--range-ifft-size",
+        "512",
+        "--cfar-min-snr",
+        "3",
+        "--cfar-max-dynamic-range",
+        "12",
+        "--tracker",
+        "none",
+        "--output-dir",
+        "analysis/range-boxcar"
+      ],
+      "output": "analysis/range-boxcar",
+      "sources": [
+        "scenarios/sensing/cube_radar/moving"
+      ],
+      "status": "completed",
+      "started_utc": "2026-11-09T22:14:24.276831+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 5.05,
+      "device": "CPU"
+    },
+    {
+      "id": "window_hann",
+      "kind": "processing",
+      "command": [
+        "python",
+        "-m",
+        "shared.sensing_postprocessor",
+        "scenarios/sensing/cube_radar/moving/frames",
+        "--frequency-window",
+        "hann",
+        "--range-ifft-size",
+        "512",
+        "--cfar-min-snr",
+        "3",
+        "--cfar-max-dynamic-range",
+        "12",
+        "--tracker",
+        "none",
+        "--output-dir",
+        "analysis/range-hann"
+      ],
+      "output": "analysis/range-hann",
+      "sources": [
+        "scenarios/sensing/cube_radar/moving"
+      ],
+      "status": "completed",
+      "started_utc": "2026-11-09T22:14:29.336297+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 4.319,
+      "device": "CPU"
+    },
+    {
+      "id": "clutter",
+      "kind": "processing",
+      "command": [
+        "python",
+        "-m",
+        "shared.sensing_postprocessor",
+        "scenarios/sensing/foundations/static_and_moving_cubes/frames",
+        "--frequency-window",
+        "hann",
+        "--coherent-clutter-mode",
+        "windowed_mean",
+        "--cfar-max-dynamic-range",
+        "12",
+        "--tracker",
+        "none",
+        "--output-dir",
+        "analysis/clutter-weighted"
+      ],
+      "output": "analysis/clutter-weighted",
+      "sources": [
+        "scenarios/sensing/foundations/static_and_moving_cubes"
+      ],
+      "status": "completed",
+      "started_utc": "2026-11-09T22:19:43.149107+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 1.809,
+      "device": "CPU"
+    },
+    {
+      "id": "munich_fusion",
+      "kind": "processing",
+      "command": [
+        "python",
+        "-m",
+        "shared.sensing.fusion.experiment",
+        "scenarios/sensing/applications/drone_tracking/munich/experiment.json",
+        "--output-dir",
+        "analysis/drone-tracking/munich-fusion"
+      ],
+      "output": "analysis/drone-tracking/munich-fusion",
+      "sources": [
+        "scenarios/sensing/applications/drone_tracking/munich",
+        "scenarios/sensing/applications/drone_tracking/munich/south"
+      ],
+      "status": "completed",
+      "started_utc": "2026-11-09T22:06:06.536406+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 17.706,
+      "device": "CPU"
+    },
+    {
+      "id": "munich_two_fusion",
+      "kind": "processing",
+      "command": [
+        "python",
+        "-m",
+        "shared.sensing.fusion.experiment",
+        "scenarios/sensing/applications/drone_tracking/munich/two_drones/experiment.json",
+        "--output-dir",
+        "analysis/drone-tracking/munich-two-fusion"
+      ],
+      "output": "analysis/drone-tracking/munich-two-fusion",
+      "sources": [
+        "scenarios/sensing/applications/drone_tracking/munich/two_drones",
+        "scenarios/sensing/applications/drone_tracking/munich/two_drones/south"
+      ],
+      "status": "completed",
+      "started_utc": "2026-11-09T22:23:08.557680+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 18.926,
+      "device": "CPU"
+    },
+    {
+      "id": "oscillation_figures",
+      "kind": "figures",
+      "command": [
+        "python",
+        "-m",
+        "shared.sensing.plotting.doppler_summary",
+        "--source",
+        "Coherent",
+        "scenarios/sensing/cube_radar/oscillating_coherent",
+        "--source",
+        "Sequential",
+        "scenarios/sensing/cube_radar/oscillating_sequential",
+        "--output",
+        "analysis/cube-radar-motion",
+        "--axis",
+        "velocity",
+        "--time-reference",
+        "midpoint",
+        "--layout",
+        "separate"
+      ],
+      "output": "analysis/cube-radar-motion",
+      "sources": [
+        "scenarios/sensing/cube_radar/oscillating_coherent",
+        "scenarios/sensing/cube_radar/oscillating_sequential"
+      ],
+      "status": "completed",
+      "started_utc": "2026-11-09T22:18:48.672881+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 33.706,
+      "device": "CPU"
+    },
+    {
+      "id": "marching_figures",
+      "kind": "figures",
+      "command": [
+        "python",
+        "-m",
+        "shared.sensing.plotting.doppler_summary",
+        "--source",
+        "Coherent",
+        "scenarios/sensing/targets_motion/marching_person/coherent",
+        "--source",
+        "Sequential",
+        "scenarios/sensing/targets_motion/marching_person/sequential",
+        "--output",
+        "analysis/marching-person-motion",
+        "--axis",
+        "velocity",
+        "--time-reference",
+        "midpoint",
+        "--layout",
+        "separate"
+      ],
+      "output": "analysis/marching-person-motion",
+      "sources": [
+        "scenarios/sensing/targets_motion/marching_person/coherent",
+        "scenarios/sensing/targets_motion/marching_person/sequential"
+      ],
+      "status": "completed",
+      "started_utc": "2026-11-09T22:20:14.962748+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 173.591,
+      "device": "CPU"
+    },
+    {
+      "id": "paris_review",
+      "kind": "optional_analysis",
+      "command": [
+        "python",
+        "scenarios/showcases/paris_opera_multitarget/analyze.py",
+        "scenarios/showcases/paris_opera_multitarget/runs/my_run"
+      ],
+      "output": "scenarios/showcases/paris_opera_multitarget/runs/my_run/review",
+      "sources": [
+        "scenarios/showcases/paris_opera_multitarget/runs/my_run"
+      ],
+      "status": "completed",
+      "started_utc": "2026-11-09T23:23:06.441031+00:00",
+      "returncode": 0,
+      "source_revision": "221a41e2ac31d352f7ac2b24cd044a969ec09979",
+      "export_revision": "2bda5d946ee9b042ea0e7d2735731806d87854a8",
+      "elapsed_s": 5.439,
+      "device": "CPU"
+    },
+    {
+      "id": "wall_volume",
+      "kind": "generation",
+      "command": [
+        "python",
+        "-m",
+        "scenarios.sensing.applications.wall_detection_volume.generate",
+        "output/examples/wall-tutorial-1m",
+        "--yes",
+        "--gpus",
+        "1",
+        "3"
+      ],
+      "output": "output/examples/wall-tutorial-1m",
+      "status": "completed",
+      "gpus": [
+        1,
+        3
+      ],
+      "started_utc": "2026-11-09T22:20:25.389807+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 301.894,
+      "device": "NVIDIA L40S"
+    },
+    {
+      "id": "wall_collect",
+      "kind": "processing",
+      "command": [
+        "python",
+        "-m",
+        "scenarios.sensing.applications.wall_detection_volume.generate",
+        "output/examples/wall-tutorial-1m",
+        "--collect"
+      ],
+      "output": "output/examples/wall-tutorial-1m",
+      "status": "completed",
+      "gpus": [],
+      "started_utc": "2026-11-09T22:25:27.285758+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 2.817,
+      "device": "CPU"
+    },
+    {
+      "id": "wall_report",
+      "kind": "processing",
+      "command": [
+        "python",
+        "-m",
+        "scenarios.sensing.applications.wall_detection_volume.generate",
+        "output/examples/wall-tutorial-1m",
+        "--report"
+      ],
+      "output": "output/examples/wall-tutorial-1m",
+      "status": "completed",
+      "gpus": [],
+      "started_utc": "2026-11-09T22:25:30.104544+00:00",
+      "returncode": 0,
+      "source_revision": "80a1f42516f1d26bde90050958449475ec2d6391",
+      "export_revision": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+      "elapsed_s": 2.395,
+      "device": "CPU"
+    }
+  ]
+}

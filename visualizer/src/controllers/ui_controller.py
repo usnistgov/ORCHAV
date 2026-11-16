@@ -22,6 +22,7 @@ from ..beamforming.visualization import MAX_BEAM_PATTERN_WORK_ITEMS
 from ..renderers.protocol import renderer_capabilities
 from ..scene.geometry_helpers import normalize_node_label_mode
 from ..services.cache_service import CacheInvalidationScope, invalidate_visualizer_cache
+from ..services.label_callout_service import active_callout_style
 from ..services.material_entry_editor import MaterialEntryEditService
 from ..services.material_mode_commands import MaterialModeCommandService
 from ..services.material_modes import MaterialModeService
@@ -40,6 +41,7 @@ from ..state import (
     normalize_rf_xray_property,
 )
 from ..utils.antenna_utils import spacing_m_to_wavelengths, spacing_wavelengths_to_m
+from .camera_ui import CameraUIActions
 from .coverage_controller import CoverageController
 from .material_ui_controller import MaterialUIController
 from .menu_controller import MenuController
@@ -53,7 +55,7 @@ logger = get_logger("orchav.ui_controller")
 STEP_SCRUB_COALESCE_INTERVAL_MS = 33
 
 
-class UIController:
+class UIController(CameraUIActions):
     """Coordinate panel events without owning renderer or frame-pipeline data."""
 
     def __init__(
@@ -143,16 +145,6 @@ class UIController:
         """Return the service that owns object visibility/highlight/material state."""
         return self.visualizer.object_appearance_service
 
-    def _camera_debug(self, message: str, **fields: Any) -> None:
-        """Emit camera UI diagnostics when ORCHAV_CAMERA_DEBUG is enabled."""
-        if not getattr(self, "_camera_debug_enabled", False):
-            return
-        if fields:
-            details = " ".join(f"{key}={value}" for key, value in fields.items())
-            logger.info("CameraDebugUI: %s %s", message, details)
-        else:
-            logger.info("CameraDebugUI: %s", message)
-
     def toggle_metrics_window(self) -> None:
         """Delegate metrics-window toggling to the metrics service."""
         self.metrics_service.toggle_window()
@@ -227,13 +219,29 @@ class UIController:
         """Enable or disable the complete MPC presentation layer."""
         self._set_mpc_visibility(reason="mpc_layer", enabled=bool(state))
 
+    def handle_mpc_frame_details_toggled(self, checked: bool) -> None:
+        """Opt into detailed frame text; cache keys keep compact and detailed views distinct."""
+        viz = self.visualizer
+        enabled = bool(checked)
+        if enabled != viz.app_state.show_mpc_frame_details:
+            viz.set_state(show_mpc_frame_details=enabled)
+            viz.schedule_update()
+
     def handle_mpc_paths_toggled(self, state: bool) -> None:
-        """Toggle MPC path segments while preserving bounce-point intent."""
-        self._set_mpc_visibility(reason="mpc_paths", paths=bool(state))
+        """Show/hide paths; showing a part also enables its hidden master layer."""
+        self._set_mpc_visibility(
+            reason="mpc_paths",
+            paths=bool(state),
+            enabled=bool(state) or self.visualizer.app_state.mpc_visibility.enabled,
+        )
 
     def handle_mpc_bounce_points_toggled(self, state: bool) -> None:
-        """Toggle physical MPC bounce points while preserving path intent."""
-        self._set_mpc_visibility(reason="mpc_bounce_points", bounce_points=bool(state))
+        """Show/hide bounce points, enabling the master when showing them."""
+        self._set_mpc_visibility(
+            reason="mpc_bounce_points",
+            bounce_points=bool(state),
+            enabled=bool(state) or self.visualizer.app_state.mpc_visibility.enabled,
+        )
 
     def handle_mpc_interaction_markers_toggled(self, state: bool) -> None:
         """Toggle pygfx interaction glyphs for physical MPC bounce points."""
@@ -811,6 +819,17 @@ class UIController:
         logger.debug("Global angular reference toggled: %s", state)
         self._update_apertures_if_visible(force=True)
 
+    def handle_orientation_reference_changed(
+        self, settings, show_global: bool, show_local: bool
+    ) -> None:
+        """Inspect one actor without changing paths, camera tracking or actor poses."""
+        self.visualizer.set_state(
+            orientation_reference=settings,
+            show_global_angular_reference=bool(show_global),
+            show_local_angular_reference=bool(show_local),
+        )
+        self._update_apertures_if_visible(force=True)
+
     def handle_local_angular_reference_toggled(self, state: bool) -> None:
         """Toggle per-node local angular reference guides."""
         viz = self.visualizer
@@ -973,6 +992,30 @@ class UIController:
             if hasattr(viz, "node_service") and viz.node_service is not None:
                 viz.node_service.update_label_visibility()
             viz.schedule_update()
+
+    def handle_label_callout_changed(self, style) -> None:
+        """Change display-only callouts and immediately refresh paused views."""
+        viz = self.visualizer
+        viz.set_state(label_callout=style)
+        if getattr(viz, "vis_initialized", False):
+            viz.node_service.apply_label_offsets()
+        panel = getattr(getattr(viz, "ui_manager", None), "panels", {}).get("nodes")
+        if panel is not None:
+            controls = panel.widgets.get("label_style_controls")
+            if controls is not None:
+                controls.sync_from_state()
+            panel.refresh_marker_controls()
+        for attribute in ("coverage_volume_window", "sensing_volume_window"):
+            window = getattr(viz, attribute, None)
+            if window is not None and not window.closed:
+                if attribute == "coverage_volume_window":
+                    window.sync_transmitter_labels()
+                else:
+                    window._draw()
+        fusion = getattr(viz, "fusion_window", None)
+        if fusion is not None and not fusion.closed:
+            fusion._draw_world()
+        viz.schedule_update()
 
     def handle_node_label_mode_changed(self, _index: int = 0) -> None:
         """Change TX/RX label text mode and rebuild dependent UI mirrors."""
@@ -1449,139 +1492,6 @@ class UIController:
             else:
                 viz.renderer.update_renderer()
 
-    def handle_target_focus_changed(self, text: str) -> None:
-        """Route focus-target changes to follow or POV camera updates."""
-        logger.debug("Target focus selection changed to: %s", text)
-        viz = self.visualizer
-        camera = getattr(viz, "camera_controller", None)
-        if camera:
-            camera.remember_focus_selection()
-            mode = getattr(getattr(viz, "app_state", None), "camera_mode", None)
-            self._camera_debug("target_focus_changed", mode=mode, text=text)
-            if mode == "follow":
-                camera.update_follow_camera_focus()
-            elif mode == "pov":
-                camera.set_pov_camera()
-
-    def handle_camera_mode_changed(self, mode: str, checked: bool) -> None:
-        """Switch overview/follow/POV camera modes and related UI state."""
-        if not checked:
-            return  # Radio groups emit for the button turning off as well.
-
-        logger.info("Camera mode changed to: %s", mode)
-        self._camera_debug("camera_mode_changed", mode=mode)
-
-        viz = self.visualizer
-        previous_mode = getattr(getattr(viz, "app_state", None), "camera_mode", None)
-        previous_fly_mode = bool(getattr(getattr(viz, "app_state", None), "fly_mode", False))
-        if hasattr(viz, "set_state"):
-            viz.set_state(camera_mode=mode)
-
-        camera = getattr(viz, "camera_controller", None)
-        if not camera:
-            return
-
-        # Track controls are meaningful only when a selected entity drives view.
-        track_group = getattr(viz, "track_group", None)
-        if track_group:
-            track_group.setVisible(mode in ("follow", "pov"))
-
-        # POV axis controls only affect first-person camera construction.
-        pov_axis_container = getattr(viz, "pov_axis_container", None)
-        if pov_axis_container:
-            pov_axis_container.setVisible(mode == "pov")
-
-        if mode == "overview":
-            leaving_pov = previous_mode == "pov"
-            camera.restore_pov_entity_visibility(update_renderer=not leaving_pov)
-            if hasattr(viz, "set_state"):
-                viz.set_state(pov_hidden_node=None)
-            if previous_mode == "pov" and hasattr(camera, "restore_pre_pov_camera_state"):
-                restored = camera.restore_pre_pov_camera_state(update_renderer=True)
-                if not restored:
-                    renderer = getattr(viz, "renderer", None)
-                    if renderer is not None and hasattr(renderer, "update_renderer"):
-                        renderer.update_renderer()
-                    elif renderer is not None and hasattr(renderer, "request_redraw"):
-                        renderer.request_redraw()
-            logger.debug("Overview mode: free camera control enabled")
-
-        elif mode == "follow":
-            leaving_pov = previous_mode == "pov"
-            camera.restore_pov_entity_visibility(update_renderer=not leaving_pov)
-            if hasattr(viz, "set_state"):
-                viz.set_state(pov_hidden_node=None)
-            if previous_mode == "pov" and hasattr(camera, "clear_pre_pov_camera_state"):
-                camera.clear_pre_pov_camera_state()
-            if hasattr(viz.renderer, "reset_follow_state"):
-                viz.renderer.reset_follow_state()
-            camera.focus_on_target()
-            logger.debug("Follow mode: camera will track selected entity")
-
-        elif mode == "pov":
-            if previous_mode != "pov" and hasattr(camera, "capture_pre_pov_camera_state"):
-                camera.capture_pre_pov_camera_state()
-            if not camera.set_pov_camera():
-                if hasattr(viz, "set_state"):
-                    viz.set_state(
-                        camera_mode=previous_mode,
-                        fly_mode=previous_fly_mode,
-                    )
-                if previous_mode != "pov" and hasattr(camera, "clear_pre_pov_camera_state"):
-                    camera.clear_pre_pov_camera_state()
-                if track_group:
-                    track_group.setVisible(previous_mode in ("follow", "pov"))
-                if pov_axis_container:
-                    pov_axis_container.setVisible(previous_mode == "pov")
-                logger.warning("POV mode change rolled back because camera setup failed")
-                return
-            logger.debug("POV mode: first-person view from selected entity")
-
-    def handle_fly_mode_toggled(self, checked: bool) -> None:
-        """Toggle fly mode, forcing overview camera mode when needed."""
-        viz = self.visualizer
-        enabled = bool(checked)
-
-        if enabled and getattr(getattr(viz, "app_state", None), "camera_mode", "overview") != (
-            "overview"
-        ):
-            self.handle_camera_mode_changed("overview", True)
-
-        viz.set_state(fly_mode=enabled)
-
-    def handle_camera_minimap_toggled(self, checked: bool) -> None:
-        """Toggle the renderer-provided minimap inset."""
-        viz = self.visualizer
-        viz.set_state(show_camera_minimap=bool(checked))
-        renderer = getattr(viz, "renderer", None)
-        if renderer is not None and renderer_capabilities(renderer).camera_minimap:
-            try:
-                renderer.set_camera_minimap_visible(bool(checked))
-            except (AttributeError, RuntimeError, ValueError) as exc:
-                logger.debug("Failed to toggle camera minimap: %s", exc)
-
-    def handle_pov_axis_combo_changed(self, axis: str) -> None:
-        """Update POV forward-axis selection and reapply active POV camera."""
-        if not axis:
-            return
-
-        logger.debug("POV axis changed to: %s", axis)
-
-        viz = self.visualizer
-        if hasattr(viz, "app_state"):
-            viz.set_state(pov_axis=axis)
-
-        if hasattr(viz, "app_state") and viz.app_state.camera_mode == "pov":
-            camera = getattr(viz, "camera_controller", None)
-            if camera:
-                camera.set_pov_camera()
-                logger.debug("Reapplied POV camera with axis: %s", axis)
-            if viz.renderer is not None:
-                if hasattr(viz.renderer, "request_redraw"):
-                    viz.renderer.request_redraw()
-                else:
-                    viz.renderer.update_renderer()
-
     def handle_selection_clear(self) -> None:
         """Clear highlighted selections and selection info."""
         self.visualizer.selection_manager.clear_selections()
@@ -1613,13 +1523,23 @@ class UIController:
         viz.node_service.apply_label_offsets()
 
     def handle_tx_marker_size_changed(self, value: float) -> None:
-        """Debounce TX marker-size updates from the spinbox."""
+        """Apply pixel sizes immediately; debounce world marker geometry updates."""
+        style = active_callout_style(self.visualizer)
+        if style is not None:
+            self.handle_label_callout_changed(replace(style, tx_marker_size=float(value)))
+            return
         self._pending_tx_marker_size = float(value)
+        self.visualizer.tx_marker_size = float(value)
         self._tx_marker_size_timer.start(50)
 
     def handle_rx_marker_size_changed(self, value: float) -> None:
-        """Debounce RX marker-size updates from the spinbox."""
+        """Apply pixel sizes immediately; debounce world marker geometry updates."""
+        style = active_callout_style(self.visualizer)
+        if style is not None:
+            self.handle_label_callout_changed(replace(style, rx_marker_size=float(value)))
+            return
         self._pending_rx_marker_size = float(value)
+        self.visualizer.rx_marker_size = float(value)
         self._rx_marker_size_timer.start(50)
 
     def _apply_tx_marker_size(self) -> None:
@@ -1896,9 +1816,9 @@ class UIController:
         """Recompute rolling performance stats and refresh the telemetry label."""
         return self._telemetry_ctrl.update_performance_display()
 
-    def update_file_source_summary(self) -> None:
-        """Display concise information about the active offline frame source."""
-        return self._telemetry_ctrl.update_file_source_summary()
+    def update_file_source_summary(self, *, refresh_source: bool = True) -> None:
+        """Display active source context, optionally refreshing source panels."""
+        return self._telemetry_ctrl.update_file_source_summary(refresh_source=refresh_source)
 
     def handle_frame_timing_update(self, step: int, elapsed_sec: float) -> None:
         """Update rolling averages and frame tooltips when pipeline timings arrive."""

@@ -3,7 +3,7 @@
 Provides interactive 3D visualization in Jupyter notebooks via ``pygfx`` +
 ``rendercanvas``, and headless offscreen rendering without Open3D.
 
-Two rendering modes:
+Rendering modes:
 
 * **render()** — headless offscreen rendering to a numpy array via
   ``rendercanvas.offscreen``.  No display server needed.
@@ -31,10 +31,12 @@ Usage::
 
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self, Sequence
+from weakref import WeakSet
 
 import numpy as np
 
@@ -43,6 +45,7 @@ from shared.logging import get_logger
 from ..scene.defaults import DEFAULT_SCENE_BACKGROUND_COLOR_RGBA
 from ..services.cache_service import CacheInvalidationScope, invalidate_visualizer_cache
 from ..state import MpcVisibility
+from ..types.label_style import LabelCalloutStyle
 from ..utils.geometry import mesh_vertices
 from .frame_data import load_notebook_visual_frame
 from .generator import NotebookGenerator
@@ -80,6 +83,16 @@ def _running_in_jupyter() -> bool:
         return False
 
 
+def _require_jupyter_rfb() -> None:
+    """Explain how to enable in-cell rendering before allocating scene resources."""
+    if not JUPYTER_RFB_AVAILABLE:
+        raise ImportError(
+            "jupyter_rfb is required for interactive notebook views. "
+            "Install with: python -m pip install jupyter_rfb. "
+            "Use render() for a static image."
+        )
+
+
 # Default node colors
 _TX_COLOR = (1.0, 0.2, 0.2, 1.0)
 _RX_COLOR = (0.2, 0.2, 1.0, 1.0)
@@ -110,12 +123,22 @@ class PygfxNotebookViz:
         scenario_path: Path to a scenario directory (containing
             ``scenario.yaml``) or directly to a YAML file.
         project_root: Explicit project root.  Auto-detected when ``None``.
+        appearance: Default 3D preset: Detailed, Paper, Dark, or Glow.
+            None retains the ordinary notebook lighting and materials.
+        label_style: Plain labels, callouts, cards, or a LabelCalloutStyle settings dictionary.
+        tx_color: TX marker/label color as RGB or RGBA values between zero and one.
+        rx_color: RX marker/label color as RGB or RGBA values between zero and one.
     """
 
     def __init__(
         self,
         scenario_path: str | Path,
         project_root: str | Path | None = None,
+        *,
+        appearance: str | None = None,
+        label_style: str | dict | LabelCalloutStyle = "plain",
+        tx_color: Sequence[float] = _TX_COLOR,
+        rx_color: Sequence[float] = _RX_COLOR,
     ) -> None:
         """Load scenario metadata, scene meshes, frame source, and pygfx state."""
         if not PYGFX_AVAILABLE:
@@ -124,6 +147,11 @@ class PygfxNotebookViz:
                 "Install the default runtime from a cloned repository with: "
                 "python -m pip install -e ."
             )
+
+        self._presentation_defaults = dict(
+            appearance=appearance, label_style=label_style, tx_color=tx_color, rx_color=rx_color
+        )
+        self._new_presentation()
 
         from ..io.frame_sources import FileSource
         from ..io.scenario_config import AppConfig, load_scenario
@@ -167,7 +195,7 @@ class PygfxNotebookViz:
         # MPC core for building view models
         from ..pipeline.core import MPCCore
 
-        self._mpc_core = MPCCore(logger=logger, visualizer=None)
+        self._mpc_core = MPCCore(logger=logger, visualizer=None, subscribe_to_theme=False)
 
         # Pre-build texture cache
         from ..scene.assembly import build_texture_cache
@@ -176,6 +204,7 @@ class PygfxNotebookViz:
 
         # Lazy-initialized generator (for regenerate())
         self._generator: NotebookGenerator | None = None
+        self._canvases: WeakSet[Any] = WeakSet()
 
     # Scene loading
 
@@ -253,11 +282,19 @@ class PygfxNotebookViz:
         self.close()
 
     def close(self) -> None:
-        """Release frame files and invalidate cached frame data.
+        """Close interactive views, release frame files, and invalidate frame data.
 
         This method is idempotent. Call it before an external producer replaces
         the scenario's HDF5 frame set.
         """
+        canvases = tuple(getattr(self, "_canvases", ()))
+        # Invalidate callbacks before closing native resources or the provider.
+        self._canvases = WeakSet()
+        for canvas in canvases:
+            try:
+                canvas.close()
+            except (OSError, RuntimeError) as exc:
+                logger.warning("Could not close notebook canvas: %s", exc)
         source = self._frame_source
         self._frame_source = None
         try:
@@ -285,8 +322,8 @@ class PygfxNotebookViz:
     def reload(self) -> None:
         """Reload frame data from disk after external regeneration.
 
-        Re-opens the HDF5 file source and clears the canonical data cache
-        so subsequent ``render()`` calls pick up the new frames.
+        Closes existing interactive views, re-opens the HDF5 file source, and
+        clears the canonical data cache. Create a new view after reloading.
         """
         from ..io.frame_sources import FileSource
 
@@ -388,12 +425,12 @@ class PygfxNotebookViz:
         self,
         frame: int = 0,
         *,
-        color_mode: str = "reflection_order",
+        color_mode: str | None = None,
         selected_tx: int | str = "all",
         selected_rx: int | str = "all",
         mpc_layer_enabled: bool = True,
         show_mpc_paths: bool = True,
-        show_mpc_bounce_points: bool = True,
+        show_mpc_bounce_points: bool | None = None,
         tx_positions: Sequence[Sequence[float]] | None = None,
         rx_positions: Sequence[Sequence[float]] | None = None,
         azimuth: float | None = None,
@@ -402,12 +439,16 @@ class PygfxNotebookViz:
         center: Sequence[float] | None = None,
         width: int = 1280,
         height: int = 900,
-        line_width: float = 2.0,
-        point_size: float = 5.0,
+        line_width: float | None = None,
+        point_size: float | None = None,
         node_radius: float = _NODE_RADIUS,
         display: bool = True,
         ibl_name: str = "neutral_outdoor",
         ibl_intensity: float = 1.0,
+        appearance: str | None = None,
+        label_style: str | dict | LabelCalloutStyle | None = None,
+        tx_color: Sequence[float] | None = None,
+        rx_color: Sequence[float] | None = None,
     ) -> np.ndarray:
         """Render the scene to a numpy image via offscreen pygfx rendering.
 
@@ -415,7 +456,7 @@ class PygfxNotebookViz:
 
         Args:
             frame: Frame index to display.
-            color_mode: MPC coloring mode.
+            color_mode: MPC coloring mode; None uses the appearance preset.
             selected_tx: TX filter (``"all"`` or 0-based index).
             selected_rx: RX filter.
             mpc_layer_enabled: Enable the MPC layer master switch.
@@ -431,12 +472,16 @@ class PygfxNotebookViz:
             height: Image height in pixels.
             line_width: MPC path line width.
             point_size: Bounce point size.
-            node_radius: TX/RX marker radius.
+            node_radius: TX/RX marker radius for plain labels.
             display: If ``True`` and running in IPython/Jupyter, display
                 the image inline.
             ibl_name: IBL environment map name.
             ibl_intensity: IBL intensity multiplier. Desktop-scale values above
                 10, such as 30000, are normalized automatically.
+            appearance: Override the constructor's preset for this view.
+            label_style: Override plain, callout, or card labels for this view.
+            tx_color: Override the TX RGB/RGBA color for this view.
+            rx_color: Override the RX RGB/RGBA color for this view.
 
         Returns:
             Rendered image as a ``(H, W, 3)`` uint8 numpy array.
@@ -462,6 +507,10 @@ class PygfxNotebookViz:
             node_radius=node_radius,
             ibl_name=ibl_name,
             ibl_intensity=ibl_intensity,
+            appearance=appearance,
+            label_style=label_style,
+            tx_color=tx_color,
+            rx_color=rx_color,
         )
 
         from ..renderers.pygfx.canvas import create_wgpu_renderer
@@ -471,16 +520,18 @@ class PygfxNotebookViz:
             renderer = create_wgpu_renderer(
                 gfx,
                 canvas,
-                clear_color=tuple(DEFAULT_SCENE_BACKGROUND_COLOR_RGBA),
+                clear_color=scene._orchav_presentation.background,
                 offscreen=True,
             )
 
-            canvas.request_draw(
-                lambda: renderer.render(
-                    scene,
-                    camera,
-                )
-            )
+            presentation = scene._orchav_presentation
+            presentation.configure_renderer(renderer)
+
+            def draw():
+                presentation.prepare_draw(canvas, camera)
+                renderer.render(scene, camera)
+
+            canvas.request_draw(draw)
             rgba = canvas.draw()
             image = np.asarray(rgba)[:, :, :3].copy()
         finally:
@@ -507,12 +558,12 @@ class PygfxNotebookViz:
         self,
         frame: int = 0,
         *,
-        color_mode: str = "reflection_order",
+        color_mode: str | None = None,
         selected_tx: int | str = "all",
         selected_rx: int | str = "all",
         mpc_layer_enabled: bool = True,
         show_mpc_paths: bool = True,
-        show_mpc_bounce_points: bool = True,
+        show_mpc_bounce_points: bool | None = None,
         tx_positions: Sequence[Sequence[float]] | None = None,
         rx_positions: Sequence[Sequence[float]] | None = None,
         azimuth: float | None = None,
@@ -521,12 +572,16 @@ class PygfxNotebookViz:
         center: Sequence[float] | None = None,
         width: int = 1280,
         height: int = 900,
-        line_width: float = 2.0,
-        point_size: float = 5.0,
+        line_width: float | None = None,
+        point_size: float | None = None,
         node_radius: float = _NODE_RADIUS,
         title: str = "ORCHAV",
         ibl_name: str = "neutral_outdoor",
         ibl_intensity: float = 1.0,
+        appearance: str | None = None,
+        label_style: str | dict | LabelCalloutStyle | None = None,
+        tx_color: Sequence[float] | None = None,
+        rx_color: Sequence[float] | None = None,
     ) -> Any:
         """Interactive 3D visualization.
 
@@ -537,7 +592,7 @@ class PygfxNotebookViz:
 
         Args:
             frame: Frame index to display.
-            color_mode: MPC coloring mode.
+            color_mode: MPC coloring mode; None uses the appearance preset.
             selected_tx: TX filter (``"all"`` or 0-based index).
             selected_rx: RX filter.
             mpc_layer_enabled: Enable the MPC layer master switch.
@@ -553,16 +608,23 @@ class PygfxNotebookViz:
             height: Window/widget height in pixels.
             line_width: MPC path line width.
             point_size: Bounce point size.
-            node_radius: TX/RX marker radius.
+            node_radius: TX/RX marker radius for plain labels.
             title: Window title.
             ibl_name: IBL environment map name.
             ibl_intensity: IBL intensity multiplier. Desktop-scale values above
                 10, such as 30000, are normalized automatically.
+            appearance: Override the constructor's preset for this view.
+            label_style: Override plain, callout, or card labels for this view.
+            tx_color: Override the TX RGB/RGBA color for this view.
+            rx_color: Override the RX RGB/RGBA color for this view.
 
         Returns:
             In Jupyter: the widget object (displayed automatically).
             Outside Jupyter: ``None`` (blocks until window closed).
         """
+        in_jupyter = _running_in_jupyter()
+        if in_jupyter:
+            _require_jupyter_rfb()
         scene, camera = self._build_pygfx_scene(
             frame=frame,
             color_mode=color_mode,
@@ -582,11 +644,15 @@ class PygfxNotebookViz:
             node_radius=node_radius,
             ibl_name=ibl_name,
             ibl_intensity=ibl_intensity,
+            appearance=appearance,
+            label_style=label_style,
+            tx_color=tx_color,
+            rx_color=rx_color,
         )
 
         controller = gfx.OrbitController(camera, register_events=None)
 
-        if _running_in_jupyter() and JUPYTER_RFB_AVAILABLE:
+        if in_jupyter:
             return self._show_jupyter(scene, camera, controller, width, height, title)
         else:
             return self._show_native(scene, camera, controller, width, height, title)
@@ -595,12 +661,12 @@ class PygfxNotebookViz:
         self,
         frame: int = 0,
         *,
-        color_mode: str = "reflection_order",
+        color_mode: str | None = None,
         selected_tx: int | str = "all",
         selected_rx: int | str = "all",
         mpc_layer_enabled: bool = True,
         show_mpc_paths: bool = True,
-        show_mpc_bounce_points: bool = True,
+        show_mpc_bounce_points: bool | None = None,
         tx_positions: Sequence[Sequence[float]] | None = None,
         rx_positions: Sequence[Sequence[float]] | None = None,
         azimuth: float | None = None,
@@ -609,15 +675,20 @@ class PygfxNotebookViz:
         center: Sequence[float] | None = None,
         width: int = 800,
         height: int = 600,
-        line_width: float = 2.0,
-        point_size: float = 5.0,
+        line_width: float | None = None,
+        point_size: float | None = None,
         node_radius: float = _NODE_RADIUS,
         ibl_name: str = "neutral_outdoor",
         ibl_intensity: float = 1.0,
+        appearance: str | None = None,
+        label_style: str | dict | LabelCalloutStyle | None = None,
+        tx_color: Sequence[float] | None = None,
+        rx_color: Sequence[float] | None = None,
     ) -> Any:
         """Return a Jupyter widget for embedding in ipywidgets layouts.
 
-        Requires ``jupyter_rfb`` to be installed.
+        Requires ``jupyter_rfb`` to be installed. Appearance and label options
+        follow :meth:`render`.
 
         Returns:
             A rendercanvas Jupyter widget object.
@@ -625,10 +696,7 @@ class PygfxNotebookViz:
         Raises:
             ImportError: If ``jupyter_rfb`` is not installed.
         """
-        if not JUPYTER_RFB_AVAILABLE:
-            raise ImportError(
-                "jupyter_rfb is required for widget(). " "Install with: pip install jupyter_rfb"
-            )
+        _require_jupyter_rfb()
 
         scene, camera = self._build_pygfx_scene(
             frame=frame,
@@ -649,33 +717,15 @@ class PygfxNotebookViz:
             node_radius=node_radius,
             ibl_name=ibl_name,
             ibl_intensity=ibl_intensity,
+            appearance=appearance,
+            label_style=label_style,
+            tx_color=tx_color,
+            rx_color=rx_color,
         )
 
         controller = gfx.OrbitController(camera, register_events=None)
 
-        from rendercanvas.jupyter import RenderCanvas
-
-        canvas = RenderCanvas(size=(width, height))
-        from ..renderers.pygfx.canvas import create_wgpu_renderer
-
-        renderer = create_wgpu_renderer(
-            gfx,
-            canvas,
-            clear_color=tuple(DEFAULT_SCENE_BACKGROUND_COLOR_RGBA),
-        )
-
-        controller.register_events(renderer)
-
-        @canvas.request_draw
-        def animate():
-            """Render one widget frame and request the next notebook draw."""
-            renderer.render(
-                scene,
-                camera,
-            )
-            canvas.request_draw()
-
-        return canvas
+        return self._show_jupyter(scene, camera, controller, width, height, "ORCHAV")
 
     def animate(
         self,
@@ -683,23 +733,27 @@ class PygfxNotebookViz:
         *,
         fps: float = 10,
         loop: bool = True,
-        color_mode: str = "reflection_order",
+        color_mode: str | None = None,
         selected_tx: int | str = "all",
         selected_rx: int | str = "all",
         mpc_layer_enabled: bool = True,
         show_mpc_paths: bool = True,
-        show_mpc_bounce_points: bool = True,
+        show_mpc_bounce_points: bool | None = None,
         azimuth: float | None = None,
         elevation: float | None = None,
         distance: float | None = None,
         center: Sequence[float] | None = None,
         width: int = 1280,
         height: int = 900,
-        line_width: float = 2.0,
-        point_size: float = 5.0,
+        line_width: float | None = None,
+        point_size: float | None = None,
         node_radius: float = _NODE_RADIUS,
         ibl_name: str = "neutral_outdoor",
         ibl_intensity: float = 1.0,
+        appearance: str | None = None,
+        label_style: str | dict | LabelCalloutStyle | None = None,
+        tx_color: Sequence[float] | None = None,
+        rx_color: Sequence[float] | None = None,
     ) -> Any:
         """Animated frame-by-frame playback in a Jupyter widget.
 
@@ -707,14 +761,14 @@ class PygfxNotebookViz:
         only the dynamic elements (MPC paths, bounces, targets, TX/RX nodes)
         on each frame tick.
 
-        Requires ``jupyter_rfb`` for in-cell display, otherwise falls back
-        to a native window.
+        Requires ``jupyter_rfb`` for in-cell display. Outside Jupyter, opens
+        a native window. Non-looping playback leaves the last frame interactive.
 
         Args:
             frames: Frame indices to animate.  Defaults to all available.
             fps: Target frames per second.
             loop: If ``True``, loop back to the first frame after the last.
-            color_mode: MPC coloring mode.
+            color_mode: MPC coloring mode; None uses the appearance preset.
             selected_tx: TX filter (``"all"`` or 0-based index).
             selected_rx: RX filter.
             mpc_layer_enabled: Enable the MPC layer master switch.
@@ -728,54 +782,46 @@ class PygfxNotebookViz:
             height: Widget height in pixels.
             line_width: MPC path line width.
             point_size: Bounce point size.
-            node_radius: TX/RX marker radius.
+            node_radius: TX/RX marker radius for plain labels.
             ibl_name: IBL environment map name.
             ibl_intensity: IBL intensity multiplier. Desktop-scale values above
                 10, such as 30000, are normalized automatically.
+            appearance: Override the constructor's preset for this view.
+            label_style: Override plain, callout, or card labels for this view.
+            tx_color: Override the TX RGB/RGBA color for this view.
+            rx_color: Override the RX RGB/RGBA color for this view.
 
         Returns:
             In Jupyter: the canvas widget (displayed automatically).
             Outside Jupyter: ``None`` (blocks until window closed).
         """
-        if frames is None:
-            frames = self.frames
+        if not math.isfinite(fps) or fps <= 0:
+            raise ValueError("fps must be finite and greater than zero")
+        available = self.frames
+        frames = list(available if frames is None else frames)
         if not frames:
             logger.warning("No frames available for animation")
             return None
+        available_set = set(available)
+        missing = [frame for frame in frames if frame not in available_set]
+        if missing:
+            raise ValueError(f"Animation frames are not available: {missing}")
+        in_jupyter = _running_in_jupyter()
+        if in_jupyter:
+            _require_jupyter_rfb()
 
-        from ..backends.pygfx_scene_helpers import (
-            payload_to_pygfx_lines,
-            payload_to_pygfx_mesh,
-            payload_to_pygfx_points,
+        from ..scene.assembly import compute_camera_orbit
+
+        presentation = self._new_presentation(appearance, label_style, tx_color, rx_color)
+        color_mode = color_mode if color_mode is not None else presentation.mpc["color_mode"]
+        show_mpc_bounce_points = (
+            presentation.mpc["bounce_points"]
+            if show_mpc_bounce_points is None
+            else show_mpc_bounce_points
         )
-        from ..scene.assembly import (
-            compute_camera_orbit,
-            make_sphere_payload,
-            mesh_entry_to_payload,
-            target_metadata_to_payload,
-            view_model_to_mpc_payloads,
-        )
-        from ..types.render_payloads import MaterialPayload
-
-        # ---- Static scene (built once) ----
-        scene = gfx.Scene()
-        scene.add(gfx.Background.from_color(tuple(DEFAULT_SCENE_BACKGROUND_COLOR_RGBA)))
-        scene.add(gfx.AmbientLight(intensity=0.4))
-        dir_light = gfx.DirectionalLight(intensity=0.8)
-        dir_light.local.position = (50, 50, 100)
-        scene.add(dir_light)
-
-        ibl_manager = self._setup_ibl(scene, ibl_name, ibl_intensity)
-
-        for entry in self._mesh_entries:
-            result = mesh_entry_to_payload(entry, self._texture_cache)
-            if result is None:
-                continue
-            _name, mesh_payload, mat_payload = result
-            pygfx_mesh = payload_to_pygfx_mesh(
-                gfx, mesh_payload, mat_payload, ibl_manager=ibl_manager
-            )
-            scene.add(pygfx_mesh)
+        line_width = presentation.mpc["line_width"] if line_width is None else line_width
+        point_size = presentation.mpc["point_size"] if point_size is None else point_size
+        scene = self._build_static_scene(presentation, ibl_name, ibl_intensity)
 
         # ---- Camera (compute from first frame) ----
         first_raw, _ = self._build_frame_data(
@@ -796,7 +842,9 @@ class PygfxNotebookViz:
         orbit = compute_camera_orbit(
             mesh_bboxes, first_tx, first_rx, azimuth, elevation, distance, center
         )
-        self._apply_camera_orbit(camera, scene, orbit)
+        self._apply_camera_orbit(
+            camera, scene, orbit, explicit_framing=center is not None or distance is not None
+        )
 
         # ---- Dynamic elements group ----
         dynamic_group = gfx.Group()
@@ -804,12 +852,14 @@ class PygfxNotebookViz:
 
         import time
 
-        state = {"frame_idx": 0, "last_time": time.perf_counter()}
+        # Start the clock on the first draw, which may follow a delayed notebook
+        # display. The first stored frame must still be shown before advancing.
+        state = {"frame_idx": 0, "last_time": None, "playing": len(frames) > 1}
 
         def _update_dynamic(frame_step: int) -> None:
-            """Remove old dynamic objects and add new ones for the given frame."""
+            """Replace the dynamic group using the shared still-frame assembly."""
             dynamic_group.clear()
-
+            presentation.clear_dynamic()
             raw_frame, view_model = self._build_frame_data(
                 frame_step,
                 color_mode,
@@ -820,46 +870,17 @@ class PygfxNotebookViz:
                 show_mpc_bounce_points,
                 None,
                 None,
+                color_palette=presentation.palette,
             )
-
-            if view_model is not None:
-                lines_payload, points_payload = view_model_to_mpc_payloads(view_model)
-                if lines_payload is not None:
-                    dynamic_group.add(
-                        payload_to_pygfx_lines(gfx, lines_payload, line_width=line_width)
-                    )
-                if points_payload is not None:
-                    dynamic_group.add(
-                        payload_to_pygfx_points(gfx, points_payload, point_size=point_size)
-                    )
-
-            if raw_frame is not None:
-                for meta in raw_frame.get("targets_metadata", []):
-                    tgt_result = target_metadata_to_payload(
-                        meta, self._project_root, self._scenario.root
-                    )
-                    if tgt_result is None:
-                        continue
-                    _tgt_name, tgt_payload, _ = tgt_result
-                    tgt_mat = MaterialPayload(
-                        base_color=_TARGET_COLOR,
-                        roughness=0.6,
-                        metallic=0.0,
-                        reflectance=0.4,
-                    )
-                    dynamic_group.add(
-                        payload_to_pygfx_mesh(gfx, tgt_payload, tgt_mat, ibl_manager=ibl_manager)
-                    )
-
-            frame_tx, frame_rx = self._extract_node_positions(raw_frame)
-            for pos in frame_tx:
-                sp = make_sphere_payload(pos, node_radius, _TX_COLOR[:3])
-                sm = MaterialPayload(base_color=_TX_COLOR, roughness=0.3, metallic=0.0)
-                dynamic_group.add(payload_to_pygfx_mesh(gfx, sp, sm, ibl_manager=ibl_manager))
-            for pos in frame_rx:
-                sp = make_sphere_payload(pos, node_radius, _RX_COLOR[:3])
-                sm = MaterialPayload(base_color=_RX_COLOR, roughness=0.3, metallic=0.0)
-                dynamic_group.add(payload_to_pygfx_mesh(gfx, sp, sm, ibl_manager=ibl_manager))
+            self._add_dynamic(
+                dynamic_group,
+                raw_frame,
+                view_model,
+                presentation,
+                line_width,
+                point_size,
+                node_radius,
+            )
 
         # Initial frame
         _update_dynamic(frames[0])
@@ -867,45 +888,46 @@ class PygfxNotebookViz:
         frame_interval = 1.0 / fps
 
         # ---- Canvas + render loop ----
-        if _running_in_jupyter() and JUPYTER_RFB_AVAILABLE:
+        if in_jupyter:
             from rendercanvas.jupyter import RenderCanvas
         else:
             from rendercanvas.auto import RenderCanvas  # type: ignore[assignment]
 
-        canvas = RenderCanvas(size=(width, height), title="ORCHAV Animation")
-        from ..renderers.pygfx.canvas import create_wgpu_renderer
-
-        renderer = create_wgpu_renderer(
-            gfx,
-            canvas,
-            clear_color=tuple(DEFAULT_SCENE_BACKGROUND_COLOR_RGBA),
-        )
+        canvas = RenderCanvas(size=(width, height), title="ORCHAV Animation", max_fps=fps)
+        renderer = self._create_interactive_renderer(canvas, scene)
 
         controller = gfx.OrbitController(camera, register_events=None)
         controller.register_events(renderer)
+        final_presentation_pending = in_jupyter
 
         def _animate_loop() -> None:
-            """Advance the animation clock and render one native-canvas frame."""
+            """Advance playback while active; retain camera controls at completion."""
+            nonlocal final_presentation_pending
+            if canvas not in self._canvases or canvas.get_closed():
+                return
             now = time.perf_counter()
-            elapsed = now - state["last_time"]
-            if elapsed >= frame_interval:
+            if state["last_time"] is None:
                 state["last_time"] = now
-                state["frame_idx"] += 1
-                if state["frame_idx"] >= len(frames):
-                    if loop:
-                        state["frame_idx"] = 0
-                    else:
-                        state["frame_idx"] = len(frames) - 1
+            elif state["playing"] and now - state["last_time"] >= frame_interval:
+                state["last_time"] += frame_interval
+                state["frame_idx"] = (state["frame_idx"] + 1) % len(frames)
                 _update_dynamic(frames[state["frame_idx"]])
+                state["playing"] = loop or state["frame_idx"] < len(frames) - 1
+            scene._orchav_presentation.prepare_draw(canvas, camera)
             renderer.render(
                 scene,
                 camera,
             )
-            canvas.request_draw()
+            if state["playing"]:
+                canvas.request_draw()
+            elif final_presentation_pending:
+                # Deliver the terminal frame after its asynchronous GPU readback.
+                final_presentation_pending = False
+                canvas.request_draw()
 
         canvas.request_draw(_animate_loop)
 
-        if _running_in_jupyter() and JUPYTER_RFB_AVAILABLE:
+        if in_jupyter:
             return canvas
         else:
             from rendercanvas.auto import loop as rc_loop  # type: ignore[assignment]
@@ -914,6 +936,32 @@ class PygfxNotebookViz:
             return None
 
     # Interactive display backends
+
+    def _create_interactive_renderer(self, canvas: Any, scene: Any = None) -> Any:
+        """Create a renderer and retain weak ownership of its interactive canvas."""
+        from ..renderers.pygfx.canvas import create_wgpu_renderer
+
+        try:
+            presentation = None if scene is None else scene._orchav_presentation
+            renderer = create_wgpu_renderer(
+                gfx,
+                canvas,
+                clear_color=(
+                    tuple(DEFAULT_SCENE_BACKGROUND_COLOR_RGBA)
+                    if presentation is None
+                    else presentation.background
+                ),
+            )
+            if presentation is not None:
+                presentation.configure_renderer(renderer)
+        except BaseException as exc:
+            try:
+                canvas.close()
+            except BaseException as cleanup_error:
+                exc.add_note(f"Notebook canvas cleanup failed: {cleanup_error}")
+            raise
+        self._canvases.add(canvas)
+        return renderer
 
     def _show_jupyter(
         self,
@@ -928,24 +976,27 @@ class PygfxNotebookViz:
         from rendercanvas.jupyter import RenderCanvas
 
         canvas = RenderCanvas(size=(width, height), title=title)
-        from ..renderers.pygfx.canvas import create_wgpu_renderer
-
-        renderer = create_wgpu_renderer(
-            gfx,
-            canvas,
-            clear_color=tuple(DEFAULT_SCENE_BACKGROUND_COLOR_RGBA),
-        )
+        renderer = self._create_interactive_renderer(canvas, scene)
 
         controller.register_events(renderer)
+        first_presentation_pending = True
 
         @canvas.request_draw
         def animate():
-            """Render one interactive Jupyter frame and request redraw."""
+            """Render on demand; the orbit controller requests interaction redraws."""
+            nonlocal first_presentation_pending
+            if canvas not in self._canvases or canvas.get_closed():
+                return
+            scene._orchav_presentation.prepare_draw(canvas, camera)
             renderer.render(
                 scene,
                 camera,
             )
-            canvas.request_draw()
+            if first_presentation_pending:
+                # The notebook transport needs another pull after the initial
+                # asynchronous GPU readback has completed.
+                first_presentation_pending = False
+                canvas.request_draw()
 
         return canvas
 
@@ -962,93 +1013,179 @@ class PygfxNotebookViz:
         from rendercanvas.auto import RenderCanvas, loop
 
         canvas = RenderCanvas(size=(width, height), title=title)
-        from ..renderers.pygfx.canvas import create_wgpu_renderer
-
-        renderer = create_wgpu_renderer(
-            gfx,
-            canvas,
-            clear_color=tuple(DEFAULT_SCENE_BACKGROUND_COLOR_RGBA),
-        )
+        renderer = self._create_interactive_renderer(canvas, scene)
 
         controller.register_events(renderer)
 
         @canvas.request_draw
         def animate():
-            """Render one interactive native-window frame and request redraw."""
+            """Render on demand; the orbit controller requests interaction redraws."""
+            if canvas not in self._canvases or canvas.get_closed():
+                return
+            scene._orchav_presentation.prepare_draw(canvas, camera)
             renderer.render(
                 scene,
                 camera,
             )
-            canvas.request_draw()
 
         loop.run()
 
     # Scene building
 
-    def _build_pygfx_scene(
-        self,
-        frame: int,
-        color_mode: str,
-        selected_tx: int | str,
-        selected_rx: int | str,
-        mpc_layer_enabled: bool,
-        show_mpc_paths: bool,
-        show_mpc_bounce_points: bool,
-        tx_positions: Sequence[Sequence[float]] | None,
-        rx_positions: Sequence[Sequence[float]] | None,
-        azimuth: float | None,
-        elevation: float | None,
-        distance: float | None,
-        center: Sequence[float] | None,
-        line_width: float,
-        point_size: float,
-        node_radius: float,
-        ibl_name: str,
-        ibl_intensity: float,
-    ) -> tuple[Any, Any]:
-        """Build a complete pygfx scene with all geometry and camera.
+    def _new_presentation(self, appearance=None, label_style=None, tx_color=None, rx_color=None):
+        """Resolve independent view settings from constructor defaults and call overrides."""
+        from .presentation import NotebookPresentation
 
-        Returns:
-            (scene, camera) tuple.
-        """
+        options = dict(getattr(self, "_presentation_defaults", {}))
+        for key, value in dict(
+            appearance=appearance, label_style=label_style, tx_color=tx_color, rx_color=rx_color
+        ).items():
+            if value is not None:
+                options[key] = value
+        options.setdefault("appearance", None)
+        options.setdefault("label_style", "plain")
+        return NotebookPresentation(
+            gfx,
+            **options,
+            varied_buildings=any(
+                entry.get("_osm_building_parts") for entry in getattr(self, "_mesh_entries", ())
+            ),
+        )
+
+    def _build_static_scene(self, presentation, ibl_name, ibl_intensity):
+        """Assemble the environment once for a still view or an animation."""
+        from ..materials.texture_policy import view_texture_maps
+        from ..renderers.pygfx.lighting_profiles import environment_lighting_profile
+        from ..scene.assembly import mesh_entry_to_payload
+        from ..services.material_pbr_service import MaterialPBRService
+
+        scene = gfx.Scene()
+        scene._orchav_presentation = presentation
+        settings = presentation.settings
+        if settings is not None:
+            ibl_name = settings.get("sky", ibl_name)
+            ibl_intensity = settings["ibl"]
+            if settings["skybox"]:
+                profile = environment_lighting_profile(ibl_name)
+                if profile is not None:
+                    ibl_intensity = profile.ibl_intensity
+        presentation.ibl_manager = (
+            self._setup_ibl(scene, ibl_name, ibl_intensity)
+            if ibl_intensity > 0 or (settings is not None and settings["skybox"])
+            else None
+        )
+        if not (
+            settings is not None and settings["skybox"] and presentation.ibl_manager is not None
+        ):
+            scene.add(gfx.Background.from_color(presentation.background))
+        presentation.setup_lights(scene)
+        if presentation.notice:
+            logger.info(presentation.notice)
+        material_service = MaterialPBRService(presentation.material_context())
+        with view_texture_maps(presentation.textures):
+            for index, original in enumerate(self._mesh_entries):
+                # Procedural material resolution may replace an entry's geometry.
+                # Each view owns that display choice, leaving loaded assets intact.
+                entry = dict(original)
+                result = mesh_entry_to_payload(
+                    entry, self._texture_cache, index, material_service=material_service
+                )
+                if result is not None:
+                    name, payload, material = result
+                    presentation.add_mesh(scene, name, payload, material, entry)
+        return scene
+
+    def _add_dynamic(
+        self, group, raw_frame, view_model, presentation, line_width, point_size, node_radius
+    ) -> None:
+        """Build paths, targets, and nodes consistently in all notebook modes."""
         from ..backends.pygfx_scene_helpers import (
             payload_to_pygfx_lines,
             payload_to_pygfx_mesh,
             payload_to_pygfx_points,
         )
         from ..scene.assembly import (
-            compute_camera_orbit,
             make_sphere_payload,
-            mesh_entry_to_payload,
             target_metadata_to_payload,
             view_model_to_mpc_payloads,
         )
         from ..types.render_payloads import MaterialPayload
 
-        scene = gfx.Scene()
-        scene.add(gfx.Background.from_color(tuple(DEFAULT_SCENE_BACKGROUND_COLOR_RGBA)))
+        if view_model is not None:
+            lines, points = view_model_to_mpc_payloads(view_model)
+            if lines is not None:
+                group.add(payload_to_pygfx_lines(gfx, lines, line_width=line_width))
+            if points is not None:
+                group.add(payload_to_pygfx_points(gfx, points, point_size=point_size))
+        if raw_frame is not None:
+            for index, meta in enumerate(raw_frame.get("targets_metadata", [])):
+                result = target_metadata_to_payload(meta, self._project_root, self._scenario.root)
+                if result is None:
+                    continue
+                _, payload, material = result
+                if meta.get("representation") not in {"constant_rcs", "tr38901"}:
+                    material = MaterialPayload(
+                        base_color=_TARGET_COLOR, roughness=0.6, metallic=0.0, reflectance=0.4
+                    )
+                presentation.add_mesh(
+                    group, f"target_{index}", payload, material, meta, target=True
+                )
+        frame_tx, frame_rx = self._extract_node_positions(raw_frame)
+        if presentation.label_style.mode == "plain":
+            for kind, positions in (("tx", frame_tx), ("rx", frame_rx)):
+                color = presentation.node_colors[kind]
+                for position in positions:
+                    payload = make_sphere_payload(position, node_radius, color[:3])
+                    material = MaterialPayload(base_color=color, roughness=0.3, metallic=0.0)
+                    group.add(
+                        payload_to_pygfx_mesh(
+                            gfx, payload, material, ibl_manager=presentation.ibl_manager
+                        )
+                    )
+        self._add_node_labels(group, frame_tx, frame_rx, presentation)
 
-        # ---- Lights ----
-        scene.add(gfx.AmbientLight(intensity=0.4))
-        light = gfx.DirectionalLight(intensity=0.8)
-        light.local.position = (50, 50, 100)
-        scene.add(light)
+    def _build_pygfx_scene(
+        self,
+        frame: int,
+        color_mode: str | None,
+        selected_tx: int | str,
+        selected_rx: int | str,
+        mpc_layer_enabled: bool,
+        show_mpc_paths: bool,
+        show_mpc_bounce_points: bool | None,
+        tx_positions: Sequence[Sequence[float]] | None,
+        rx_positions: Sequence[Sequence[float]] | None,
+        azimuth: float | None,
+        elevation: float | None,
+        distance: float | None,
+        center: Sequence[float] | None,
+        line_width: float | None,
+        point_size: float | None,
+        node_radius: float,
+        ibl_name: str,
+        ibl_intensity: float,
+        appearance: str | None = None,
+        label_style: str | dict | LabelCalloutStyle | None = None,
+        tx_color: Sequence[float] | None = None,
+        rx_color: Sequence[float] | None = None,
+    ) -> tuple[Any, Any]:
+        """Build a complete pygfx scene with all geometry and camera.
 
-        # ---- IBL (optional) ----
-        ibl_manager = self._setup_ibl(scene, ibl_name, ibl_intensity)
+        Returns:
+            (scene, camera) tuple.
+        """
+        from ..scene.assembly import compute_camera_orbit
 
-        # ---- Scene meshes ----
-        for entry in self._mesh_entries:
-            result = mesh_entry_to_payload(entry, self._texture_cache)
-            if result is None:
-                continue
-            name, mesh_payload, mat_payload = result
-            pygfx_mesh = payload_to_pygfx_mesh(
-                gfx, mesh_payload, mat_payload, ibl_manager=ibl_manager
-            )
-            scene.add(pygfx_mesh)
-
-        # ---- Frame data + view model ----
+        presentation = self._new_presentation(appearance, label_style, tx_color, rx_color)
+        color_mode = color_mode if color_mode is not None else presentation.mpc["color_mode"]
+        show_mpc_bounce_points = (
+            presentation.mpc["bounce_points"]
+            if show_mpc_bounce_points is None
+            else show_mpc_bounce_points
+        )
+        line_width = presentation.mpc["line_width"] if line_width is None else line_width
+        point_size = presentation.mpc["point_size"] if point_size is None else point_size
+        scene = self._build_static_scene(presentation, ibl_name, ibl_intensity)
         raw_frame, view_model = self._build_frame_data(
             frame,
             color_mode,
@@ -1059,58 +1196,12 @@ class PygfxNotebookViz:
             show_mpc_bounce_points,
             tx_positions,
             rx_positions,
+            color_palette=presentation.palette,
         )
-
-        # ---- MPC lines and bounces ----
-        if view_model is not None:
-            lines_payload, points_payload = view_model_to_mpc_payloads(view_model)
-            if lines_payload is not None:
-                pygfx_lines = payload_to_pygfx_lines(gfx, lines_payload, line_width=line_width)
-                scene.add(pygfx_lines)
-            if points_payload is not None:
-                pygfx_points = payload_to_pygfx_points(gfx, points_payload, point_size=point_size)
-                scene.add(pygfx_points)
-
-        # ---- Target meshes ----
-        if raw_frame is not None:
-            targets_metadata = raw_frame.get("targets_metadata", [])
-            for i, meta in enumerate(targets_metadata):
-                result = target_metadata_to_payload(meta, self._project_root, self._scenario.root)
-                if result is None:
-                    continue
-                tgt_name, tgt_payload, _ = result
-                tgt_mat = MaterialPayload(
-                    base_color=_TARGET_COLOR,
-                    roughness=0.6,
-                    metallic=0.0,
-                    reflectance=0.4,
-                )
-                pygfx_mesh = payload_to_pygfx_mesh(
-                    gfx, tgt_payload, tgt_mat, ibl_manager=ibl_manager
-                )
-                scene.add(pygfx_mesh)
-
-        # ---- TX/RX markers ----
+        self._add_dynamic(
+            scene, raw_frame, view_model, presentation, line_width, point_size, node_radius
+        )
         frame_tx, frame_rx = self._extract_node_positions(raw_frame)
-
-        for pos in frame_tx:
-            marker_payload = make_sphere_payload(pos, node_radius, _TX_COLOR[:3])
-            marker_mat = MaterialPayload(base_color=_TX_COLOR, roughness=0.3, metallic=0.0)
-            pygfx_mesh = payload_to_pygfx_mesh(
-                gfx, marker_payload, marker_mat, ibl_manager=ibl_manager
-            )
-            scene.add(pygfx_mesh)
-
-        for pos in frame_rx:
-            marker_payload = make_sphere_payload(pos, node_radius, _RX_COLOR[:3])
-            marker_mat = MaterialPayload(base_color=_RX_COLOR, roughness=0.3, metallic=0.0)
-            pygfx_mesh = payload_to_pygfx_mesh(
-                gfx, marker_payload, marker_mat, ibl_manager=ibl_manager
-            )
-            scene.add(pygfx_mesh)
-
-        # ---- TX/RX labels (native pygfx Text) ----
-        self._add_node_labels(scene, frame_tx, frame_rx)
 
         # ---- Camera ----
         camera = gfx.PerspectiveCamera(60, aspect=16 / 9)
@@ -1119,53 +1210,15 @@ class PygfxNotebookViz:
         orbit = compute_camera_orbit(
             mesh_bboxes, frame_tx, frame_rx, azimuth, elevation, distance, center
         )
-        self._apply_camera_orbit(camera, scene, orbit)
+        self._apply_camera_orbit(
+            camera, scene, orbit, explicit_framing=center is not None or distance is not None
+        )
 
         return scene, camera
 
-    def _add_node_labels(
-        self,
-        scene: Any,
-        tx_positions: np.ndarray,
-        rx_positions: np.ndarray,
-    ) -> None:
-        """Add native pygfx text labels for TX/RX markers.
-
-        Screen-space labels so paper-figure exports stay legible at any zoom.
-        """
-        for idx, pos in enumerate(tx_positions):
-            text = f"TX{idx + 1}"
-            label = gfx.Text(
-                text=text,
-                font_size=18,
-                screen_space=True,
-                anchor="middle-center",
-                material=gfx.TextMaterial(
-                    color=(0.0, 0.8, 0.0),
-                    outline_color=(0.0, 0.0, 0.0),
-                    outline_thickness=0.15,
-                    aa=True,
-                ),
-            )
-            label.local.position = (float(pos[0]), float(pos[1]), float(pos[2]) + 2.0)
-            scene.add(label)
-
-        for idx, pos in enumerate(rx_positions):
-            text = f"RX{idx + 1}"
-            label = gfx.Text(
-                text=text,
-                font_size=18,
-                screen_space=True,
-                anchor="middle-center",
-                material=gfx.TextMaterial(
-                    color=(0.3, 0.3, 1.0),
-                    outline_color=(0.0, 0.0, 0.0),
-                    outline_thickness=0.15,
-                    aa=True,
-                ),
-            )
-            label.local.position = (float(pos[0]), float(pos[1]), float(pos[2]) + 2.0)
-            scene.add(label)
+    def _add_node_labels(self, scene, tx_positions, rx_positions, presentation) -> None:
+        """Use the same native text, callout, and card layout as the desktop."""
+        presentation.add_node_labels(scene, tx_positions, rx_positions)
 
     def _setup_ibl(self, scene: Any, ibl_name: str, ibl_intensity: float) -> Any | None:
         """Set up IBL environment lighting if available."""
@@ -1188,17 +1241,21 @@ class PygfxNotebookViz:
         return None
 
     @staticmethod
-    def _apply_camera_orbit(camera: Any, scene: Any, orbit: Any) -> None:
-        """Position camera using orbit parameters with a safe fallback.
+    def _apply_camera_orbit(
+        camera: Any, scene: Any, orbit: Any, *, explicit_framing: bool = False
+    ) -> None:
+        """Honor requested framing, or fit the whole scene for the default view.
 
-        ``camera.show_object(scene)`` requires the scene to have a bounding
-        sphere. When the scene has no visible geometry, a synthetic bounding
-        sphere from the orbit center/distance is passed
-        that as a ``(x, y, z, r)`` tuple instead.
+        ``show_object`` replaces the camera position as it fits scene bounds.
+        ``show_pos`` preserves the requested eye and establishes the chosen
+        orbit center. Empty scenes retain the automatic bounding-sphere fallback.
         """
         eye = orbit.eye_position()
         view_dir = tuple(orbit.center - eye)
         camera.local.position = tuple(eye)
+        if explicit_framing:
+            camera.show_pos(tuple(orbit.center), up=(0, 0, 1))
+            return
         try:
             camera.show_object(scene, up=(0, 0, 1), view_dir=view_dir)
         except ValueError:
@@ -1239,6 +1296,8 @@ class PygfxNotebookViz:
         show_mpc_bounce_points: bool,
         tx_positions: Sequence[Sequence[float]] | None,
         rx_positions: Sequence[Sequence[float]] | None,
+        *,
+        color_palette=None,
     ) -> tuple[dict | None, Any]:
         """Load a visual frame payload and build its view model.
 
@@ -1246,22 +1305,18 @@ class PygfxNotebookViz:
             ``(frame_payload, view_model)``; either may be ``None``.
         """
         frame_payload = None
-        if self._frame_source is not None:
-            available = self._frame_source.list_frames()
-            if frame in available:
-                source_step = frame
-            elif available:
-                source_step = available[0]
-                logger.warning("Frame %d not available, using frame %d", frame, source_step)
-            else:
-                source_step = None
-            if source_step is not None:
-                frame_payload = load_notebook_visual_frame(
-                    self._frame_source,
-                    source_step,
-                    tx_positions=tx_positions,
-                    rx_positions=rx_positions,
-                )
+        available = self.frames
+        if frame not in available:
+            # Preserve the default scene-only preview before frames exist.
+            if available or frame != 0:
+                raise ValueError(f"Frame {frame} is not available. Use viz.frames to list frames.")
+        elif self._frame_source is not None:
+            frame_payload = load_notebook_visual_frame(
+                self._frame_source,
+                frame,
+                tx_positions=tx_positions,
+                rx_positions=rx_positions,
+            )
 
         view_model = None
         if frame_payload is not None:
@@ -1269,6 +1324,7 @@ class PygfxNotebookViz:
                 step=frame,
                 raw_frame=frame_payload,
                 color_mode=color_mode,
+                color_palette=color_palette,
                 selected_tx=selected_tx,
                 selected_rx=selected_rx,
                 mpc_visibility=MpcVisibility(

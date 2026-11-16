@@ -6,11 +6,13 @@ import math
 import os
 import shutil
 import tempfile
+from collections import OrderedDict
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
-from typing import Any, Mapping, cast
+from typing import Any, Callable, Mapping, cast
 from uuid import UUID
 
 import yaml
@@ -44,14 +46,16 @@ from shared.scenarios.actors import (
     SpinOrientationSpec,
     StandaloneMobilitySpec,
     StationaryMobilitySpec,
+    TargetActorSpec,
     TargetAssetSpec,
 )
 from shared.scenarios.loader import ScenarioConfiguration, load_scenario_configuration
 from shared.scenarios.parsers import resolve_sionna_scene_xml
-from shared.scenarios.paths import find_project_root
+from shared.scenarios.paths import find_asset_project_root, resolve_actor_resource
 from shared.scenarios.yaml import validate_scenario_data
 
-from .assets import PreviewAssetCompiler, ScenePreviewAsset, TargetPreviewAsset
+from .assets import FileRevision, PreviewAssetCompiler, ScenePreviewAsset, TargetPreviewAsset
+from .dependencies import ScenarioDependencyCollector
 from .domain import (
     ActorRole,
     AuthoringActor,
@@ -227,8 +231,11 @@ class CompilationResult:
     runtime: CompiledRuntime | None = None
     resolved_scene_path: str | None = None
     scene_assets: tuple[ScenePreviewAsset, ...] = ()
-    target_assets: Mapping[UUID, tuple[TargetPreviewAsset, ...]] = field(default_factory=dict)
+    target_assets: Mapping[UUID, Sequence[TargetPreviewAsset]] = field(default_factory=dict)
     generation_issues: tuple[ValidationIssue, ...] = ()
+    recording: Any | None = None
+    pose_sources: Mapping[UUID, Any] = field(default_factory=dict)
+    fully_validated: bool = True
 
     @property
     def valid(self) -> bool:
@@ -458,10 +465,13 @@ def _resolve_authoring_mobility_resource(
         )
 
     candidate = Path(raw_path)
-    source = (
-        candidate.resolve() if candidate.is_absolute() else (scenario_root / candidate).resolve()
-    )
-    if not candidate.is_absolute() and not source.is_relative_to(scenario_root):
+    source = resolve_actor_resource(raw_path, scenario_root=scenario_root)
+    project_reference = raw_path.startswith(("${PROJECT_ROOT}", "libraries/"))
+    if (
+        not candidate.is_absolute()
+        and not project_reference
+        and not source.is_relative_to(scenario_root)
+    ):
         raise _MobilityResourceProblem(
             "mobility.resource.outside_scenario",
             f"Mobility resource resolves outside the scenario directory: {raw_path}",
@@ -520,10 +530,22 @@ def _actor_mapping(actor: AuthoringActor, scenario: AuthoringScenario) -> dict[s
         result.get("orientation"), orientation, _ORIENTATION_ADAPTER
     ):
         result["orientation"] = orientation
-    if actor.role is ActorRole.TARGET and actor.target is not None:
-        asset = actor.target.to_mapping()
-        if not _same_spec(result.get("asset"), asset, _TARGET_ASSET_ADAPTER):
-            result["asset"] = asset
+    if actor.role is ActorRole.TARGET:
+        if actor.representation != "mesh_material":
+            for key in ("asset", "representation", "geometry", "constant_rcs", "tr38901"):
+                result.pop(key, None)
+            result.update(actor.target_representation_mapping())
+        else:
+            for key in ("geometry", "constant_rcs", "tr38901"):
+                result.pop(key, None)
+            if "representation" in result:
+                result["representation"] = "mesh_material"
+            if actor.target is not None:
+                asset = actor.target.to_mapping()
+                if not _same_spec(result.get("asset"), asset, _TARGET_ASSET_ADAPTER):
+                    result["asset"] = asset
+            else:
+                result.pop("asset", None)
     return result
 
 
@@ -593,7 +615,14 @@ def merged_scenario_mapping(scenario: AuthoringScenario) -> dict[str, Any]:
         timeline_mapping = {}
         mapping["timeline"] = timeline_mapping
     timeline_mapping["steps"] = timeline.steps
-    timeline_mapping["duration_s"] = timeline.duration_s
+    if timeline.sample_rate_hz is None:
+        timeline_mapping.pop("sample_rate_hz", None)
+        timeline_mapping["duration_s"] = timeline.duration_s
+    else:
+        timeline_mapping["sample_rate_hz"] = timeline.sample_rate_hz
+        # Keep rate-based YAML editable by count/rate alone. A redundant
+        # duration would become stale when either authored value changes.
+        timeline_mapping.pop("duration_s", None)
 
     raytracing = mapping.get("raytracing")
     if not isinstance(raytracing, dict):
@@ -663,27 +692,45 @@ def canonical_yaml(mapping: Mapping[str, Any]) -> str:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class ScenePreviewResult:
+    """Environment evidence available before the expensive actor preparation."""
+
+    scenario: AuthoringScenario
+    scenario_directory: Path
+    scene_assets: tuple[ScenePreviewAsset, ...]
+
+
 class ScenarioCompiler:
     """Compile, validate, construct, and prepare one authoring scenario."""
 
     def __init__(self, project_root: Path | None = None) -> None:
-        start = Path(__file__).resolve().parent
         self.project_root = (
-            Path(project_root).resolve() if project_root is not None else find_project_root(start)
+            Path(project_root).resolve()
+            if project_root is not None
+            else find_asset_project_root(Path(__file__).resolve().parent)
         )
         self._preview_assets = PreviewAssetCompiler(self.project_root)
+        self._pose_cache: OrderedDict[tuple, tuple[Any, dict[UUID, ActorSamples]]] = OrderedDict()
+        self._animation_previews: OrderedDict[tuple, Any] = OrderedDict()
 
     def compile(
         self,
         scenario: AuthoringScenario | Any,
         *,
         scenario_directory: Path | None = None,
+        scene_ready: Callable[[ScenePreviewResult], None] | None = None,
+        progress: Callable[[str], None] | None = None,
+        preview_only: bool = False,
     ) -> CompilationResult:
         """Return canonical YAML and all available generator-backed evidence."""
         if not isinstance(scenario, AuthoringScenario) and hasattr(scenario, "scenario"):
             scenario = scenario.scenario
         if not isinstance(scenario, AuthoringScenario):
             raise TypeError("compile() requires an AuthoringScenario or ScenarioDocument")
+        self._prepared_animations: dict[str, Any] = {}
+        report = progress or (lambda _message: None)
+        report("Checking scenario settings and resources")
 
         root = (
             Path(scenario_directory).resolve()
@@ -691,66 +738,234 @@ class ScenarioCompiler:
             else self.project_root
         )
         mapping = canonical_scenario_mapping(scenario)
+        if not scenario.recorded_poses and scenario.dependencies:
+            scenario = ScenarioDependencyCollector(self.project_root).refresh_scene(
+                scenario, mapping.get("scene"), root
+            )
+        self._preview_assets.configure_appearance(mapping.get("view_defaults") or {}, root)
         yaml_text = canonical_yaml(mapping)
-        issues = self._domain_issues(scenario)
+        issues = (
+            self._schema_issues(mapping)
+            if scenario.recorded_poses
+            else self._domain_issues(scenario)
+        )
         issues.extend(self._dependency_issues(scenario))
-        issues.extend(self._asset_issues(scenario, root))
-        issues.extend(self._prepared_mobility_orientation_issues(scenario, root))
+        if not scenario.recorded_poses:
+            issues.extend(self._asset_issues(scenario, root))
+        if scenario.scene is not None and scenario.scene.source == "osm":
+            from generator.osm.metadata import validate_generated_scene
+
+            scene_path = self._resolve_scene_path(scenario.scene, root, scenario.dependencies)
+            assert scene_path is not None
+            osm_config = mapping.get("scene", {}).get("osm", {})
+            complete, reason = validate_generated_scene(scene_path.parent, osm_config)
+            if not complete:
+                issues.append(
+                    self._issue(
+                        "scene.osm.build_required",
+                        "scene.osm",
+                        f"Build this OpenStreetMap region explicitly before validation: {reason}",
+                    )
+                )
+        if not scenario.recorded_poses:
+            issues.extend(self._prepared_mobility_orientation_issues(scenario, root))
 
         resolved_scene_path: str | None = None
         scene_assets: tuple[ScenePreviewAsset, ...] = ()
+
+        def publish_geometry(assets: tuple[ScenePreviewAsset, ...]) -> None:
+            if scene_ready is not None:
+                scene_ready(ScenePreviewResult(scenario, root, assets))
+                report("Preparing procedural façades and road markings")
+
         if scenario.scene is not None and not any(
             issue.severity is IssueSeverity.ERROR and issue.path.startswith("scene")
             for issue in issues
         ):
+            report("Loading environment geometry from source or cache")
             (
                 resolved_scene_path,
                 scene_assets,
                 scene_preview_issues,
-            ) = self._compile_scene_preview_assets(scenario, root)
+            ) = self._compile_scene_preview_assets(
+                scenario,
+                root,
+                geometry_ready=(
+                    publish_geometry if preview_only and scene_ready is not None else None
+                ),
+            )
             issues.extend(scene_preview_issues)
+
+        if scene_ready is not None:
+            scene_ready(ScenePreviewResult(scenario, root, scene_assets))
+
+        if scenario.recorded_poses:
+            from .recording import RecordingPreview
+
+            recording = None
+            samples: dict[UUID, ActorSamples] = {}
+            target_assets: dict[UUID, Sequence[TargetPreviewAsset]] = {}
+            try:
+                recording = RecordingPreview(scenario, root, self._preview_assets)
+                for actor in scenario.actors:
+                    try:
+                        samples[actor.id] = recording.sample(actor, 0)
+                        if actor.role is ActorRole.TARGET:
+                            target_assets[actor.id] = recording.target_frames(actor)
+                    except (OSError, ValueError, KeyError) as exc:
+                        issues.append(
+                            self._issue("recording.actor.unavailable", "actors", str(exc), actor)
+                        )
+            except (OSError, ValueError) as exc:
+                issues.append(self._issue("recording.unavailable", "data.files", str(exc)))
+            return CompilationResult(
+                mapping=mapping,
+                yaml_text=yaml_text,
+                issues=tuple(issues),
+                samples=samples,
+                resolved_scene_path=resolved_scene_path,
+                scene_assets=scene_assets,
+                target_assets=target_assets,
+                recording=recording,
+                fully_validated=False,
+                generation_issues=(
+                    self._issue(
+                        "recording.read_only",
+                        "actors",
+                        "Use the acquisition inputs to generate a new recording.",
+                    ),
+                ),
+            )
 
         if not self._has_errors(issues):
             issues.extend(self._schema_issues(mapping))
 
         runtime: CompiledRuntime | None = None
-        samples: dict[UUID, ActorSamples] = {}
+        samples = {}
         group_samples: dict[UUID, GroupSamples] = {}
+        pose_sources: dict[UUID, Any] = {}
+        pose_scenario = scenario
+        if preview_only:
+            from .animated_preview import AnimatedPreview
+
+            referenced = {
+                _actor_reference_id(scenario, actor.orientation.actor)
+                for actor in scenario.actors
+                if isinstance(actor.orientation, LookAtOrientationSpec) and actor.orientation.actor
+            }
+            for actor in scenario.actors:
+                if (
+                    actor.target
+                    and actor.target.source == "animated_asset"
+                    and actor.id not in referenced
+                ):
+                    try:
+                        report(f"Authenticating animation source for {actor.name}")
+                        path = resolve_actor_resource(
+                            str(actor.target.path),
+                            scenario_root=root,
+                            project_root=self.project_root,
+                        )
+                        key = (
+                            actor.id,
+                            actor.target,
+                            scenario.timeline,
+                            FileRevision.capture(path),
+                        )
+                        cached = self._animation_previews.get(key)
+                        if cached is None or any(
+                            FileRevision.capture(p) != revision for p, revision in cached[1]
+                        ):
+                            source = AnimatedPreview(
+                                actor,
+                                scenario.timeline,
+                                root,
+                                self._preview_assets,
+                                progress=report,
+                            )
+                            revisions = tuple(
+                                (
+                                    path.parent / item.path,
+                                    FileRevision.capture(path.parent / item.path),
+                                )
+                                for item in source.asset.resources
+                            )
+                            cached = (source, revisions)
+                            self._animation_previews[key] = cached
+                            while len(self._animation_previews) > 4:
+                                self._animation_previews.popitem(last=False)
+                        self._animation_previews.move_to_end(key)
+                        pose_sources[actor.id] = cached[0]
+                    except (OSError, ValueError) as exc:
+                        issues.append(
+                            self._issue(
+                                "target.animation.unavailable",
+                                "actors",
+                                f"{actor.name}: {exc}",
+                                actor,
+                            )
+                        )
+            pose_scenario = replace(
+                scenario, actors=tuple(a for a in scenario.actors if a.id not in pose_sources)
+            )
         if not self._has_errors(issues):
             try:
-                runtime, samples, group_samples = self._construct_and_prepare(
-                    scenario,
-                    yaml_text,
-                    root,
+                animation_names = [
+                    actor.name
+                    for actor in scenario.actors
+                    if actor.target and actor.target.source == "animated_asset"
+                ]
+                detail = f" · Animation: {', '.join(animation_names)}" if animation_names else ""
+                report(
+                    f"Preparing actor paths and animation · {len(scenario.actors)} actors"
+                    f" · {scenario.timeline.steps:,} samples{detail}"
                 )
+                if preview_only:
+                    samples = self._prepare_partial_samples(pose_scenario, issues, root)
+                    group_samples = self._prepare_partial_group_samples(scenario, issues, root)
+                else:
+                    runtime, samples, group_samples = self._construct_and_prepare(
+                        scenario, yaml_text, root
+                    )
             # Runtime construction is a validation boundary whose adapters may
             # raise unrelated exception types. Convert ordinary failures into a
             # structured problem so the Problems drawer remains authoritative.
             except Exception as exc:
                 issues.append(self._runtime_issue(scenario, exc))
+                # A runtime failure must not erase independent valid actor paths.
+                samples = self._prepare_partial_samples(pose_scenario, issues, root)
+                group_samples = self._prepare_partial_group_samples(scenario, issues, root)
         else:
-            samples = self._prepare_partial_samples(scenario, issues, root)
+            samples = self._prepare_partial_samples(pose_scenario, issues, root)
             group_samples = self._prepare_partial_group_samples(
                 scenario,
                 issues,
                 root,
             )
 
-        if runtime is not None and samples:
+        if not preview_only and not self._has_errors(issues) and samples:
             issues.extend(self._prepared_orientation_issues(scenario, samples))
 
-        target_assets: dict[UUID, tuple[TargetPreviewAsset, ...]] = {}
+        samples.update({actor_id: source.sample(0) for actor_id, source in pose_sources.items()})
+        target_assets = {}
         if samples:
+            report("Preparing actor preview meshes")
             # Partial samples keep valid targets visible while unrelated
             # document errors continue to block save and generation.
             target_assets, target_preview_issues = self._compile_target_preview_assets(
-                scenario,
+                pose_scenario,
                 root,
                 samples,
                 report_missing_samples=runtime is not None,
             )
             issues.extend(target_preview_issues)
+        target_assets.update(
+            {actor_id: source.target_frames() for actor_id, source in pose_sources.items()}
+        )
 
+        # Mesh payloads now own the preview geometry; release the much larger
+        # time-binding evidence until the next explicit preparation.
+        self._prepared_animations.clear()
         return CompilationResult(
             mapping=mapping,
             yaml_text=yaml_text,
@@ -762,6 +977,80 @@ class ScenarioCompiler:
             scene_assets=scene_assets,
             target_assets=target_assets,
             generation_issues=tuple(self._generation_issues(mapping)),
+            pose_sources=pose_sources,
+            fully_validated=not preview_only,
+        )
+
+    def prepare_actor_preview(
+        self,
+        scenario: AuthoringScenario,
+        subject_id: UUID,
+        *,
+        scenario_directory: Path,
+    ) -> CompilationResult:
+        """Prepare one edit's reference component without scene or RT construction.
+
+        Group members and look-at references form dependency edges. Independent
+        actors never enter this preparation, including expensive animated assets.
+        Full validation remains a separate save/generation boundary.
+        """
+        root = Path(scenario_directory)
+        ids = {subject_id}
+        groups = {subject_id} if scenario.group(subject_id) is not None else set()
+        while True:
+            previous = (set(ids), set(groups))
+            for actor in scenario.actors:
+                if isinstance(actor.mobility, GroupMemberMobilitySpec):
+                    group = _group_reference(scenario, actor.mobility.group)
+                    if group is not None and (actor.id in ids or group.id in groups):
+                        groups.add(group.id)
+                        ids.add(actor.id)
+                if isinstance(actor.orientation, LookAtOrientationSpec) and actor.orientation.actor:
+                    target_id = _actor_reference_id(scenario, actor.orientation.actor)
+                    if actor.id in ids or target_id in ids:
+                        ids.add(actor.id)
+                        if target_id is not None:
+                            ids.add(target_id)
+            if previous == (ids, groups):
+                break
+        component = replace(
+            scenario,
+            actors=tuple(actor for actor in scenario.actors if actor.id in ids),
+            groups=tuple(group for group in scenario.groups if group.id in groups),
+            scene=None,
+        )
+        mapping = canonical_scenario_mapping(component)
+        self._prepared_animations = {}
+        self._preview_assets.configure_appearance(mapping.get("view_defaults") or {}, root)
+        issues = [
+            issue
+            for issue in self._domain_issues(component)
+            if issue.actor_id is not None
+            or issue.group_id is not None
+            or issue.path.startswith("timeline")
+        ]
+        issues.extend(self._asset_issues(component, root))
+        samples: dict[UUID, ActorSamples] = {}
+        group_samples = {}
+        if not self._has_errors(issues):
+            try:
+                prepared, samples = self._construct_actors_and_prepare(component, mapping, root)
+                group_samples = self._group_samples_from_prepared(component, prepared)
+                issues.extend(self._prepared_orientation_issues(component, samples))
+            except Exception as exc:  # canonical preparation boundary
+                issues.append(self._runtime_issue(component, exc))
+        assets, asset_issues = self._compile_target_preview_assets(
+            component, root, samples, report_missing_samples=False
+        )
+        issues.extend(asset_issues)
+        return CompilationResult(
+            mapping=mapping,
+            yaml_text=canonical_yaml(mapping),
+            issues=tuple(issues),
+            samples=samples,
+            group_samples=group_samples,
+            target_assets=assets,
+            fully_validated=False,
         )
 
     def validate(
@@ -772,6 +1061,12 @@ class ScenarioCompiler:
     ) -> tuple[ValidationIssue, ...]:
         """Validate through the same complete compile path used for saving."""
         return self.compile(scenario, scenario_directory=scenario_directory).issues
+
+    def close(self) -> None:
+        """Release background mesh loaders when this compiler's owner closes."""
+        self._preview_assets.target_cache.close()
+        self._pose_cache.clear()
+        self._animation_previews.clear()
 
     @staticmethod
     def group_offsets(
@@ -923,7 +1218,17 @@ class ScenarioCompiler:
             issues.append(
                 self._issue("actors.tx.required", "actors.tx", "At least one TX is required.")
             )
-        if role_counts[ActorRole.RX] == 0:
+        source_mapping = scenario.source_snapshot.to_mapping()
+        coverage = source_mapping.get("coverage")
+        tracing = source_mapping.get("raytracing")
+        coverage_only = (
+            isinstance(coverage, Mapping)
+            and bool(coverage.get("enabled"))
+            and isinstance(tracing, Mapping)
+            and tracing.get("enabled") is False
+        )
+        # Radio-map cells are virtual receivers; coverage-only runs need no RX actor.
+        if role_counts[ActorRole.RX] == 0 and not coverage_only:
             issues.append(
                 self._issue("actors.rx.required", "actors.rx", "At least one RX is required.")
             )
@@ -1090,7 +1395,7 @@ class ScenarioCompiler:
             return [
                 self._issue(
                     "orientation.keyframes.after_timeline",
-                    (f"{base}.orientation.keyframes." f"{len(orientation.keyframes) - 1}.time_s"),
+                    (f"{base}.orientation.keyframes.{len(orientation.keyframes) - 1}.time_s"),
                     "Orientation keyframes must not exceed the timeline duration.",
                     actor,
                 )
@@ -1187,6 +1492,18 @@ class ScenarioCompiler:
         return issues
 
     def _target_issues(self, actor: AuthoringActor, base: str) -> list[ValidationIssue]:
+        if actor.representation != "mesh_material":
+            try:
+                TargetActorSpec.model_validate(
+                    {
+                        "name": actor.name,
+                        "mobility": {"type": "stationary", "position_m": [0, 0, 0]},
+                        **actor.target_representation_mapping(),
+                    }
+                )
+            except ValueError as exc:
+                return [self._issue("target.representation.invalid", base, str(exc), actor)]
+            return []
         target = actor.target
         if target is None:
             return [
@@ -1410,7 +1727,9 @@ class ScenarioCompiler:
                     self._issue(
                         "target.asset.empty",
                         f"{base}.asset.id",
-                        f"No target meshes match {target.mesh_pattern!r}.",
+                        f"Actor {actor.name!r}: no meshes match {target.mesh_pattern!r}; "
+                        f"authored path {target.path or target.mesh_directory!r}; resolved to "
+                        f"{resolve_actor_resource(target.path or target.mesh_directory, scenario_root=scenario_root, project_root=self.project_root)}.",
                         actor,
                     )
                 )
@@ -1596,8 +1915,12 @@ class ScenarioCompiler:
         yaml_text: str,
         scenario_root: Path,
     ) -> str:
-        """Return merged YAML; relative inputs are copied into validation root."""
+        """Resolve completed OSM assets locally for validation without acquisition."""
 
+        if scenario.scene is not None and scenario.scene.source == "osm":
+            mapping = yaml.safe_load(yaml_text)
+            mapping["scene"] = {"source": "local", "id": "scene.xml"}
+            return canonical_yaml(mapping)
         return yaml_text
 
     def _resolve_scene_path(
@@ -1620,7 +1943,9 @@ class ScenarioCompiler:
                 )
                 if dependency is not None:
                     return dependency.source_path
-            return (scenario_root / scene.id).resolve()
+            return resolve_actor_resource(
+                scene.id, scenario_root=scenario_root, project_root=self.project_root
+            )
         if scene.source == "library":
             return (self.project_root / "libraries" / "scenes" / scene.id).resolve()
         if scene.source == "sionna":
@@ -1647,10 +1972,25 @@ class ScenarioCompiler:
         dependencies: tuple[ScenarioDependency, ...] = (),
     ) -> tuple[Path, ...]:
         """Return generator-equivalent deterministic mesh playback order."""
+        if actor.representation != "mesh_material":
+            if actor.geometry is None or actor.geometry.type == "box":
+                return ()
+            path = Path(actor.geometry.path)
+            for native_dependency in dependencies:
+                if (
+                    native_dependency.relative_path == str(path)
+                    and native_dependency.source_path.is_file()
+                ):
+                    return (native_dependency.source_path.resolve(),)
+            return (
+                resolve_actor_resource(
+                    path, scenario_root=scenario_root, project_root=self.project_root
+                ),
+            )
         target = actor.target
         if target is None:
             return ()
-        if target.source == "file":
+        if target.source in {"file", "animated_asset"}:
             candidate = Path(str(target.path or target.asset_id))
             if not candidate.is_absolute():
                 normalized = str(PurePosixPath(str(candidate).replace("\\", "/")))
@@ -1659,16 +1999,15 @@ class ScenarioCompiler:
                         item
                         for item in dependencies
                         if item.relative_path == normalized
-                        and item.kind in {"target_file", "target_directory_file"}
+                        and item.kind
+                        in {"target_file", "target_directory_file", "target_animated_asset"}
                     ),
                     None,
                 )
                 if dependency is not None:
                     return (dependency.source_path,) if dependency.source_path.is_file() else ()
-            path = (
-                candidate.resolve()
-                if candidate.is_absolute()
-                else (scenario_root / candidate).resolve()
+            path = resolve_actor_resource(
+                str(candidate), scenario_root=scenario_root, project_root=self.project_root
             )
             return (path,) if path.is_file() else ()
         normalized = target.mesh_directory.replace("\\", "/")
@@ -1684,10 +2023,9 @@ class ScenarioCompiler:
         if dependency_matches:
             matches = tuple(sorted(dependency_matches, key=str))
             return matches[target.start_index :: target.frame_stride]
-        if normalized.startswith("libraries/"):
-            directory = (self.project_root / PurePosixPath(normalized)).resolve()
-        else:
-            directory = (scenario_root / target.mesh_directory).resolve()
+        directory = resolve_actor_resource(
+            target.mesh_directory, scenario_root=scenario_root, project_root=self.project_root
+        )
         matches = tuple(
             sorted(
                 (path.resolve() for path in directory.glob(target.mesh_pattern) if path.is_file()),
@@ -1702,6 +2040,8 @@ class ScenarioCompiler:
         self,
         scenario: AuthoringScenario,
         scenario_root: Path,
+        *,
+        geometry_ready: Callable[[tuple[ScenePreviewAsset, ...]], None] | None = None,
     ) -> tuple[
         str | None,
         tuple[ScenePreviewAsset, ...],
@@ -1723,7 +2063,18 @@ class ScenarioCompiler:
                 if scene_path is None:
                     raise FileNotFoundError(scene.id)
                 resolved_scene_path = str(scene_path)
-                scene_assets = self._preview_assets.build_scene_assets(scene, scene_path)
+                defaults = merged_scenario_mapping(scenario).get("view_defaults") or {}
+                options: dict[str, Any] = (
+                    {"geometry_ready": geometry_ready} if geometry_ready is not None else {}
+                )
+                if defaults.get("authored_surface_textures", True):
+                    scene_assets = self._preview_assets.build_scene_assets(
+                        scene, scene_path, **options
+                    )
+                else:
+                    scene_assets = self._preview_assets.build_scene_assets(
+                        scene, scene_path, authored_surface_textures=False, **options
+                    )
             except Exception as exc:
                 resolved_scene_path = None
                 issues.append(
@@ -1733,6 +2084,35 @@ class ScenarioCompiler:
                         f"Scene preview asset loading failed: {exc}",
                     )
                 )
+        if scene is not None:
+            marker = (
+                scenario.source_snapshot.to_mapping()
+                .get("visualizer", {})
+                .get("scenario_builder", {})
+            )
+            reference = marker.get("map_reference")
+            if reference:
+                from .map_overlay import load_map_reference
+
+                path = next(
+                    (
+                        item.source_path
+                        for item in scenario.dependencies
+                        if item.kind == "builder_map" and item.relative_path == reference
+                    ),
+                    scenario_root / reference,
+                )
+                try:
+                    scene_assets += (load_map_reference(path, scene),)
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    issues.append(
+                        self._issue(
+                            "scene.map_reference.unavailable",
+                            "visualizer.scenario_builder.map_reference",
+                            f"Saved map reference is unavailable: {exc}",
+                            severity=IssueSeverity.WARNING,
+                        )
+                    )
         return resolved_scene_path, scene_assets, issues
 
     def _compile_target_preview_assets(
@@ -1743,12 +2123,12 @@ class ScenarioCompiler:
         *,
         report_missing_samples: bool,
     ) -> tuple[
-        dict[UUID, tuple[TargetPreviewAsset, ...]],
+        dict[UUID, Sequence[TargetPreviewAsset]],
         list[ValidationIssue],
     ]:
         """Compile target frames after generator samples are authoritative."""
         issues: list[ValidationIssue] = []
-        target_assets: dict[UUID, tuple[TargetPreviewAsset, ...]] = {}
+        target_assets: dict[UUID, Sequence[TargetPreviewAsset]] = {}
 
         paths = self._actor_paths(scenario)
         for actor in scenario.actors:
@@ -1769,6 +2149,16 @@ class ScenarioCompiler:
                 )
                 continue
             try:
+                if actor.target is not None and actor.target.source == "animated_asset":
+                    animation = self._prepared_animations.get(actor.name)
+                    if animation is None:
+                        raise ValueError(
+                            "Animated asset could not be bound to the scenario timeline"
+                        )
+                    target_assets[actor.id] = self._preview_assets.build_animated_target_assets(
+                        actor, animation
+                    )
+                    continue
                 mesh_paths = self._target_mesh_paths(
                     actor,
                     scenario_root,
@@ -1998,7 +2388,7 @@ class ScenarioCompiler:
         yaml_text: str,
         scenario_root: Path,
     ) -> tuple[
-        CompiledRuntime,
+        CompiledRuntime | None,
         dict[UUID, ActorSamples],
         dict[UUID, GroupSamples],
     ]:
@@ -2006,7 +2396,7 @@ class ScenarioCompiler:
             validation_yaml: Path,
             loader_scenario_path: Path,
         ) -> tuple[
-            CompiledRuntime,
+            CompiledRuntime | None,
             dict[UUID, ActorSamples],
             dict[UUID, GroupSamples],
         ]:
@@ -2017,6 +2407,23 @@ class ScenarioCompiler:
             )
             simulation_config = load_simulation_config(scenario_config)
             simulation_config.validate()
+            if any(
+                actor.target and actor.target.source == "animated_asset"
+                for actor in scenario.actors
+            ):
+                # Preview binds source geometry in memory. Constructing RT target
+                # adapters would write thousands of derived PLYs merely on Open.
+                prepared = prepare_scenario(
+                    scenario_config,
+                    base_dir=Path(scenario_config.root),
+                    asset_alignments=target_asset_alignments(scenario_config),
+                    _animated_assets=self._prepared_animations,
+                )
+                return (
+                    None,
+                    self._samples_from_prepared(scenario, prepared),
+                    self._group_samples_from_prepared(scenario, prepared),
+                )
             actor_runtime = prepare_actor_runtime(scenario_config)
             samples = self._samples_from_prepared(scenario, actor_runtime.prepared)
             group_samples = self._group_samples_from_prepared(
@@ -2033,13 +2440,14 @@ class ScenarioCompiler:
             )
             return runtime, samples, group_samples
 
-        scene = scenario.scene
-        needs_staging = (
-            bool(any(not dependency.external for dependency in scenario.dependencies))
-            or bool(self._mobility_resource_paths(scenario))
-            or bool(
-                scene is not None and scene.source == "local" and not Path(scene.id).is_absolute()
-            )
+        needs_staging = any(
+            not dependency.external
+            and dependency.source_path.resolve()
+            != (scenario_root / dependency.relative_path).resolve()
+            for dependency in scenario.dependencies
+        ) or any(
+            resource.source_path.resolve() != (scenario_root / resource.relative_path).resolve()
+            for resource in scenario.resources
         )
         validation_parent = scenario_root if scenario_root.is_dir() else self.project_root
         if needs_staging:
@@ -2073,7 +2481,9 @@ class ScenarioCompiler:
         validation_yaml = Path(validation_name)
         os.close(descriptor)
         try:
-            validation_yaml.write_text(yaml_text, encoding="utf-8")
+            validation_yaml.write_text(
+                self._validation_yaml_text(scenario, yaml_text, scenario_root), encoding="utf-8"
+            )
             loader_scenario_path = (
                 scenario_root if scenario_root.is_dir() else scenario_root / "scenario.yaml"
             )
@@ -2089,6 +2499,27 @@ class ScenarioCompiler:
     ) -> tuple[Any, dict[UUID, ActorSamples]]:
         """Prepare actor poses and associate them with document-local UUIDs."""
 
+        revisions = []
+        subjects: tuple[AuthoringActor | AuthoringGroup, ...] = (*scenario.actors, *scenario.groups)
+        for subject in subjects:
+            resolved = _resolve_authoring_mobility_resource(
+                subject.mobility,
+                scenario_root=scenario_root,
+                resources=scenario.resources,
+                dependencies=scenario.dependencies,
+            )
+            if resolved is not None:
+                revisions.append(FileRevision.capture(resolved[2]))
+        key = (
+            str(scenario_root),
+            canonical_yaml(mapping),
+            tuple(revisions),
+            tuple(actor.id for actor in scenario.actors),
+        )
+        cached = self._pose_cache.get(key)
+        if cached is not None:
+            self._pose_cache.move_to_end(key)
+            return cached
         scenario_model = validate_scenario_data(mapping)
         preview_configuration = SimpleNamespace(
             actors=scenario_model.actors,
@@ -2099,8 +2530,16 @@ class ScenarioCompiler:
             scenario_model,
             base_dir=scenario_root,
             asset_alignments=target_asset_alignments(preview_configuration),
+            _animated_assets=self._prepared_animations,
         )
-        return prepared, self._samples_from_prepared(scenario, prepared)
+        result = prepared, self._samples_from_prepared(scenario, prepared)
+        if not any(
+            actor.target and actor.target.source == "animated_asset" for actor in scenario.actors
+        ):
+            self._pose_cache[key] = result
+            while len(self._pose_cache) > 128:
+                self._pose_cache.popitem(last=False)
+        return result
 
     @staticmethod
     def _samples_from_prepared(

@@ -17,25 +17,45 @@ advances.
 See [Scenario Authoring](../generator/scenario_authoring.md#start-with-yaml) for
 actor examples.
 
+### Analytical Doppler
+
+In analytical Doppler (`coherent_cpi`), one ray-tracing solve supplies the paths
+for a coherent processing interval. ORCHAV holds the geometry fixed and evolves
+path phase using bulk motion over the pulses. See [Mode Selection](../sensing/concepts.md#acquisition-modes-and-timing).
+
 ### Consumer
 
 A consumer is a program that reads [frames](#frame) to display, inspect, or
-analyze their contents. The [Visualizer](#visualizer), `orchav-inspect`, and
-Python analysis code are consumers.
+analyze their contents. The [Visualizer](#visualizer), `orchav-inspect`,
+and Python analysis code are consumers.
+
+The [sensing postprocessor](../sensing/reprocessing.md#run-processing) also consumes saved frames.
 
 See [Producer, Shared Data Layer, And Consumer
 Roles](../shared/README.md#producer-shared-data-layer-and-consumer-roles) for
 the complete flow.
+
+### Constant-RCS Target
+
+A constant-RCS target uses Sionna RT's native RCS module to model the target
+return with a single scattering point assigned a fixed radar cross section
+(in square meters), independent of incident and scattered directions. Its
+geometry is an absorbing proxy for blockage, not the source of the scattered
+return.
+
+See [Target representations](../sensing/target_models.md) for configuration
+and comparison with mesh-based targets.
 
 ### Coverage Map
 
 A coverage map shows how a radio quantity, such as [path loss](#path-loss),
 varies across a grid of locations at one or more heights. It answers questions
 about an area, while the [propagation paths](#propagation-path-mpc) in a
-[frame](#frame) describe routes between particular
+[frame](#frame) describe paths between particular
 [transmitters](#transmitter-tx) and [receivers](#receiver-rx).
 
-See [Coverage Maps](../concepts/propagation.md#coverage-maps) for the workflow.
+See [Coverage Maps](propagation.md#coverage-maps) for how area
+estimates relate to individual propagation paths.
 
 ### Data Mode
 
@@ -53,8 +73,21 @@ Delay is the time a radio signal takes to travel along one
 [propagation path](#propagation-path-mpc). ORCHAV records it in nanoseconds. A
 larger value means that path arrives later.
 
-See [Path Metrics](../concepts/propagation.md#path-metrics) for the other stored
+See [Path Metrics](propagation.md#path-metrics) for the other stored
 measurements.
+
+### Delay-Bin Accumulation
+
+For `point_bin_floor`, ORCHAV assigns each path to a delay bin by rounding its
+sample delay down, then adds the complex gains of paths in the same bin.
+See [range-response models](../sensing/concepts.md#range-response-models).
+
+### Frequency-Domain Channel Synthesis
+
+For `cfr_ifft`, ORCHAV builds the channel frequency response (CFR) from the
+paths' complex gains and continuous delays. It weights the frequency samples
+and applies an inverse fast Fourier transform (IFFT) to obtain delay samples.
+See [range-response models](../sensing/concepts.md#range-response-models).
 
 ### Frame
 
@@ -63,6 +96,11 @@ A frame is one snapshot of a [scenario](#scenario) at one step on its
 the [propagation paths](#propagation-path-mpc), if any, found between the
 [transmitters](#transmitter-tx) and [receivers](#receiver-rx). A scenario can
 produce one frame or a sequence of frames.
+
+With sensing enabled, a saved
+frame can also contain channel observations and selected sensing products
+such as range profiles, detections, or tracks. A product may summarize
+observations from several timeline steps.
 
 See the [Frame Contract](../shared/frame_reference.md#frame-contract) for the
 stored fields.
@@ -121,12 +159,15 @@ The ORCHAV Generator reads a [scenario](#scenario), prepares every
 [coverage maps](#coverage-map), or [summary figures](#summary-figure). It is
 ORCHAV's primary [frame producer](#producer).
 
+When sensing is enabled, it
+samples the channel and writes selected observations and products into local frames.
+
 See the [Generator guide](../generator/README.md) for its workflows.
 
 ### gRPC
 
 gRPC is the network communication used by Live Generator and Remote HDF5
-Playback. ORCHAV encodes a [frame](#frame) as a Protocol Buffers message, sends
+Playback. ORCHAV encodes a propagation [frame](#frame) as a Protocol Buffers message, sends
 it between running processes, and reconstructs the same frame for a
 [consumer](#consumer). gRPC carries data. It is not a ray tracer or a fourth
 [data mode](#data-mode).
@@ -151,7 +192,7 @@ meets or bends around [scene](#scene) geometry. For example, it may reflect off
 a wall or bend around an edge. ORCHAV also calls an interaction a *bounce*. A
 direct line-of-sight path has no bounces.
 
-See [Interaction Types](../concepts/propagation.md#interaction-types) for the
+See [Interaction Types](propagation.md#interaction-types) for the
 supported meanings.
 
 ### Material
@@ -162,8 +203,22 @@ These radio properties help determine the
 [propagation paths](#propagation-path-mpc) that [ray tracing](#ray-tracing)
 finds. A surface's visual color or texture is a separate rendering choice.
 
-See [Materials](../concepts/propagation.md#materials) for configuration and
-interpretation.
+See [Materials](propagation.md#materials) for their role in propagation
+and [Material Overrides](../generator/configuration.md#material-overrides) for
+configuration.
+
+<a id="meshmaterial-sensing"></a>
+
+### Mesh-Based Sensing
+
+In mesh-based sensing, the surfaces of a target model act as scattering surfaces. Sionna RT
+computes the target return from interactions with explicit mesh surfaces and
+their radio materials. The result depends on geometry, pose, visibility,
+materials, and enabled propagation mechanisms rather than a prescribed target
+RCS. This workflow does not require Sionna RT's native RCS module.
+
+Compare [constant-RCS](#constant-rcs-target) and [TR 38.901](#tr-38901-sensing-target)
+models in [Native RCS Targets](../sensing/target_models.md).
 
 ### Path Loss
 
@@ -171,7 +226,7 @@ Path loss describes how much a radio signal is weakened along one
 [propagation path](#propagation-path-mpc). It is measured in decibels (dB). A
 larger path-loss value generally means a weaker received contribution.
 
-See [Path Metrics](../concepts/propagation.md#path-metrics) for related values.
+See [Path Metrics](propagation.md#path-metrics) for related values.
 
 ### Path Metric
 
@@ -180,7 +235,7 @@ A path metric is a measured or derived value for one
 [path loss](#path-loss), or arrival and departure angles. Metrics help compare
 paths. They do not change the path geometry.
 
-See [Path Metrics](../concepts/propagation.md#path-metrics) for the values
+See [Path Metrics](propagation.md#path-metrics) for the values
 available in generated frames.
 
 ### Producer
@@ -199,22 +254,22 @@ the complete flow.
 A propagation path is one route that radio energy can take from one
 [transmitter](#transmitter-tx) to one [receiver](#receiver-rx) during a
 [frame](#frame). It can travel directly or include one or more
-[interactions](#interaction-bounce) with the surroundings. Several routes can
+[interactions](#interaction-bounce) with the surroundings. Several paths can
 exist for the same transmitter-receiver pair, which is why a path is also
 called a *multipath component* (MPC).
 
-See [Multipath Components](../concepts/propagation.md#multipath-components) for
+See [Multipath Components](propagation.md#multipath-components) for
 the stored path information.
 
 ### Ray Tracing
 
-Ray tracing calculates routes that radio energy can follow through a
+Ray tracing calculates paths that radio energy can follow through a
 [scene](#scene). ORCHAV prepares the [scenario](#scenario), asks Sionna RT to
 compute the [propagation paths](#propagation-path-mpc), and converts the results
 into [frames](#frame). ORCHAV orchestrates Sionna RT. It does not replace the
 ray tracer.
 
-See [Ray Tracing](../concepts/propagation.md#ray-tracing) for its role in an
+See [Ray Tracing](propagation.md#ray-tracing) for its role in an
 ORCHAV run.
 
 ### Receiver (RX)
@@ -266,12 +321,18 @@ The Shared Data Layer connects a [producer](#producer) to its
 [consumers](#consumer). It defines the [frame contract](#frame-contract), saves
 [frame sets](#frame-set), and provides [frame providers](#frame-provider) that
 retrieve frames through each supported delivery route. When a live or remote
-connection is used, it carries those frames over
+connection is used, it carries propagation frames over
 [gRPC](#grpc). This lets the [Visualizer](#visualizer), terminal inspection,
 and Python analysis use the same generated data.
 
 See the [Shared Data Layer guide](../shared/README.md) for the frame flow and
 data-mode choices.
+
+### Simulated Doppler
+
+In simulated Doppler (`sequential_stft`), each pulse uses a new ray-tracing solve
+with the geometry at that instant. ORCHAV estimates Doppler from the resulting
+sequence of complex channel samples. See [Mode Selection](../sensing/concepts.md#acquisition-modes-and-timing).
 
 ### Summary Figure
 
@@ -286,12 +347,13 @@ available figures.
 
 ### Target
 
-A target is an [actor](#actor) represented by a three-dimensional mesh, such as
-a vehicle or person. It can stay still or move, and its geometry and
-[material](#material) can affect
-[propagation paths](#propagation-path-mpc). Unlike a
+A target is an [actor](#actor) such as a vehicle or person. It can stay still
+or move. Mesh targets affect [propagation paths](#propagation-path-mpc) through
+their geometry and [material](#material). Unlike a
 [transmitter](#transmitter-tx) or [receiver](#receiver-rx), a target is not a
 radio endpoint.
+
+Native sensing targets use an [RCS model](../sensing/target_models.md) for their return.
 
 See [Add A Target](../generator/scenario_authoring.md#add-a-target) for an
 example.
@@ -317,17 +379,215 @@ received-strength calculations.
 
 See [Actors And Groups](scenario_yaml.md#actors-and-groups) for its YAML fields.
 
+### TR 38.901 Sensing Target
+
+A 3GPP TR 38.901 sensing target uses Sionna RT's native RCS model specified
+in clause 7.9.2 of the 3GPP report. Human, vehicle, and UAV presets use one
+or more scattering points, with model-dependent angular responses and optional
+statistical and polarization behavior. Any mesh serves as a blockage proxy.
+The prescribed scattering model supplies the target return.
+
+Unlike a [constant-RCS target](#constant-rcs-target), this representation
+uses standardized target-type-specific response models rather than a single
+fixed-RCS scattering point.
+
+See [Native RCS Targets](../sensing/target_models.md) for the
+supported presets and configuration.
+
 ### Visualizer
 
 The ORCHAV Visualizer is the primary interactive [frame consumer](#consumer)
 that combines a [scene](#scene) with generated [frames](#frame). It lets users inspect
 [actors](#actor), [propagation paths](#propagation-path-mpc),
-[path metrics](#path-metric), [coverage maps](#coverage-map), and motion
-without rerunning the [Generator](#generator) for ordinary saved playback. A
+[path metrics](#path-metric), [coverage maps](#coverage-map), and motion. A
 [renderer](#renderer) draws the 3D view.
+
+For local sensing runs it also displays saved radar products, detections, and tracks.
 
 See [Your First Visualizer Session](../visualizer/first_session.md) for the
 short interface tour.
+
+<a id="sensing-glossary"></a>
+
+## Sensing terms
+
+These terms describe acquisition, processing and the resulting observations.
+The [sensing concepts](../sensing/concepts.md) connect them in processing order.
+
+### Acquisition
+
+Acquisition is the process of generating simulated complex channel observations
+and their timestamps from the configured scene and motion. The acquisition mode
+chooses whether one solved geometry supplies a whole coherent interval or each
+sample receives an independent solve. See [acquisition modes](../sensing/concepts.md#acquisition-modes-and-timing).
+
+### Analysis window
+
+An analysis window is the set of consecutive samples processed together into
+one spectrum. Its length controls the time/frequency tradeoff, while the number
+of samples advanced between windows controls update cadence. See
+[Doppler processing](../sensing/concepts.md#doppler-and-velocity).
+
+### Bandwidth
+
+Bandwidth is the frequency span used to construct the simulated channel
+response. It sets the physical delay-resolution scale in CFR/IFFT processing.
+See [finite-bandwidth range models](../sensing/concepts.md#range-response-models).
+
+### CFR
+
+The channel frequency response (CFR) gives the complex channel gain at sampled
+frequencies. ORCHAV synthesizes it from the ray-traced MPC gains and delays.
+Its IFFT supplies a finite-bandwidth delay response. See
+[range-response models](../sensing/concepts.md#range-response-models).
+
+### CIR
+
+The channel impulse response (CIR) describes how received signal contributions
+are distributed over propagation delay. With ORCHAV's `cfr_ifft` model, an IFFT of
+the frequency-windowed CFR produces a **sampled, band-limited CIR** (also called
+a delay response). Its range-bin shape depends on bandwidth and weighting.
+This is not a full transmitted-waveform receiver. See
+[range-response models](../sensing/concepts.md#range-response-models).
+
+### CFAR
+
+Constant false alarm rate (CFAR) detection compares a cell's power with a
+threshold derived from neighboring background cells. See
+[detection decisions](../sensing/detection_and_tracking.md#what-each-stage-decides).
+
+### Clutter suppression
+
+Clutter suppression reduces components that a configured processing model treats
+as unwanted background, such as contributions constant over slow time. Mean
+removal can also attenuate stationary targets and slow motion. See
+[clutter operators](../sensing/concepts.md).
+The [static-clutter experiment](../../scenarios/sensing/foundations/static_and_moving_cubes/README.md)
+compares processing of one stationary and one moving reflector.
+
+### CPI
+
+A coherent processing interval (CPI) is a block of complex samples processed
+together while retaining their relative phase. In ORCHAV's `coherent_cpi` mode,
+one solved geometry supplies that block and motion produces analytical phase
+progression. See [coherent acquisition](../sensing/concepts.md#acquisition-modes-and-timing).
+
+### Detection
+
+A detection is a reported observation selected by the configured thresholding,
+peak selection, grouping and filtering steps. See
+[detection stages](../sensing/detection_and_tracking.md#detection).
+
+### Doppler
+
+Doppler frequency describes phase change over slow time and is used to estimate
+path closing rate. ORCHAV's monostatic velocity convention is positive for
+approach. See [Doppler and velocity](../sensing/concepts.md#doppler-and-velocity).
+
+### FFT
+
+A fast Fourier transform (FFT) computes the discrete frequency spectrum of
+uniformly sampled data. ORCHAV applies a Doppler FFT across complex slow-time
+samples. See [spectral processing](../sensing/concepts.md#doppler-and-velocity).
+
+### Ground truth
+
+Ground truth is the known scene state or a reference observable derived from
+that state, used to evaluate an estimate. Production detection and tracking use
+simulated observations rather than target truth. See
+[evaluation](../sensing/evaluation.md).
+
+### Hann window
+
+A Hann window smoothly weights samples before a transform to reduce sidelobes,
+while broadening the main response. Frequency-domain Hann weighting shapes the
+range response, and slow-time Hann weighting shapes the Doppler response. See
+[windowing tradeoffs](../sensing/concepts.md#range-response-models).
+Try the [range-windowing experiment](../../scenarios/sensing/foundations/windowing/README.md)
+to compare the two frequency windows on the same moving-cube recording.
+
+### IFFT
+
+An inverse fast Fourier transform (IFFT) converts uniformly spaced frequency
+samples into a sampled delay response. Increasing its length through zero-padding
+samples that response more densely without adding bandwidth. See
+[range-response settings](../sensing/concepts.md#range-response-models).
+
+### Monostatic
+
+Monostatic sensing uses a collocated transmitter and receiver. Its range
+convention is half the total propagation path length. See
+[range interpretation](../sensing/concepts.md#range-and-range-profiles).
+
+### Micro-Doppler
+
+Micro-Doppler describes Doppler modulation from motion within a target, such as
+limb articulation, in addition to its bulk motion. A time–Doppler plot alone
+does not identify the moving body part. Interpretation depends on the simulated
+geometry, pose cadence and acquisition model. See the
+[motion-resolution discussion](../sensing/concepts.md#motion-and-phase-consistency).
+
+### Range bin
+
+A range bin is one discrete sample position on a saved range axis. Bin spacing
+is different from localization accuracy or the ability to resolve two nearby
+returns. See [range sampling](../sensing/concepts.md#range-response-models).
+
+### Range-Doppler map
+
+A range-Doppler map organizes the result of slow-time spectral processing by
+range and Doppler frequency, often displaying power with a velocity axis. One
+return can span several cells. See [range-Doppler products](../sensing/concepts.md#power-clutter-and-detections).
+
+### Range profile
+
+The saved range profile is the power of the last valid acquisition sample's
+delay response, using the declared receive-element combination and before
+slow-time mean removal or windowing. It is not a sum over Doppler bins. See
+[saved products](../sensing/concepts.md).
+
+### SISO
+
+Single-input single-output (SISO) sensing uses one transmit element and one
+receive element. This configuration provides no receive-array angular estimate.
+See [supported topologies](../sensing/concepts.md#acquisition-modes-and-timing).
+
+### Sensor fusion
+
+Sensor fusion combines observations from different sensor views in a common
+coordinate frame and time reference. ORCHAV's synchronized monostatic workflow
+uses independent range, angle and closing-velocity observations to estimate
+world-coordinate tracks. See [multi-sensor fusion](../sensing/detection_and_tracking.md#multi-sensor-fusion)
+and the [drone experiment](../../scenarios/sensing/applications/drone_tracking/README.md).
+
+### Slow time
+
+Slow time indexes successive complex channel samples, often called pulses in
+the sensing configuration. Doppler processing follows phase evolution along
+this axis, separately from the delay/range axis. See
+[channel and Doppler samples](../sensing/concepts.md#doppler-and-velocity).
+
+### Specular reflection
+
+Specular reflection is a mirror-like surface interaction. The incident ray,
+reflected ray and local surface normal lie in one plane, and the incidence and
+reflection angles to that normal are equal. See
+[propagation interactions](propagation.md#interaction-types).
+
+### STFT
+
+A short-time Fourier transform (STFT) applies a Fourier transform to successive
+analysis windows to show how a spectrum changes over time. Overlapping windows
+share samples, so a shorter hop gives more frequent outputs without improving
+the unchanged window's Doppler resolution. See
+[acquisition timing](../sensing/concepts.md#result-timing).
+
+### Tracking
+
+Tracking associates detections over time and estimates their evolving states
+under a chosen motion model. Track confirmation requires repeated support, and
+track IDs are assigned independently of scene target names. See
+[association and confirmation](../sensing/detection_and_tracking.md#association-and-confirmation).
 
 ---
 

@@ -11,19 +11,10 @@ normal frame-set output path as manifest-driven HDF5. This is useful for:
 - **Reproducing** timing measurements with deterministic random data
 - **Developing** new Visualizer features against controllable frame sizes
 
-## Quick Start
-
-```bash
-# Default: 10 frames, 10k MPCs each
-python scenarios/visualizer/synthetic_mpc_benchmark/generate.py
-
-# Open in the Visualizer
-orchav-visualizer --scenario tmp/orchav_bench_10k
-```
-
-The script creates a self-contained scratch scenario with `scenario.yaml` and
-HDF5 frames. The repository ignores `tmp/`, so this workflow leaves the
-checked-in scenario template unchanged.
+Generate and inspect a workload with the
+[Synthetic MPC Benchmark](../../scenarios/visualizer/synthetic_mpc_benchmark/README.md).
+That walkthrough owns the runnable sequence. The options below let you adapt
+its workload without changing the frame contract.
 
 ## Configuration
 
@@ -40,25 +31,6 @@ All parameters are set via command-line flags:
 | `--compression` | `lzf` | HDF5 compression (`gzip`, `lzf`, or `none`) |
 | `--chunk-size` | 50 | Maximum frames requested per HDF5 chunk |
 | `--max-interactions`, `--max-order` | 2 | Maximum synthetic interaction points per MPC |
-
-### Examples
-
-```bash
-# 100 frames, 100k MPCs — preload and animation testing
-python scenarios/visualizer/synthetic_mpc_benchmark/generate.py \
-  --frames 100 --mpcs 100000 --max-interactions 2 \
-  --output tmp/orchav_bench_100k
-
-# 10 frames, 1M MPCs — higher-order stress test
-python scenarios/visualizer/synthetic_mpc_benchmark/generate.py \
-  --mpcs 1000000 --max-interactions 5 \
-  --output tmp/orchav_bench_1m
-
-# Custom output directory (self-contained scenario)
-python scenarios/visualizer/synthetic_mpc_benchmark/generate.py \
-  --mpcs 50000 --output tmp/orchav_bench_50k
-orchav-visualizer --scenario tmp/orchav_bench_50k
-```
 
 ## What Gets Generated
 
@@ -113,12 +85,6 @@ reciprocals of measured durations, not observed display FPS. Use
 `--benchmark-previsit-all-frames` when you want a steady-state warm-cache
 measurement over every available frame.
 
-## Generation Cost
-
-The script uses vectorized NumPy operations without per-path Python loops.
-Runtime and frame-set size depend on the requested interaction count,
-compression, storage device, and machine, so measure the intended workload
-locally.
 
 ---
 

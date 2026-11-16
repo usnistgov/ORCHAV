@@ -29,6 +29,9 @@ class _FakeSignal:
 def test_shortcut_registry_sequences_are_qt_parseable() -> None:
     """Every documented shortcut should map to a non-empty Qt key sequence."""
     assert {spec.identifier for spec in SHORTCUTS} == {
+        "open_scenario",
+        "find_control",
+        "help",
         "play_pause",
         "previous_frame",
         "next_frame",
@@ -86,7 +89,7 @@ def test_context_hud_switch_only_toggles_when_requested_state_differs() -> None:
 def test_help_dialog_rows_come_from_shortcut_registry(qapp) -> None:
     """The help dialog should render the same rows as the runtime registry."""
     dialog = HelpDialog()
-    table = dialog.findChild(QTableWidget)
+    table = dialog.findChild(QTableWidget, "applicationShortcuts")
 
     assert table is not None
     assert table.rowCount() == len(SHORTCUTS)

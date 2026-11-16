@@ -21,6 +21,7 @@ Use this page according to the task at hand:
 | Render local HDF5 frames in Jupyter | [Notebook Visualization](../visualizer/notebooks.md) |
 | Understand the in-memory frame fields | [Frame Contract](#frame-contract) |
 | Import solved paths from external software | [External Ray-Tracer Import](#external-ray-tracer-import) |
+| Find optional sensing observations, radar products, detections, or tracks | [Sensing Payloads](#sensing-payloads) |
 | Inspect the persisted HDF5 representation | [HDF5 Frame Layout](#hdf5-frame-layout) |
 
 <a id="mpc-frame-boundary-map"></a>
@@ -55,20 +56,22 @@ flowchart TB
     HDF5 -->|"local read"| LocalProvider["Frame provider: Hdf5Provider (local files)"]
     LocalProvider --> LocalConsumers["Frame consumers: Visualizer / orchav-inspect / Python analysis"]
 
-    HDF5 -->|"remote_hdf5: serve stored frames"| FileService["Remote HDF5 server (FrameFileService)"]
+    HDF5 -->|"remote_hdf5: propagation only"| FileService["Remote HDF5 server (FrameFileService)"]
     FileService -->|"Transport: protobuf over gRPC"| RemoteProvider["Frame provider: RemoteHdf5Provider (gRPC client)"]
     RemoteProvider --> RemoteVisualizer["Frame consumer: Visualizer (remote playback)"]
 
-    Frame -->|"live_grpc: running Generator only"| LiveService["Live Generator service (GeneratorService)"]
+    Frame -->|"live_grpc: propagation only"| LiveService["Live Generator service (GeneratorService)"]
     LiveService -->|"Transport: protobuf over gRPC"| LiveProvider["Frame provider: GrpcProvider (live client)"]
     LiveProvider --> LiveVisualizer["Frame consumer: Visualizer (live session)"]
 ```
 
 `StandardMPCFrame` names the in-memory data contract. HDF5 stores that frame.
-Protobuf encodes it for transport over gRPC. They are representations of the
-same ORCHAV frame, not additional frame contracts. Sionna RT scene, path, and
+Protobuf encodes propagation frames for transport over gRPC. Sionna RT scene, path, and
 CIR objects stay inside the Generator, so downstream tools do not depend on
 backend-specific objects.
+
+A local provider can also pass a saved [sensing payload](#sensing-payloads)
+to the postprocessor, which writes its results in a separate frame set.
 
 The HDF5 branch splits because the same stored frame set supports two access
 paths. `Hdf5Provider` opens it directly for local use. For remote playback,
@@ -78,15 +81,12 @@ does not open the server's HDF5 files itself.
 
 <a id="frame-flow-vocabulary"></a>
 
-### Frame-flow Vocabulary
+### Frame-flow vocabulary
 
-| Term | Meaning in ORCHAV |
-|------|-------------------|
-| **Frame producer** | Code that creates a `StandardMPCFrame`. The ORCHAV Generator is the primary producer. An external adapter or synthetic frame generator can be an alternative producer. |
-| **Frame contract** | The source-independent structure of one ORCHAV frame, represented by `StandardMPCFrame`. |
-| **Delivery route** | The user-visible path selected by `data.mode`: local HDF5, Live Generator, or remote HDF5. |
-| **Frame provider** | The software interface that retrieves frames from one delivery route for a consumer. The included implementations are `Hdf5Provider`, `GrpcProvider`, and `RemoteHdf5Provider`. |
-| **Frame consumer** | A tool that uses frames, such as the Visualizer, `orchav-inspect`, or a Python analysis script. A consumer need not support every provider. For example, `orchav-inspect` reads HDF5 frame sets. |
+The [glossary](../reference/glossary.md) defines producers, providers and
+consumers. The diagram above gives their concrete implementations. Each consumer
+supports specific providers. For example, `orchav-inspect` reads local HDF5
+frame sets.
 
 <a id="complete-frames-and-selective-reads"></a>
 
@@ -114,8 +114,8 @@ store or send.
 `Hdf5Provider` can satisfy a selected-field request by reading only the needed
 HDF5 datasets. `GrpcProvider` and `RemoteHdf5Provider` receive and decode a
 `StandardMPCFrame` first, then form the selected-field view in memory. Selective
-reads therefore reduce HDF5 I/O and consumer memory when applicable, but they
-do not reduce network transfer in ORCHAV 0.1.
+local reads can reduce HDF5 I/O. For gRPC, the full propagation frame crosses
+the network before the client selects fields.
 
 ## Frame Contract
 
@@ -130,7 +130,7 @@ arrays, not by omitted attributes.
 
 | Field | Shape | Unit | Meaning |
 |-------|-------|------|---------|
-| `version` | scalar | compatibility identifier | Frame-contract version. ORCHAV 0.1 accepts `2`. |
+| `version` | scalar | compatibility identifier | Frame-contract version. ORCHAV accepts `2`. |
 | `frame_index` | scalar | index | Non-negative frame ID. |
 | `recomputed_from_stored_positions` | scalar | boolean | Whether actor state was reconstructed from stored positions. |
 | `tx_rx_pairs` | `(Q, 2)` `int32` | index | Ordered TX/RX pair mapping. |
@@ -191,6 +191,22 @@ Use `orchav-inspect` for a terminal summary of generated HDF5 frames:
 orchav-inspect scenarios/getting_started/hello_world --frame 0
 ```
 
+### Interaction Codes
+
+The `interactions` array stores one positive code per physical bounce:
+
+| Code | Mechanism |
+|---:|---|
+| `1` | Specular reflection |
+| `2` | Diffuse scattering |
+| `4` | Refraction |
+| `8` | Diffraction |
+
+A direct line-of-sight path has equal adjacent `bounce_offsets` and no stored
+bounce. The Visualizer derives code `0` for its line-of-sight classification.
+See [Interaction Types](../reference/propagation.md#interaction-types) for how
+these mechanisms relate to paths through a scene.
+
 ## HDF5 Frame Layout
 
 Generation in the `files` data mode writes packed HDF5 chunks under `frames/` plus one
@@ -204,6 +220,7 @@ carries packed payload version `1`. ORCHAV writes and checks these values
 automatically. [Versions and Compatibility](../reference/compatibility.md) explains how
 they relate to the separate scenario, in-memory frame, coverage, and gRPC
 identifiers.
+
 
 ```text
 frames/
@@ -249,6 +266,35 @@ previous complete `frames/` directory remains available.
 
 Use [Frame Inspection](frame_inspection.md) to list available frames or
 inspect a generated chunk without writing custom HDF5-reading code.
+
+## Sensing Payloads
+
+Sensing payloads use a separate optional extension schema. Current
+sensing-aware code requires sensing schema `4`, including explicit sample
+times, source lineage, stable `pair_id`/`tx_sensor_id`/`rx_sensor_id`, and an
+explicit result/display binding for detection-bearing payloads. This does not
+change HDF5 schema `2`. Local HDF5 readers support the extension and selective
+product loading. The current protobuf codec rejects sensing-bearing frames;
+neither live Generator nor remote HDF5 gRPC is a sensing transport. Older sensing
+payloads must be regenerated before use by a sensing-aware consumer. See
+[Recording profiles](../sensing/reprocessing.md#choose-a-profile) for what is
+saved and which processing stages can restart from it.
+
+Each retained product describes its kind, variant, representation, units, axes
+and coordinate references. Consumers select the declared product contract;
+array shape or file order does not establish physical coordinates or antenna
+identity. Storage frame IDs identify HDF5 locations, while the sensing temporal
+record identifies acquisition samples, the result reference time and the scene
+binding. See [acquisition and result times](../sensing/concepts.md#result-timing).
+
+Power products, complex observations and intermediate decisions have different
+retention requirements. `raw_payload_policy` chooses complex/raw retention;
+`persist_detection_stage_artifacts` independently saves detector stages.
+Neither a figure nor final detections can reconstruct discarded phase or earlier
+stages. The [retention table](../sensing/reprocessing.md#what-can-be-changed-afterwards)
+explains what each processing task needs. The advanced [live-CIR interchange API](../../shared/sensing/interchange.py)
+describes a separate complex-data export contract for external processors.
+It requires live channel samples and an adapter, rather than ordinary propagation frames.
 
 ## Generator Outputs
 

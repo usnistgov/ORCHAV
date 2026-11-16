@@ -89,7 +89,7 @@ sys.meta_path = [
 ]
 
 
-def pytest_ignore_collect(collection_path, config: pytest.Config) -> bool:
+def pytest_ignore_collect(collection_path, config: pytest.Config) -> bool | None:
     """Keep broad health runs free of module-level optional-runtime skips."""
     path = pathlib.Path(str(collection_path)).resolve()
     optional_files = {p.resolve() for p in OPTIONAL_MODULE_LEVEL_SKIP_FILES}
@@ -99,7 +99,8 @@ def pytest_ignore_collect(collection_path, config: pytest.Config) -> bool:
         and not _is_explicit_file_request(config, path)
     ):
         return True
-    return False
+    # Let pytest and other plugins apply --ignore and their own collection rules.
+    return None
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

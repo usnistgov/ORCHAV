@@ -159,11 +159,11 @@ def test_target_runtime_uses_prepared_orientation_after_asset_alignment() -> Non
     )
     runtime = prepare_actor_runtime(scenario)
     pedestrian = next(target for target in runtime.targets if target.name == "Pedestrian")
-    assert pedestrian.mesh_directory == "libraries/targets/nist_human_walking"
-    assert pedestrian.mesh_end_behavior == "loop"
+    assert pedestrian.mesh_directory == "libraries/targets/digital_twin_update1"
+    assert pedestrian.mesh_end_behavior == "hold_last"
     assert (
         pedestrian.resolved_mesh_directory
-        == (PROJECT_ROOT / "libraries" / "targets" / "nist_human_walking").resolve()
+        == (PROJECT_ROOT / "libraries" / "targets" / "digital_twin_update1").resolve()
     )
     managers = [SimpleNamespace(config=target, meshes=[]) for target in runtime.targets]
     manager = ActorStateManager(

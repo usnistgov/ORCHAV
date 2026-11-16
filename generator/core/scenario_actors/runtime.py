@@ -8,17 +8,24 @@ the live-scene services.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
 
 from generator.core.target import TargetConfig
 from generator.core.target.metadata import load_target_asset_metadata
+from generator.core.target.representation import NativeTargetConfig
+from shared.scenarios.actors import NativeMeshGeometrySpec, TargetActorSpec
 from shared.scenarios.paths import resolve_actor_resource
 
 from ._adapters import value
 from .preparation import prepare_scenario
 from .quaternion import Quaternion
 from .types import PreparedActorPose, PreparedMobility, PreparedOrientation, PreparedScenario
+
+if TYPE_CHECKING:
+    from .animated_asset import PreparedAnimatedAsset
 
 _MESH_SUFFIXES = frozenset({".obj", ".ply", ".stl", ".glb", ".gltf"})
 
@@ -129,10 +136,14 @@ class ActorRuntimeSet:
     prepared: PreparedScenario
     transmitters: tuple[RadioActorRuntime, ...]
     receivers: tuple[RadioActorRuntime, ...]
-    targets: tuple[TargetConfig, ...]
+    targets: tuple[TargetConfig | NativeTargetConfig, ...]
 
 
-def prepare_actor_runtime(scenario_configuration: object) -> ActorRuntimeSet:
+def prepare_actor_runtime(
+    scenario_configuration: object,
+    *,
+    on_progress: Callable[[str, int, int], None] | None = None,
+) -> ActorRuntimeSet:
     """Prepare a validated scenario once and build Sionna scene adapters.
 
     Target asset front-axis metadata is composed in quaternion space before
@@ -143,10 +154,14 @@ def prepare_actor_runtime(scenario_configuration: object) -> ActorRuntimeSet:
 
     alignments = target_asset_alignments(scenario_configuration)
     root = Path(value(scenario_configuration, "root", default=Path.cwd()))
+    # Scoped to this preparation: later runs must reauthenticate source files.
+    animations: dict[str, PreparedAnimatedAsset] = {}
     prepared = prepare_scenario(
         scenario_configuration,
         base_dir=root,
         asset_alignments=alignments,
+        _animated_assets=animations,
+        on_progress=on_progress,
     )
     actors = value(scenario_configuration, "actors")
     specs_by_name = {
@@ -181,6 +196,8 @@ def prepare_actor_runtime(scenario_configuration: object) -> ActorRuntimeSet:
             actor,
             specs_by_name[actor.name],
             scenario_configuration=scenario_configuration,
+            animation=animations.get(actor.name),
+            on_progress=on_progress,
         )
         for actor in prepared.actors_for_role("target")
     )
@@ -213,13 +230,31 @@ def _target_runtime(
     spec: object,
     *,
     scenario_configuration: object,
-) -> TargetConfig:
+    animation: PreparedAnimatedAsset | None = None,
+    on_progress: Callable[[str, int, int], None] | None = None,
+) -> TargetConfig | NativeTargetConfig:
+    if str(value(spec, "representation", default="mesh_material")) != "mesh_material":
+        return _native_target_runtime(actor, spec, scenario_configuration=scenario_configuration)
     asset = value(spec, "asset")
-    mesh_directory, resolved_mesh_directory, mesh_pattern = _target_mesh_location(
-        asset,
-        scenario_configuration=scenario_configuration,
-        target_name=actor.name,
-    )
+    if str(value(asset, "source")) == "animated_asset":
+        from .animated_asset import materialize_animated_meshes
+
+        if animation is None:
+            raise ValueError("animated runtime requires its prepared animation binding")
+        root = Path(value(scenario_configuration, "root", default=Path.cwd())).resolve()
+        resolved_mesh_directory = materialize_animated_meshes(
+            animation, root, on_progress=on_progress
+        )
+        mesh_directory = resolved_mesh_directory.relative_to(root).as_posix()
+        mesh_pattern = "sample_*.ply"
+    else:
+        mesh_directory, resolved_mesh_directory, mesh_pattern = _target_mesh_location(
+            asset,
+            scenario_configuration=scenario_configuration,
+            target_name=actor.name,
+        )
+    # The animated lane is already resolved at exact physical timeline times.
+    # Ordinary mesh sequences retain their existing start/stride/cadence rules.
     timeline = value(scenario_configuration, "timeline")
     mobility = PreparedMobilityAdapter(
         actor.mobility,
@@ -240,12 +275,60 @@ def _target_runtime(
         scale=float(value(asset, "scale", default=1.0)),
         orientation=orientation,
         material_type=str(value(asset, "material_type", default="glass")),
-        switch_meshes=bool(value(asset, "switch_meshes", default=False)),
+        switch_meshes=animation is not None or bool(value(asset, "switch_meshes", default=False)),
         use_ply_position=False,
         mesh_start_index=int(value(asset, "start_index", default=0)),
         mesh_frame_stride=int(value(asset, "frame_stride", default=1)),
         mesh_end_behavior=str(value(asset, "mesh_end_behavior", default="loop")),
         _initial_position=actor.positions_m[0],
+        animated_asset=animation,
+        asset_front_yaw_offset_deg=0.0 if animation is not None else None,
+    )
+
+
+def _native_target_runtime(
+    actor: PreparedActorPose,
+    spec: object,
+    *,
+    scenario_configuration: object,
+) -> NativeTargetConfig:
+    """Bind native geometry to the same canonical rigid-body pose timeline."""
+    native_spec = (
+        spec
+        if isinstance(spec, TargetActorSpec)
+        else TargetActorSpec.model_validate(spec, from_attributes=True)
+    )
+    if native_spec.representation == "mesh_material":
+        raise ValueError("native runtime requires a native target representation")
+    timeline = value(scenario_configuration, "timeline")
+    steps, duration_s = int(value(timeline, "steps")), float(value(timeline, "duration_s"))
+    geometry = native_spec.geometry
+    if geometry is None:
+        raise ValueError(f"native target {actor.name!r} requires geometry")
+    resolved_mesh_path = None
+    if isinstance(geometry, NativeMeshGeometrySpec):
+        root = Path(value(scenario_configuration, "root", default=Path.cwd())).resolve()
+        resolved_mesh_path = resolve_actor_resource(
+            geometry.path,
+            scenario_root=root,
+            project_root=Path(value(scenario_configuration, "project_root", default=root)),
+        )
+        if not resolved_mesh_path.is_file():
+            raise ValueError(
+                f"native target {actor.name!r} geometry.path={geometry.path!r} "
+                f"resolved to missing file {resolved_mesh_path}"
+            )
+    return NativeTargetConfig(
+        name=actor.name,
+        representation=native_spec.representation,
+        geometry=geometry,
+        constant_rcs=native_spec.constant_rcs,
+        tr38901=native_spec.tr38901,
+        resolved_mesh_path=resolved_mesh_path,
+        mobility=PreparedMobilityAdapter(actor.mobility, steps, duration_s),
+        orientation=PreparedOrientationAdapter(actor.orientation, steps, duration_s),
+        _initial_position=actor.positions_m[0],
+        _initial_velocity=actor.mobility.velocities_mps[0],
     )
 
 
@@ -259,7 +342,11 @@ def target_asset_alignments(
         return {}
     alignments: dict[str, Quaternion] = {}
     for actor in tuple(value(actors, "targets", default=()) or ()):
+        if str(value(actor, "representation", default="mesh_material")) != "mesh_material":
+            continue
         asset = value(actor, "asset")
+        if str(value(asset, "source")) == "animated_asset":
+            continue
         asset_directory = _target_asset_directory(
             asset,
             scenario_configuration=scenario_configuration,

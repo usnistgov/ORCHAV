@@ -263,15 +263,6 @@ def _frame_summary_data(frame: StandardMPCFrame) -> dict[str, Any]:
     return summary
 
 
-def _dataset_shape(value: Any) -> list[int] | None:
-    if value is None:
-        return None
-    arr = np.asarray(value)
-    if arr.size == 0:
-        return None
-    return [int(dim) for dim in arr.shape]
-
-
 def _finite_float(value: Any) -> float | None:
     if value is None:
         return None
@@ -285,42 +276,83 @@ def _finite_float(value: Any) -> float | None:
 
 
 def _sensing_summary_data(sensing: Any) -> dict[str, Any]:
-    """Return display-oriented metadata for an optional frame extension block."""
+    """Return an exact schema-v4 product and target summary.
+
+    The inspector reports producer-authored descriptors and semantic target
+    identities. It never selects products from array keys, shapes, or legacy
+    truth aliases. Multiple descriptors with the same kind/variant remain
+    visible as distinct entries instead of being guessed into one primary.
+    """
     if not isinstance(sensing, dict) or not sensing:
         return {}
 
-    config = sensing.get("config_resolved") or sensing.get("config") or {}
-    processing_mode = str(config.get("processing_mode") or "unknown")
-    if processing_mode == "unknown":
-        strategy = str(sensing.get("processing_strategy", ""))
-        if strategy == "coherent_cpi_fft":
-            processing_mode = "coherent_cpi"
-        elif strategy == "sequential_stft":
-            processing_mode = "sequential_stft"
-        elif strategy == "snapshot_direct_rd":
-            processing_mode = "snapshot_direct_rd"
-    detections = sensing.get("detections") or []
-    gt = sensing.get("gt_sensing") or sensing.get("gt") or sensing.get("gt_state") or {}
-    target_ranges = gt.get("target_ranges") if isinstance(gt, dict) else None
+    from shared.extensions.sensing import assert_sensing_contract
+
+    try:
+        assert_sensing_contract(
+            {"sensing": sensing},
+            require_schema_version=True,
+        )
+    except ValueError as exc:
+        raise FrameInspectionError(f"Invalid sensing extension: {exc}") from exc
+
+    raw_products = sensing["products"]
+    products: list[dict[str, Any]] = []
+    for data_key in sorted(raw_products):
+        descriptor = raw_products[data_key]
+        products.append(
+            {
+                "kind": descriptor["kind"],
+                "variant": descriptor["variant"],
+                "data_key": descriptor["data_key"],
+                "product_id": descriptor["product_id"],
+                "shape": list(descriptor["shape"]),
+                "axes": [dict(axis) for axis in descriptor["axes"]],
+                "representation": descriptor["representation"],
+                "unit": descriptor["unit"],
+            }
+        )
+
+    catalog = sensing.get("target_catalog")
+    state = sensing.get("target_state")
+    truth = sensing.get("truth")
+
+    def target_section(value: Any, *, include_valid: bool = False) -> dict[str, Any]:
+        rows = value.get("targets", []) if isinstance(value, dict) else []
+        section: dict[str, Any] = {
+            "count": len(rows),
+            "ids": [row["target_id"] for row in rows],
+        }
+        if include_valid:
+            section["valid_ids"] = [row["target_id"] for row in rows if row.get("valid") is True]
+        return section
+
+    targets = {
+        "catalog": target_section(catalog),
+        "state": target_section(state, include_valid=True),
+        "truth": target_section(truth),
+    }
+    if isinstance(catalog, dict):
+        targets["catalog"]["catalog_revision"] = catalog["catalog_revision"]
+
+    config = sensing.get("config_resolved")
+    config = config if isinstance(config, dict) else {}
+    detections = sensing.get("detections")
 
     summary: dict[str, Any] = {
-        "processing_mode": processing_mode,
-        "frame_role": str(sensing.get("frame_role", "unknown")),
-        "range_doppler_shape": _dataset_shape(sensing.get("range_doppler_map")),
-        "range_profile_shape": _dataset_shape(sensing.get("range_profile")),
-        "raw_range_doppler_shape": _dataset_shape(sensing.get("range_doppler_map_raw")),
-        "aoa_azimuth_shape": _dataset_shape(sensing.get("range_doppler_aoa_az_map")),
-        "aoa_elevation_shape": _dataset_shape(sensing.get("range_doppler_aoa_el_map")),
-        "azimuth_cube_shape": _dataset_shape(sensing.get("range_doppler_azimuth_cube")),
-        "azimuth_axis_shape": _dataset_shape(sensing.get("azimuth_axis_deg")),
-        "elevation_axis_shape": _dataset_shape(sensing.get("elevation_axis_deg")),
+        "schema_version": sensing["schema_version"],
+        "product_contract_version": sensing["product_contract_version"],
+        "products": products,
+        "targets": targets,
+        "processing_mode": config.get("processing_mode"),
+        "processing_strategy": sensing.get("processing_strategy"),
+        "frame_role": sensing.get("frame_role"),
         "detection_count": len(detections) if isinstance(detections, list) else 0,
-        "gt_target_count": len(target_ranges) if isinstance(target_ranges, list) else 0,
         "range_resolution_m": _finite_float(config.get("range_resolution_m")),
         "velocity_resolution_m_s": _finite_float(config.get("velocity_resolution_m_s")),
         "prf_hz": _finite_float(config.get("prf_hz")),
     }
-    return {key: value for key, value in summary.items() if value not in (None, [])}
+    return {key: value for key, value in summary.items() if value is not None}
 
 
 def _json_default(value: Any) -> Any:
@@ -563,7 +595,7 @@ def inspect_frames(
         provider.close()
 
 
-def _format_text(result: dict[str, Any]) -> str:
+def _format_text(result: dict[str, Any], *, verbose: bool = False) -> str:
     lines = [
         f"Source: {result['source']}",
         f"Frames directory: {result['frames_dir']}",
@@ -596,7 +628,7 @@ def _format_text(result: dict[str, Any]) -> str:
     if material_lines:
         lines.extend(["", *material_lines])
 
-    sensing_lines = _format_sensing_lines(result.get("summary", {}).get("sensing"))
+    sensing_lines = _format_sensing_lines(result.get("summary", {}).get("sensing"), verbose=verbose)
     if sensing_lines:
         lines.extend(["", *sensing_lines])
 
@@ -664,7 +696,70 @@ def _format_optional_float(value: Any, suffix: str = "") -> str:
         return "unknown"
 
 
-def _format_sensing_lines(sensing: Any) -> list[str]:
+_SENSING_PRODUCT_LABELS = {
+    "baseband_frequency_observation": "Frequency observations",
+    "delay_domain_cir": "Channel impulse response",
+    "delay_domain_slow_time": "Slow-time observations",
+    "range_profile": "Range profile",
+    "range_doppler": "Range–Doppler",
+    "range_doppler_angle": "Angular spectrum",
+}
+_DETECTOR_DIAGNOSTIC_KINDS = frozenset(
+    f"range_doppler_{suffix}"
+    for suffix in (
+        "detection_input_power",
+        "cfar_noise_power",
+        "cfar_threshold_power",
+        "cfar_training_cell_count",
+        "cfar_eligible_mask",
+        "cfar_mask",
+        "nms_mask",
+        "snr_db",
+        "snr_valid_mask",
+        "cluster_labels",
+    )
+)
+
+
+def _format_sensing_products(products: list[dict[str, Any]]) -> list[str]:
+    """Summarize declared products without inferring meaning from storage keys."""
+    axis_labels = {
+        "pair": ("pair", "pairs"),
+        "rx_element": ("RX element", "RX elements"),
+        "slow_time": ("sample", "samples"),
+        "frequency": ("frequency", "frequencies"),
+        "range": ("range bin", "range bins"),
+        "doppler_frequency": ("Doppler bin", "Doppler bins"),
+        "azimuth": ("azimuth bin", "azimuth bins"),
+        "elevation": ("elevation bin", "elevation bins"),
+    }
+    lines = []
+    diagnostics = 0
+    for product in products:
+        kind, variant = product["kind"], product["variant"]
+        if kind in _DETECTOR_DIAGNOSTIC_KINDS:
+            diagnostics += 1
+            continue
+        label = _SENSING_PRODUCT_LABELS.get(kind, kind.replace("_", " ").capitalize())
+        if variant != "primary":
+            label += f" ({variant})"
+        # Retain distinct products when kind and variant alone are ambiguous.
+        if sum(p["kind"] == kind and p["variant"] == variant for p in products) > 1:
+            label += f" [{product['data_key']}]"
+        dimensions = []
+        for size, axis in zip(product["shape"], product["axes"]):
+            name = axis["name"].replace("_", " ")
+            singular, plural = axis_labels.get(axis["name"], (name, name))
+            dimensions.append(f"{size} {singular if size == 1 else plural}")
+        lines.append(f"  {label}: {' × '.join(dimensions) or 'scalar'}")
+    if diagnostics:
+        lines.append(f"  Detector diagnostics: {diagnostics} saved arrays")
+    if not products:
+        lines.append("  Products: none")
+    return lines
+
+
+def _format_sensing_lines(sensing: Any, *, verbose: bool = False) -> list[str]:
     if not isinstance(sensing, dict) or not sensing:
         return []
 
@@ -672,43 +767,54 @@ def _format_sensing_lines(sensing: Any) -> list[str]:
     mode = sensing.get("processing_mode", "unknown")
     role = sensing.get("frame_role", "unknown")
     lines.append(f"  Mode: {mode} ({role})")
-    lines.append(
-        "  Products: "
-        f"RD {_format_shape(sensing.get('range_doppler_shape'))}, "
-        f"range profile {_format_shape(sensing.get('range_profile_shape'))}"
-    )
-    raw_shape = sensing.get("raw_range_doppler_shape")
-    if raw_shape:
-        lines.append(f"  Raw RD: {_format_shape(raw_shape)}")
-    angular_parts = []
-    az_cube_shape = sensing.get("azimuth_cube_shape")
-    if az_cube_shape:
-        angular_parts.append(f"azimuth cube {_format_shape(az_cube_shape)}")
-    aoa_az_shape = sensing.get("aoa_azimuth_shape")
-    if aoa_az_shape:
-        angular_parts.append(f"AoA az map {_format_shape(aoa_az_shape)}")
-    aoa_el_shape = sensing.get("aoa_elevation_shape")
-    if aoa_el_shape:
-        angular_parts.append(f"AoA el map {_format_shape(aoa_el_shape)}")
-    az_axis_shape = sensing.get("azimuth_axis_shape")
-    if az_axis_shape:
-        angular_parts.append(f"az axis {_format_shape(az_axis_shape)}")
-    el_axis_shape = sensing.get("elevation_axis_shape")
-    if el_axis_shape:
-        angular_parts.append(f"el axis {_format_shape(el_axis_shape)}")
-    if angular_parts:
-        lines.append("  Angular: " + ", ".join(angular_parts))
-    lines.append(
-        "  Detections: "
-        f"{int(sensing.get('detection_count', 0))} "
-        f"(GT targets: {int(sensing.get('gt_target_count', 0))})"
-    )
-    lines.append(
-        "  Resolution: "
-        f"range {_format_optional_float(sensing.get('range_resolution_m'), ' m')}, "
-        f"velocity {_format_optional_float(sensing.get('velocity_resolution_m_s'), ' m/s')}, "
-        f"PRF {_format_optional_float(sensing.get('prf_hz'), ' Hz')}"
-    )
+    strategy = sensing.get("processing_strategy")
+    if verbose and strategy:
+        lines.append(f"  Strategy: {strategy}")
+
+    products = sensing.get("products", [])
+    if verbose:
+        lines.append(f"  Products: {len(products)} typed descriptor(s)")
+        for product in products:
+            axes = ",".join(str(axis["name"]) for axis in product["axes"])
+            lines.append(
+                f"    {product['kind']}/{product['variant']}: "
+                f"key={product['data_key']}, id={product['product_id']}, "
+                f"shape={_format_shape(product['shape'])}, axes={axes}, "
+                f"representation={product['representation']}, unit={product['unit']}"
+            )
+    else:
+        lines.extend(_format_sensing_products(products))
+
+    target_summary = sensing.get("targets", {})
+    if verbose:
+        for label in ("catalog", "state", "truth"):
+            section = target_summary.get(label, {})
+            target_ids = section.get("ids", [])
+            rendered_ids = ", ".join(str(target_id) for target_id in target_ids) or "none"
+            lines.append(f"  Target {label}: {int(section.get('count', 0))} ({rendered_ids})")
+    else:
+        counts = {
+            label: int(target_summary.get(label, {}).get("count", 0))
+            for label in ("catalog", "state", "truth")
+        }
+        if len(set(counts.values())) == 1:
+            lines.append(f"  Targets: {counts['catalog']}")
+        else:
+            lines.append("  Targets: " + ", ".join(f"{n} {label}" for label, n in counts.items()))
+
+    lines.append(f"  Detections: {int(sensing.get('detection_count', 0))}")
+    if any(
+        sensing.get(key) is not None
+        for key in ("range_resolution_m", "velocity_resolution_m_s", "prf_hz")
+    ):
+        lines.append(
+            "  Resolution: "
+            f"range {_format_optional_float(sensing.get('range_resolution_m'), ' m')}, "
+            f"velocity {_format_optional_float(sensing.get('velocity_resolution_m_s'), ' m/s')}, "
+            f"PRF {_format_optional_float(sensing.get('prf_hz'), ' Hz')}"
+        )
+    if not verbose:
+        lines.append("  Use --verbose or --json for full sensing metadata.")
     return lines
 
 
@@ -786,6 +892,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Inspect coverage/coverage_maps.h5 instead of generated MPC frames.",
     )
     parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show full sensing product descriptors and target identities in text output.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="as_json",
@@ -831,7 +942,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write(json.dumps(result, indent=2, default=_json_default))
         sys.stdout.write("\n")
     else:
-        sys.stdout.write(_format_text(result))
+        sys.stdout.write(_format_text(result, verbose=args.verbose))
         sys.stdout.write("\n")
     return 0
 

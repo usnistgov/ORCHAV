@@ -1,0 +1,260 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "scenarios/sensing/foundations/RCS/06_vehicle_multi",
+  "source_identity": {
+    "generation_id": "f6343931-0e31-449e-99f8-d263c61ddd99",
+    "frame_set_id": "0c26141204eb7511240059d01606b48d8f8a67c2e8711b05e47d59a1d5abf52b"
+  },
+  "manifest_sha256": "04264a6f60083aae9049931c4dbe730e35ad9c94c3c221e218484fac15859298",
+  "source_files_sha256": {
+    "frames_manifest.json": "04264a6f60083aae9049931c4dbe730e35ad9c94c3c221e218484fac15859298",
+    "mpc_frames_00000-00062.h5": "f1fcfa7067d9019e3c6f016813579d8848c76e2fed910ddb9868faa5ccf9d7ca",
+    "mpc_frames_00063-00063.h5": "04811f5023723f42e0ac6cf6c0e921925cdaa15957f91e538ecdde50fa6d2619",
+    "mpc_frames_00064-00126.h5": "5595f04f30c531881d4ca54e9e9df4d99ae8f4c171c5658750c0320e538ad2f8",
+    "mpc_frames_00127-00127.h5": "b58de51eb81182ca0d3f95831a61847e3872f68ca560ad7d2ead5d92f0557e5a",
+    "mpc_frames_00128-00190.h5": "0f5fdd4c735a89e29af719936a513f30ddd745bf9ba676f5290c43a6ba7e7ea9",
+    "mpc_frames_00191-00191.h5": "0612b065930680454547eab173ee56719637705cf1155ffd3eaf0962fc9bc984",
+    "mpc_frames_00192-00254.h5": "63339aa05e9caf5bdb8e963f7c9837b9f5de66f518465fd34accfb0513ac751b",
+    "mpc_frames_00255-00255.h5": "3f42def594c49b49c2570f8b818b4622e34b95d9098bb224a77da323906efeb3",
+    "mpc_frames_00256-00318.h5": "518465ee3b9a472d804d6b34f0ee7f15c4b702b249964f9e571286badd7a6bce",
+    "mpc_frames_00319-00319.h5": "7310e8c055d9fa9c4e5288b6cbfc697e038931f86b23f088c7217e1cabb6fbe5",
+    "mpc_frames_00320-00382.h5": "1010e053bb727eaa20d89ce41e704b0433f38c45f56810fe4569373ea380a15c",
+    "mpc_frames_00383-00383.h5": "262d1f83db91c7bfa4356731103c30413e45344d3941bd2181e6e4aa4d1ee5e7",
+    "mpc_frames_00384-00446.h5": "c9a1c4cc65185d5902807ae155ef46a505ac6296fc81804aa871083027a29124",
+    "mpc_frames_00447-00447.h5": "6e7c5eae7f2fcd001a378255e62591fb436175f6a8a1b3146be4d8cfa52d28cc",
+    "mpc_frames_00448-00510.h5": "3eb1b1be4687833975f4a045d9ebfa7405e9be913857eb6ac607efad05b64a04",
+    "mpc_frames_00511-00511.h5": "74f710c8e75cb01a3ebbcc2a05241662d21fbb3dc3e398af02c4aa601d5d5a82"
+  },
+  "figures": [
+    "range_doppler",
+    "range_profile",
+    "tracking"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 8,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "fec674d8-9620-5b55-b4bd-a3ecdaa7b033",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 127,
+      "reference_time_s": 0.128,
+      "acquisition_id": "4f31408d-50ec-56bd-a217-f25aee7078f6",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 191,
+      "reference_time_s": 0.256,
+      "acquisition_id": "4e545cc0-24b7-53b3-85ab-434a79cad6c0",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 255,
+      "reference_time_s": 0.384,
+      "acquisition_id": "f78ad6a0-5899-5635-9762-0b4490c60c25",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 319,
+      "reference_time_s": 0.512,
+      "acquisition_id": "9d018a14-488f-5d4d-921e-3fe9d2fe6a83",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 383,
+      "reference_time_s": 0.64,
+      "acquisition_id": "df7f46fb-18fe-59e3-bc13-a98aa724560e",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 447,
+      "reference_time_s": 0.768,
+      "acquisition_id": "906bc09a-6af6-5e4d-9fad-ebedf17cfa9f",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 511,
+      "reference_time_s": 0.896,
+      "acquisition_id": "fd4db30b-a3a9-5ede-9d5d-5152b789407f",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    }
+  ],
+  "outputs": [
+    "sensing/range_profile.png",
+    "sensing/range_profile_full.png",
+    "sensing/range_doppler.png",
+    "sensing/range_doppler_full.png",
+    "sensing/tracking.png"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "image": "native_rcs_06_vehicle_multi_range_doppler.png",
+  "sha256": "56104b51fb68cb78bfb06d6860598f4e271c8926aa87d0900655358ab84e617f",
+  "output": "docs/assets/sensing_summary/native_rcs_06_vehicle_multi_range_doppler.png",
+  "output_sha256": "56104b51fb68cb78bfb06d6860598f4e271c8926aa87d0900655358ab84e617f",
+  "summary_output": "sensing/range_doppler.png",
+  "tutorial_scenario": "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+  "tutorial_scenario_sha256": "9ac6f4d8cd6a1bd13eaf02da80db799dda0fcb3fbf3c765c8ace5667635ad587",
+  "plotting_source_sha256": {
+    "generator/figures/summary/saved_sensing.py": "db87f55264b0a45e360ce3638780c1aadfb4c232431a4c8bc98a2d4f30af192c",
+    "generator/figures/summary/sensing.py": "52fff472d92fcd64cc07446c9b709a2e1199cead04bd584befbbea45f39f904c",
+    "shared/sensing_viz.py": "9a56ac6faa1d92d85f92dd9edd0876bc0b4ec6dcea3bb3da3ec9f9b4456b0368",
+    "shared/sensing_doppler_summary.py": "673a30d11deef54429c768cc09c61a15b0db00010cd4ce9d594db3edbb2208a3",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "reproduction_command": "python -m generator.figures.summary.saved_sensing scenarios/sensing/foundations/RCS/06_vehicle_multi --output analysis/native-rcs/06_vehicle_multi --figure range_doppler --figure range_profile --figure tracking",
+  "summary_configuration_equivalence": {
+    "schema_version": 1,
+    "scope": "Current authored YAML enables or selects native summary outputs; acquisition and scientific processing settings are unchanged.",
+    "acquisition_repeated": false,
+    "figure_rerendered": false,
+    "original_receipt_sha256": "ae99a5a21459e8cd497c8e7d378edc8309fe0918aa8299c8806a1b780b851c6f",
+    "original_source_configuration_fields": {
+      "/tutorial_scenario_sha256": "8bb118cddb8e26e9407709b1b2f9075b8259e30171f2088514178c526e5bccdc"
+    },
+    "updated_authored_binding_fields": [
+      "/tutorial_scenario_sha256"
+    ],
+    "configurations": [
+      {
+        "scenario": "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+        "previous_authored_sha256": "8bb118cddb8e26e9407709b1b2f9075b8259e30171f2088514178c526e5bccdc",
+        "current_authored_sha256": "e74fc980ddd23d988680fc6c572f8e98b1829ad9ea65e29cfff0e9d7176f45fc",
+        "excluded_top_level_keys": [
+          "generator_summary"
+        ],
+        "unchanged_non_summary_document_sha256": "dc00830cc3d8a0f8aeda1d4b58332a844fcd36a25c019ebcad344b3c844bda4d",
+        "previous_generator_summary": {
+          "enabled": true,
+          "create": [
+            "sensing"
+          ],
+          "output": {
+            "format": "svg"
+          },
+          "force": true,
+          "sensing": {
+            "inspection_figures": [
+              "detection_stages",
+              "tracking_decisions"
+            ]
+          }
+        },
+        "current_generator_summary": {
+          "enabled": true,
+          "create": [
+            "sensing"
+          ],
+          "output": {
+            "format": "svg"
+          },
+          "force": true,
+          "sensing": {
+            "inspection_figures": [
+              "detection_stages",
+              "tracking_decisions"
+            ],
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "detection",
+              "tracking",
+              "truth"
+            ]
+          }
+        }
+      }
+    ],
+    "identity_note": "Original acquisition, renderer, source-file and image hashes are preserved. Updated authored bindings certify configuration equivalence only and do not claim regeneration under the new summary selections."
+  },
+  "authored_configuration_binding": {
+    "schema_version": 1,
+    "kind": "summary_only_rebind",
+    "source_revision": "b5874d3bc0e265ea7e781901a6869266a8fd9ae3",
+    "previous_source_revision": "8ac3a55195bbef9f96eb04324a549d5aa49bb077",
+    "original_receipt_sha256": "c8ac3e2e7ec3ec1970656d4247d60245d5b079af87660e532e7f72376f9d4c7b",
+    "original_authored_configuration_fields": {
+      "/tutorial_scenario_sha256": "e74fc980ddd23d988680fc6c572f8e98b1829ad9ea65e29cfff0e9d7176f45fc"
+    },
+    "updated_authored_binding_fields": [
+      "/tutorial_scenario_sha256"
+    ],
+    "configurations": [
+      {
+        "scenario": "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+        "previous_authored_sha256": "e74fc980ddd23d988680fc6c572f8e98b1829ad9ea65e29cfff0e9d7176f45fc",
+        "current_authored_sha256": "9ac6f4d8cd6a1bd13eaf02da80db799dda0fcb3fbf3c765c8ace5667635ad587",
+        "excluded_top_level_keys": [
+          "generator_summary"
+        ],
+        "unchanged_non_summary_document_sha256": "dc00830cc3d8a0f8aeda1d4b58332a844fcd36a25c019ebcad344b3c844bda4d",
+        "previous_generator_summary": {
+          "enabled": true,
+          "create": [
+            "sensing"
+          ],
+          "output": {
+            "format": "svg"
+          },
+          "force": true,
+          "sensing": {
+            "inspection_figures": [
+              "detection_stages",
+              "tracking_decisions"
+            ],
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "detection",
+              "tracking",
+              "truth"
+            ]
+          }
+        },
+        "current_generator_summary": {
+          "enabled": true,
+          "create": [
+            "topology",
+            "sensing"
+          ],
+          "output": {
+            "format": "svg"
+          },
+          "force": true,
+          "sensing": {
+            "inspection_figures": [
+              "detection_stages",
+              "tracking_decisions"
+            ],
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "detection",
+              "tracking",
+              "truth"
+            ]
+          }
+        }
+      }
+    ],
+    "acquisition_repeated": false,
+    "figure_rerendered": false,
+    "identity_note": "Exact historical input bytes and complete non-summary YAML were independently verified. Only generator_summary presentation settings changed; storage-only changes are separately authenticated by the recording bindings. Acquisition, plotting and image identities are unchanged."
+  },
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "ff4242ae77a74a98a1c225cad167545452eb80c225652fc034da18e12b851e40"
+}

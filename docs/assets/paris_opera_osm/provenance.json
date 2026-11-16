@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "kind": "visualizer_gui_captures",
+  "captured_on": "2026-11-02",
+  "renderer": "pygfx 0.17.0 (wgpu/Vulkan)",
+  "scenario": "scenarios/generator/paris_opera_osm/scenario.yaml",
+  "config_sha256": "96c804686285355a4120428ef83e07753210c0fde0272d4c512bd0e58a9b38ca",
+  "bbox_south_west_north_east": [
+    48.8675,
+    2.3265,
+    48.876,
+    2.3385
+  ],
+  "attribution": "Map data \u00a9 OpenStreetMap contributors, ODbL 1.0",
+  "source": {
+    "kind": "existing local OSM snapshot",
+    "acquisition_complete": true,
+    "osm_config": {
+      "center": null,
+      "bbox": [
+        48.8675,
+        2.3265,
+        48.876,
+        2.3385
+      ],
+      "size_m": 500.0,
+      "width_m": null,
+      "terrain": false,
+      "terrain_zoom": 14,
+      "ground_pad_m": 40.0,
+      "ground_resolution_m": 50.0,
+      "osm_server": null,
+      "barriers": true,
+      "vegetation": true,
+      "bridges": true,
+      "height_enrichment": false,
+      "canopy_heights": false,
+      "tree_rows": false,
+      "vegetation_gap_fill": false,
+      "worldcover_water_check": false,
+      "green_vegetation": true,
+      "tree_row_spacing_m": 8.0,
+      "landuse_materials": true
+    },
+    "files_sha256": {
+      "mesh/buildings_concrete.ply": "8b966eacf165055524002a9190ca4f03dd4c723de85e65f48ad80ace1766893f",
+      "mesh/buildings_glass.ply": "df52ed41f66f3b911175222137fc542b02c0498562a4f6176376436ea7088cc3",
+      "mesh/buildings_marble.ply": "514029e1b8a00ac4b719915775b80cba200de1dc99c7ba5e3845cf677ea00a0d",
+      "mesh/buildings_metal.ply": "18fb6bfc1851fb1f3e10fc58cc2a86f9122dc09cf92bca9cf63778f3f83a1018",
+      "mesh/ground.ply": "c6a850964e9584e9d72cfc8d21f5dc2a366247059f70a8236b8ef60bb01b48a8",
+      "mesh/streets.ply": "961212fe7af18556c0b97fa553b23a7f706b34132232efbd5b1d304a2982d947",
+      "mesh/vegetation.ply": "5a67142b04b50586d8565635cdb1e39bb5a2bfa7b99644a129ef8a6e1d3d057b",
+      "mesh/water.ply": "ff681eb1a44f8428718134e54666eef869e3960c5f7f7c2b4aef48e50aeaa8d5",
+      "osm_acquisition_attempt.json": "8164347c968489eaba1a06785f0fc0a7c74a1000f7307a798cf37004e2154f82",
+      "osm_metadata.json": "0ec122076d03d98ca5e53b6cd901c1b657cc03c192ae4184ed4edbffe8d492eb",
+      "scene.xml": "7c999e35873ec12aa7319b8b9acc605c62f5815ac3cdb6546008767e6eed2b23",
+      "street_network.graphml": "24dabaeb640f277e53b673dd1ce51a6a57335e9954ad1433684428d2e99b0ce4"
+    }
+  },
+  "notes": [
+    "Unedited viewport captures; no propagation or detection results are shown.",
+    "The saved snapshot covers the recipe bounds and uses 40 m ground padding; the recipe default is 200 m. Map features and geometry may differ after a fresh acquisition.",
+    "Procedural Haussmann facades, slate roofs and road markings use locally generated textures. The Detailed appearance preset uses brighter daylight settings recorded in appearance; source mesh and radio-material hashes are unchanged.",
+    "The second capture uses Sunny IBL, its matching light rig and the visible skybox. Per-figure appearance settings override the shared appearance settings.",
+    "The overview was refreshed in dark mode on 2026-11-11 from the unchanged geographic snapshot. The detail image retains its 2026-11-02 Sunny IBL and skybox capture. Per-figure provenance records their separate dates and display settings."
+  ],
+  "figures": [
+    {
+      "image": "overview.png",
+      "image_sha256": "614fed077d340c0c5059a0e3a939f1d244c7ed34498038896168179e8e160bd5",
+      "camera": {
+        "eye": [
+          900,
+          -1270,
+          1160
+        ],
+        "lookat": [
+          40,
+          -70,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "fov": 45.0
+      },
+      "captured_on": "2026-11-11",
+      "source_revision": "dfd4fcbc28e1aee7781209aa7f02b4b765321fb1",
+      "runtime_export_revision": "d834585049991cd00045f00a523fc0cb164dd182",
+      "runtime_export_source_revision": "3f3a9400086ef94a6616f9f3062c8ebca36818e5",
+      "theme": "dark",
+      "theme_control": "Display > Theme > Dark",
+      "appearance": {
+        "version": 1,
+        "surface": "original",
+        "unlit": false,
+        "textures": true,
+        "wireframe": false,
+        "background": [
+          0.2,
+          0.2,
+          0.2
+        ],
+        "alpha": 1.0,
+        "outlines": false,
+        "edge_width": 1.0,
+        "building_appearance": "varied",
+        "facade_theme": "haussmann",
+        "road_appearance": "marked",
+        "authored_surface_textures": true,
+        "sky": "neutral_outdoor",
+        "skybox": false,
+        "ibl": 1.0,
+        "lights": {
+          "lighting_profile": "custom",
+          "ambient_intensity": 1.1,
+          "headlight_enabled": false,
+          "headlight_intensity": 1.2,
+          "key_azimuth_deg": 31.0,
+          "key_elevation_deg": -42.0,
+          "key_intensity": 3.0,
+          "fill_azimuth_deg": -149.0,
+          "fill_elevation_deg": -60.0,
+          "fill_intensity": 0.8,
+          "shadows_enabled": true
+        },
+        "aa": "fxaa",
+        "mipmaps": true,
+        "color_fidelity": false,
+        "shadow_quality": "standard",
+        "shadow_radius": 25.0,
+        "shadow_bias": 1.5,
+        "depth_precision": true,
+        "bloom": {
+          "enabled": false,
+          "bloom_strength": 0.18,
+          "max_mip_levels": 5,
+          "filter_radius": 0.003,
+          "use_karis_average": false
+        },
+        "plan_view": false
+      },
+      "viewport_size_px": [
+        1601,
+        980
+      ],
+      "capture_method": "Unedited native pygfx viewport export using the same source mesh and geographic snapshot hashes, camera, and material settings. The background is dark gray. No geographic acquisition or ray tracing was run.",
+      "capture_script_sha256": "3a708be20d1fda482ce449306471c661e648f50deb289644fcf58e1c2d7adcd4"
+    },
+    {
+      "image": "detail.png",
+      "image_sha256": "8653fd4b6d59c00d893b862204836c859d2bdeb4d3c3f725276e7888b61f6a22",
+      "camera": {
+        "eye": [
+          230,
+          -280,
+          220
+        ],
+        "lookat": [
+          0,
+          60,
+          15
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "fov": 50.0
+      },
+      "appearance": {
+        "version": 1,
+        "surface": "original",
+        "unlit": false,
+        "textures": true,
+        "wireframe": false,
+        "background": [
+          0.85,
+          0.85,
+          0.85
+        ],
+        "alpha": 1.0,
+        "outlines": false,
+        "edge_width": 1.0,
+        "building_appearance": "varied",
+        "facade_theme": "haussmann",
+        "road_appearance": "marked",
+        "authored_surface_textures": true,
+        "sky": "sky_sunny",
+        "skybox": true,
+        "ibl": 6000.0,
+        "lights": {
+          "lighting_profile": "custom",
+          "ambient_intensity": 0.03,
+          "headlight_enabled": false,
+          "headlight_intensity": 1.2,
+          "key_azimuth_deg": 31.061453412671256,
+          "key_elevation_deg": -42.92367374004823,
+          "key_intensity": 2.3,
+          "fill_azimuth_deg": 53.0,
+          "fill_elevation_deg": -45.0,
+          "fill_intensity": 0.15,
+          "shadows_enabled": true
+        },
+        "aa": "fxaa",
+        "mipmaps": true,
+        "color_fidelity": false,
+        "shadow_quality": "scene",
+        "shadow_radius": 25.0,
+        "shadow_bias": 1.5,
+        "depth_precision": true,
+        "bloom": {
+          "enabled": false,
+          "bloom_strength": 0.18,
+          "max_mip_levels": 5,
+          "filter_radius": 0.003,
+          "use_karis_average": false
+        },
+        "plan_view": false
+      },
+      "environment_source": {
+        "id": "sky_sunny",
+        "source_page": "https://polyhaven.com/a/kloofendal_43d_clear_puresky",
+        "authors": [
+          "Greg Zaal"
+        ],
+        "license": "CC0-1.0",
+        "sha256": "462a3cc63bfcd9fe0299137a0f33f4ade84e237f4cb6115fe46f5ab400693fe6",
+        "radiance_scale": 0.5257295597932159,
+        "yaw_degrees": 174.90234375
+      },
+      "captured_on": "2026-11-02"
+    }
+  ],
+  "viewport_size_px": [
+    1600,
+    1000
+  ],
+  "appearance": {
+    "version": 1,
+    "surface": "original",
+    "unlit": false,
+    "textures": true,
+    "wireframe": false,
+    "background": [
+      0.85,
+      0.85,
+      0.85
+    ],
+    "alpha": 1.0,
+    "outlines": false,
+    "edge_width": 1.0,
+    "building_appearance": "varied",
+    "facade_theme": "haussmann",
+    "road_appearance": "marked",
+    "authored_surface_textures": true,
+    "sky": "neutral_outdoor",
+    "skybox": false,
+    "ibl": 1.0,
+    "lights": {
+      "lighting_profile": "custom",
+      "ambient_intensity": 1.1,
+      "headlight_enabled": false,
+      "headlight_intensity": 1.2,
+      "key_azimuth_deg": 31.0,
+      "key_elevation_deg": -42.0,
+      "key_intensity": 3.0,
+      "fill_azimuth_deg": -149.0,
+      "fill_elevation_deg": -60.0,
+      "fill_intensity": 0.8,
+      "shadows_enabled": true
+    },
+    "aa": "fxaa",
+    "mipmaps": true,
+    "color_fidelity": false,
+    "shadow_quality": "standard",
+    "shadow_radius": 25.0,
+    "shadow_bias": 1.5,
+    "depth_precision": true,
+    "bloom": {
+      "enabled": false,
+      "bloom_strength": 0.18,
+      "max_mip_levels": 5,
+      "filter_radius": 0.003,
+      "use_karis_average": false
+    },
+    "plan_view": false
+  }
+}

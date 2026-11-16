@@ -14,7 +14,6 @@ scene:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
   quality:
     preset: custom
     custom:
@@ -70,9 +69,7 @@ coverage:
 
 generator_summary:
   enabled: true
-  create:
-    - scene2d
-    - speed
+  create: [topology, speed]
 
 view_defaults:
   merge_scene_meshes: true

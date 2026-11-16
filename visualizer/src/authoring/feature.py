@@ -9,11 +9,11 @@ SCENARIO_BUILDER_ENV = "ORCHAV_ENABLE_SCENARIO_BUILDER"
 
 
 def scenario_builder_enabled(environ: Mapping[str, str] | None = None) -> bool:
-    """Return whether the Scenario Builder workspace is explicitly enabled.
+    """Enable by default; callers also require a capable pygfx renderer.
 
-    The launch contract requires the exact value ``1`` so loosely interpreted
-    environment values cannot enable the workspace.
+    An explicit override retains the existing exact-``1`` contract. Set ``0``
+    to hide authoring actions and reject authoring launches.
     """
 
     source = os.environ if environ is None else environ
-    return source.get(SCENARIO_BUILDER_ENV, "") == "1"
+    return source.get(SCENARIO_BUILDER_ENV, "1") == "1"

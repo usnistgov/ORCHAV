@@ -26,7 +26,9 @@ from PySide6.QtWidgets import (
 from ..beamforming.extensions import registered_beamforming_modes
 from ..beamforming.visualization import _get_colormap_lut
 from ..utils.antenna_utils import spacing_m_to_wavelengths
+from ..widgets.responsive import wrap_control_row
 from .base import BasePanel
+from .ui_theme import configure_label
 
 # Keep the largest GUI-selectable preview below roughly 17 million complex
 # element/direction samples.  The vectorized array-factor implementation builds
@@ -138,7 +140,7 @@ class BeamPatternPanel(BasePanel):
         for button in optional_mode_widgets.values():
             mode_row.addWidget(button)
         mode_row.addStretch()
-        layout.addLayout(mode_row)
+        layout.addLayout(wrap_control_row(mode_row, [2, 1, *[1 for _ in optional_mode_widgets]]))
 
         self.widgets["mode_standalone"].toggled.connect(self._update_standalone_visibility)
 
@@ -161,15 +163,12 @@ class BeamPatternPanel(BasePanel):
         )
         txrx_row.addWidget(self.widgets["beam_rx_selector"])
         txrx_row.addStretch()
-        layout.addLayout(txrx_row)
+        layout.addLayout(wrap_control_row(txrx_row, [2, 2]))
 
         self.widgets["beam_status_label"] = QLabel(
             "Select one TX and one RX to render beam patterns"
         )
-        self.widgets["beam_status_label"].setStyleSheet(
-            "QLabel { color: #555555; font-size: 10px; }"
-        )
-        self.widgets["beam_status_label"].setWordWrap(True)
+        configure_label(self.widgets["beam_status_label"], role="muted", word_wrap=True)
         layout.addWidget(self.widgets["beam_status_label"])
 
         return group
@@ -236,7 +235,7 @@ class BeamPatternPanel(BasePanel):
         )
         row1.addWidget(self.widgets["standalone_freq"])
         row1.addStretch()
-        layout.addLayout(row1)
+        layout.addLayout(wrap_control_row(row1, [2, 2, 2]))
 
         row2 = QHBoxLayout()
         row2.addWidget(QLabel("H Spacing:"))
@@ -264,7 +263,7 @@ class BeamPatternPanel(BasePanel):
         )
         row2.addWidget(self.widgets["standalone_v_spacing"])
         row2.addStretch()
-        layout.addLayout(row2)
+        layout.addLayout(wrap_control_row(row2, [2, 2]))
 
         row3 = QHBoxLayout()
         row3.addWidget(QLabel("Strategy:"))
@@ -289,8 +288,9 @@ class BeamPatternPanel(BasePanel):
         row3.addWidget(self.widgets["standalone_strategy"])
 
         self._angle_container = QWidget()
-        angle_layout = QHBoxLayout(self._angle_container)
-        angle_layout.setContentsMargins(0, 0, 0, 0)
+        angle_container_layout = QVBoxLayout(self._angle_container)
+        angle_container_layout.setContentsMargins(0, 0, 0, 0)
+        angle_layout = QHBoxLayout()
         angle_layout.addWidget(QLabel("Azimuth:"))
         self.widgets["standalone_azimuth"] = QDoubleSpinBox()
         self.widgets["standalone_azimuth"].setRange(-180.0, 180.0)
@@ -312,9 +312,10 @@ class BeamPatternPanel(BasePanel):
         )
         angle_layout.addWidget(self.widgets["standalone_elevation"])
         angle_layout.addStretch()
-        row3.addWidget(self._angle_container)
+        angle_container_layout.addLayout(wrap_control_row(angle_layout, [2, 2]))
         row3.addStretch()
         layout.addLayout(row3)
+        layout.addWidget(self._angle_container)
         self._update_angle_visibility()
 
         return group
@@ -387,15 +388,20 @@ class BeamPatternPanel(BasePanel):
         self.widgets["beam_rx_scale_spin"].setToolTip("Visual scale for RX pattern")
         row1.addWidget(self.widgets["beam_rx_scale_spin"])
         row1.addStretch()
-        layout.addLayout(row1)
+        layout.addLayout(wrap_control_row(row1, [2, 2, 2, 2]))
 
         row2 = QHBoxLayout()
         self.widgets["beam_db_scale_cb"] = QCheckBox("dB Scale")
         self.widgets["beam_db_scale_cb"].setChecked(db_default)
         self.widgets["beam_db_scale_cb"].setToolTip("Display pattern in dB scale")
         row2.addWidget(self.widgets["beam_db_scale_cb"])
+        range_controls = QWidget()
+        range_row = QHBoxLayout(range_controls)
+        range_row.setContentsMargins(0, 0, 0, 0)
+        range_row.setSpacing(6)
+        self.widgets["beam_dynamic_range_controls"] = range_controls
         self.widgets["beam_dynamic_range_label"] = QLabel("Dynamic Range:")
-        row2.addWidget(self.widgets["beam_dynamic_range_label"])
+        range_row.addWidget(self.widgets["beam_dynamic_range_label"])
         self.widgets["beam_dynamic_range"] = QDoubleSpinBox()
         self.widgets["beam_dynamic_range"].setRange(10.0, 80.0)
         self.widgets["beam_dynamic_range"].setSingleStep(5.0)
@@ -404,7 +410,8 @@ class BeamPatternPanel(BasePanel):
         self.widgets["beam_dynamic_range"].setValue(dr_default)
         self.widgets["beam_dynamic_range"].setSuffix(" dB")
         self.widgets["beam_dynamic_range"].setToolTip("Dynamic range floor below peak")
-        row2.addWidget(self.widgets["beam_dynamic_range"])
+        range_row.addWidget(self.widgets["beam_dynamic_range"])
+        row2.addWidget(range_controls)
         row2.addWidget(QLabel("Colormap:"))
         self.widgets["beam_colormap"] = QComboBox()
         self.widgets["beam_colormap"].addItems(["jet", "viridis", "hot", "coolwarm"])
@@ -414,7 +421,7 @@ class BeamPatternPanel(BasePanel):
         self.widgets["beam_colormap"].setToolTip("Colormap for beam pattern amplitude")
         row2.addWidget(self.widgets["beam_colormap"])
         row2.addStretch()
-        layout.addLayout(row2)
+        layout.addLayout(wrap_control_row(row2, [1, 1, 2]))
 
         row3 = QHBoxLayout()
         row3.addWidget(QLabel("TX Element:"))
@@ -434,11 +441,10 @@ class BeamPatternPanel(BasePanel):
         self.widgets["beam_rx_element_pattern"].setToolTip("RX per-element radiation pattern")
         row3.addWidget(self.widgets["beam_rx_element_pattern"])
         row3.addStretch()
-        layout.addLayout(row3)
+        layout.addLayout(wrap_control_row(row3, [2, 2]))
 
         self.widgets["beam_gain_label"] = QLabel("Metrics: \u2014")
-        self.widgets["beam_gain_label"].setStyleSheet("QLabel { color: #666666; font-size: 10px; }")
-        self.widgets["beam_gain_label"].setWordWrap(True)
+        configure_label(self.widgets["beam_gain_label"], role="muted", word_wrap=True)
         self.widgets["beam_gain_label"].setToolTip(
             "Gain, half-power beamwidth, and sidelobe summary when available"
         )
@@ -448,10 +454,7 @@ class BeamPatternPanel(BasePanel):
             "Preview limits: 32 x 32 elements, 180 x 91 samples, "
             "and 8 million combined work items"
         )
-        self.widgets["beam_complexity_note"].setStyleSheet(
-            "QLabel { color: #777777; font-size: 9px; }"
-        )
-        self.widgets["beam_complexity_note"].setWordWrap(True)
+        configure_label(self.widgets["beam_complexity_note"], role="muted", word_wrap=True)
         self.widgets["beam_complexity_note"].setToolTip(
             "These limits prevent beam-pattern temporary arrays from exhausting system memory"
         )
@@ -464,22 +467,23 @@ class BeamPatternPanel(BasePanel):
         colorbar_layout.addWidget(QLabel("Beam Color:"))
         self.widgets["beam_colorbar_min_label"] = QLabel("")
         self.widgets["beam_colorbar_min_label"].setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.widgets["beam_colorbar_min_label"].setFixedWidth(48)
-        self.widgets["beam_colorbar_min_label"].setStyleSheet("font-size: 9px; color: #444444;")
+        self.widgets["beam_colorbar_min_label"].setMinimumWidth(40)
         colorbar_layout.addWidget(self.widgets["beam_colorbar_min_label"])
         self.widgets["beam_colorbar_gradient"] = QLabel()
-        self.widgets["beam_colorbar_gradient"].setFixedSize(160, 12)
+        self.widgets["beam_colorbar_gradient"].setMinimumWidth(80)
+        self.widgets["beam_colorbar_gradient"].setMaximumWidth(160)
+        self.widgets["beam_colorbar_gradient"].setFixedHeight(12)
+        self.widgets["beam_colorbar_gradient"].setScaledContents(True)
         self.widgets["beam_colorbar_gradient"].setPixmap(
             _beam_colormap_gradient_pixmap(cmap_default, 160, 12)
         )
         self.widgets["beam_colorbar_gradient"].setToolTip(
             "Beam-pattern color scale for the selected colormap"
         )
-        colorbar_layout.addWidget(self.widgets["beam_colorbar_gradient"])
+        colorbar_layout.addWidget(self.widgets["beam_colorbar_gradient"], 1)
         self.widgets["beam_colorbar_max_label"] = QLabel("")
         self.widgets["beam_colorbar_max_label"].setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.widgets["beam_colorbar_max_label"].setFixedWidth(48)
-        self.widgets["beam_colorbar_max_label"].setStyleSheet("font-size: 9px; color: #444444;")
+        self.widgets["beam_colorbar_max_label"].setMinimumWidth(40)
         colorbar_layout.addWidget(self.widgets["beam_colorbar_max_label"])
         colorbar_layout.addStretch()
         self.widgets["beam_colorbar_container"] = colorbar
@@ -545,6 +549,9 @@ class BeamPatternPanel(BasePanel):
             dynamic_range.setEnabled(bool(db_scale))
         if dynamic_range_label is not None:
             dynamic_range_label.setEnabled(bool(db_scale))
+        range_controls = self.widgets.get("beam_dynamic_range_controls")
+        if range_controls is not None:
+            range_controls.setVisible(bool(db_scale))
         if dynamic_range_db is None:
             dr_spin = self.widgets.get("beam_dynamic_range")
             dynamic_range_db = float(dr_spin.value()) if dr_spin is not None else 40.0

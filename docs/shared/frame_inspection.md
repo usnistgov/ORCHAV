@@ -8,21 +8,38 @@ contents without opening the desktop Visualizer.
 orchav-inspect scenarios/getting_started/hello_world --frame 0
 ```
 
-Typical output includes the source directory, available frame indices, selected
-frame, TX/RX/target counts, TX-RX pair count, total MPC count, per-pair path
-counts, interaction-type counts, exported metric fields, node positions, and
-the HDF5 chunk that served the frame.
+For example, a generated Hello World recording reports the following summary
+(excerpt). MPC counts can vary with the solver and sampling settings:
+
+```text
+Frame count: 1
+Available frames: 0
+Selected frame: 0
+TX: 1, RX: 1, Targets: 0
+Pairs: 1
+Total MPCs: 6
+Paths per pair: [6]
+Metrics: delays_ns, path_loss_db, aoa_az_deg, aoa_el_deg, aod_az_deg, aod_el_deg
+```
+
+Check that the actor and pair counts match your scenario. The complete output
+also lists interaction counts and node positions.
+
+For frames with sensing data, the summary also lists the processing mode,
+saved observations and spectra with their dimensions, target and detection
+counts, and range/velocity resolution. Detector diagnostics are summarized
+on one line.
 
 ## Inputs
 
-The command accepts any of these paths:
+The command accepts these input forms:
 
-```bash
-orchav-inspect scenarios/getting_started/hello_world
-orchav-inspect scenarios/getting_started/hello_world/scenario.yaml
-orchav-inspect scenarios/getting_started/hello_world/frames
-orchav-inspect scenarios/getting_started/hello_world/frames/mpc_frames_00000-00000.h5
-```
+| Input | Example |
+| --- | --- |
+| Scenario directory | `scenarios/getting_started/hello_world` |
+| Scenario YAML | `scenarios/getting_started/hello_world/scenario.yaml` |
+| Frame directory | `scenarios/getting_started/hello_world/frames` |
+| Individual chunk | `scenarios/getting_started/hello_world/frames/mpc_frames_00000-00000.h5` |
 
 By default, a scenario directory is expected to contain a `frames/` subdirectory.
 Use `--frames-subdir` only when inspecting an imported or read-only layout that
@@ -53,6 +70,16 @@ Emit structured output for scripts or CI diagnostics:
 orchav-inspect scenarios/getting_started/hello_world --frame 0 --json
 ```
 
+Show full sensing product descriptors and target identities:
+
+```bash
+orchav-inspect scenarios/sensing/cube_radar/stationary --frame 63 --verbose
+```
+
+`--verbose` includes product identifiers, storage keys, shapes, axes,
+representations and units. `--json` always includes the full structured
+metadata, regardless of `--verbose`.
+
 Show the scattering coefficients recorded for the scene materials:
 
 ```bash
@@ -67,31 +94,16 @@ Inspect coverage data:
 
 ```bash
 orchav-inspect scenarios/generator/coverage/single_tx --coverage
-orchav-inspect scenarios/generator/coverage/single_tx/coverage/coverage_maps.h5
 ```
 
 Coverage inspection reports the coverage schema version, grid shape, heights,
 TX/RX metadata, solver settings, available metrics, and value ranges.
 
-## Relationship to Validation
+## Relationship to validation
 
-`orchav-validate` checks whether `scenario.yaml` is structurally valid before
-generation. `orchav-inspect` reads generated HDF5 output after generation.
-Validation is optional. Use it when editing YAML or debugging configuration
-errors.
-
-```bash
-orchav-validate scenarios/getting_started/hello_world
-```
-
-The generated-frame workflow is:
-
-```bash
-orchav-generator scenarios/getting_started/hello_world/
-orchav-inspect scenarios/getting_started/hello_world --frame 0
-orchav-visualizer --scenario scenarios/getting_started/hello_world
-```
-
----
+[Scenario validation](../reference/scenario_validation.md) checks authored inputs
+before generation. Frame inspection checks saved output. The
+[Hello World walkthrough](../../scenarios/getting_started/hello_world/README.md)
+contains the complete generation and visualization sequence.
 
 Up: [Shared Data Layer](README.md) | Related: [Statistics](statistics.md) | [Frame Data Reference](frame_reference.md)

@@ -15,7 +15,7 @@ from uuid import UUID
 
 import numpy as np
 
-from ..types.render_payloads import MaterialPayload, MeshPayload
+from ..types.render_payloads import LineSetPayload, MaterialPayload, MeshPayload
 from .domain import MobilityControl
 from .mobility_control_rig import MobilityControlRig
 
@@ -30,6 +30,7 @@ class AuthoringTool(str, Enum):
     PLACE = "place"
     MOVE = "move"
     WAYPOINT = "waypoint"
+    OSM_REGION = "osm_region"
 
 
 class PointerPhase(str, Enum):
@@ -128,6 +129,7 @@ class PreviewProvenance(str, Enum):
     """Evidence behind the trajectory presented by the viewport."""
 
     GENERATOR_PREPARED = "generator_prepared"
+    RECORDED_FRAMES = "recorded_frames"
     AUTHORED_DRAFT = "authored_draft"
 
 
@@ -151,6 +153,10 @@ class TargetOverlayAsset:
         (0.0, 0.0, 1.0, 0.0),
         (0.0, 0.0, 0.0, 1.0),
     )
+    scattering_points_local_m: tuple[tuple[float, float, float], ...] = ()
+    scattering_point_ids: tuple[int, ...] = ()
+    representation: str = "mesh_material"
+    metadata_source: str = "mesh_asset"
 
     def __post_init__(self) -> None:
         if not str(self.cache_key).strip():
@@ -172,6 +178,8 @@ class SceneOverlayAsset:
     name: str
     payload: MeshPayload
     material: MaterialPayload
+    material_type: str = ""
+    ground: bool = False
 
     def __post_init__(self) -> None:
         if not str(self.cache_key).strip():
@@ -307,6 +315,15 @@ class ActorOverlaySnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class GuideOverlay:
+    """Display-only lines excluded from picking, scene bounds and saved geometry."""
+
+    name: str
+    payload: LineSetPayload
+    color: tuple[float, float, float, float] = (0.2, 0.8, 1.0, 1.0)
+
+
+@dataclass(frozen=True, slots=True)
 class OverlaySnapshot:
     """Atomic authoring overlay revision supplied to the viewport."""
 
@@ -314,6 +331,7 @@ class OverlaySnapshot:
     revision: int
     scene_assets: tuple[SceneOverlayAsset, ...] = ()
     actors: tuple[ActorOverlaySnapshot, ...] = ()
+    guides: tuple[GuideOverlay, ...] = ()
     work_plane_z: float = 0.0
     work_plane_visible: bool = True
     grid_snap_m: float | None = None
@@ -417,6 +435,14 @@ class ScenarioAuthoringViewportPort(Protocol):
         """Switch between the Orbit and Fly camera controllers."""
         ...
 
+    def show_ground_map(self, bounds: tuple[float, float, float, float]) -> None:
+        """Frame the temporary selection map from above, retaining the scene camera."""
+        ...
+
+    def leave_ground_map(self) -> None:
+        """Restore the camera retained before geographic selection."""
+        ...
+
     def begin_drag_plane(self, z: float, source: HitResult) -> None:
         """Continue one picked handle or actor-body drag on a horizontal plane."""
         ...
@@ -450,7 +476,11 @@ class ScenarioAuthoringViewportPort(Protocol):
         ...
 
     def fit_all(self) -> bool:
-        """Fit the camera to all authored geometry."""
+        """Fit base-scene geometry and visible actors/paths, excluding editing aids."""
+        ...
+
+    def fit_actors(self) -> bool:
+        """Fit visible actors and paths without including the base-scene extent."""
         ...
 
     def renderer_objects(self) -> Mapping[str, Any]:

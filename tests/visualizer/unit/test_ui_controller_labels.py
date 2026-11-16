@@ -49,6 +49,34 @@ def test_target_labels_toggle_updates_declarative_labels_immediately():
     assert viz.app_state.show_target_labels is False
 
 
+def test_callout_change_refreshes_open_fusion_sensor_labels():
+    from visualizer.src.types.label_style import LabelCalloutStyle
+
+    viz = _make_visualizer()
+    viz.fusion_window = SimpleNamespace(closed=False, _draw_world=Mock())
+    controller = _make_controller(viz)
+    style = LabelCalloutStyle(mode="callout")
+    controller.handle_label_callout_changed(style)
+    assert viz.app_state.label_callout == style
+    viz.fusion_window._draw_world.assert_called_once_with()
+    viz.fusion_window.closed = True
+    controller.handle_label_callout_changed(style)
+    assert viz.fusion_window._draw_world.call_count == 1
+
+
+def test_scene_label_style_updates_volume_without_duplicate_style_controls():
+    from visualizer.src.types.label_style import LabelCalloutStyle
+
+    viz = _make_visualizer()
+    viz.sensing_volume_window = SimpleNamespace(closed=False, _draw=Mock())
+    controller = _make_controller(viz)
+    style = LabelCalloutStyle(mode="callout")
+    controller.handle_label_callout_changed(style)
+    assert viz.app_state.label_callout == style
+    viz.node_service.apply_label_offsets.assert_called_once_with()
+    viz.sensing_volume_window._draw.assert_called_once_with()
+
+
 def test_building_label_toggle_publishes_all_labels_in_one_batch():
     viz = _make_visualizer()
     entries = [{"name": "A"}, {"name": "B"}]
@@ -88,3 +116,31 @@ def test_building_label_toggle_publishes_all_labels_in_one_batch():
             update_renderer=False,
         )
     viz.schedule_update.assert_called_once()
+
+
+def test_authored_false_labels_sync_actual_startup_controls(qtbot):
+    from PySide6.QtWidgets import QWidget
+
+    from visualizer.src.app.scenario_presentation import apply_presentation_defaults
+    from visualizer.src.panels.nodes_panel import NodesSelectionPanel
+    from visualizer.src.state import create_initial_state, update_state
+
+    viz = QWidget()
+    qtbot.addWidget(viz)
+    viz.app_state = create_initial_state(show_labels=False, show_target_labels=False)
+    viz.set_state = lambda **kw: setattr(viz, "app_state", update_state(viz.app_state, **kw))
+    panel = NodesSelectionPanel(viz)
+    labels = panel._create_display_group()
+    qtbot.addWidget(labels)
+    viz.ui_manager = SimpleNamespace(panels={"nodes": panel})
+    apply_presentation_defaults(viz, {})
+    assert not panel.widgets["labels_cb"].isChecked()
+    assert not panel.widgets["target_labels_cb"].isChecked()
+    # Synchronization is signal blocked; subsequent ordinary user toggles work.
+    panel.widgets["labels_cb"].toggled.connect(lambda value: viz.set_state(show_labels=value))
+    panel.widgets["target_labels_cb"].toggled.connect(
+        lambda value: viz.set_state(show_target_labels=value)
+    )
+    panel.widgets["labels_cb"].click()
+    panel.widgets["target_labels_cb"].click()
+    assert viz.app_state.show_labels and viz.app_state.show_target_labels

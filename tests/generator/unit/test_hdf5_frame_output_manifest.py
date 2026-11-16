@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import numpy as np
 import pytest
@@ -13,6 +14,12 @@ import pytest
 from generator.io.storage.hdf5_frame_output import (
     MAX_FRAMES_PER_CHUNK,
     HDF5FrameOutputStrategy,
+)
+from shared.extensions.sensing import (
+    SENSING_SCHEMA_VERSION,
+    build_sensing_temporal_contract,
+    canonical_sensing_hash,
+    finalize_sensing_v4_publication,
 )
 from shared.frames.contracts import PathMetric
 from shared.frames.directory_ownership import (
@@ -34,6 +41,221 @@ from shared.frames.manifest import (
 from shared.frames.normalization import standard_mpc_frame_from_pair_data
 from shared.frames.packed_hdf5_writer import estimate_packed_frame_bytes
 from shared.frames.types import StandardMPCFrame
+from shared.sensing.products import (
+    TEMPORAL_SUPPORT_LAST_VALID_SAMPLE,
+    add_product_spec,
+    catalog_axis,
+    dense_axis,
+    materialize_product_specs,
+)
+
+_TEST_GENERATION_ID = "12345678-1234-5678-9234-567812345678"
+
+
+def _layout_execution_config(
+    *,
+    fft_size_range: int,
+    rx_elements: int,
+    tx_elements: int,
+    overrides: dict[str, float] | None,
+) -> dict[str, object]:
+    sampling_frequency = float((overrides or {}).get("bandwidth_hz", 1e9))
+    config: dict[str, object] = {
+        "contract_version": 1,
+        "fft_size_range": fft_size_range,
+        "fft_size_doppler": 1,
+        "sampling_frequency": sampling_frequency,
+        "prf_hz": 1.0,
+        "carrier_freq_hz": 28e9,
+        "range_mode": "bistatic",
+        "acquisition": {
+            "sample_source": "coherent_one_solve",
+            "rt_solve_stride_scene_steps": 1,
+            "sample_period_s": 1.0,
+            "sample_rate_hz": 1.0,
+            "cpi_length_samples": 1,
+            "cpi_hop_samples": 1,
+            "overlap_samples": 0,
+            "partial_window_policy": "retain_unprocessed",
+            "phase_contract": "layout_fixture_explicit_phase",
+        },
+        "processing": {
+            "mode": "coherent_cpi",
+            "strategy": "coherent_cpi_fft",
+            "fft_size_doppler": 1,
+            "result_stride_samples": 1,
+            "product_semantics": "typed_storage_layout_fixture",
+            "evidence_status": "synthetic_fixture",
+        },
+        "topology": {
+            "pair_count": 1,
+            "pair_index": 0,
+            "tx_device_count": 1,
+            "rx_device_count": 1,
+            "tx_elements": tx_elements,
+            "rx_elements": rx_elements,
+            "rx_array_processing": "siso",
+        },
+        "processing_mode": "coherent_cpi",
+        "processing_recipe": {
+            "window_range": "hann",
+            "window_doppler": "hann",
+            "fixture": "hdf5_layout_boundary",
+        },
+    }
+    config.update(overrides or {})
+    return config
+
+
+def _sensing_v4(
+    frame_idx: int,
+    *,
+    config: dict[str, float] | None = None,
+    range_profile_by_pair: np.ndarray | None = None,
+    cir_by_pair_rx_element_tx_element: np.ndarray | None = None,
+) -> dict:
+    """Build a native typed sensing payload for HDF5 layout tests."""
+    range_size = (
+        int(np.asarray(range_profile_by_pair).shape[-1])
+        if range_profile_by_pair is not None
+        else (
+            int(np.asarray(cir_by_pair_rx_element_tx_element).shape[-1])
+            if cir_by_pair_rx_element_tx_element is not None
+            else 1
+        )
+    )
+    rx_elements = (
+        int(np.asarray(cir_by_pair_rx_element_tx_element).shape[1])
+        if cir_by_pair_rx_element_tx_element is not None
+        else 1
+    )
+    tx_elements = (
+        int(np.asarray(cir_by_pair_rx_element_tx_element).shape[2])
+        if cir_by_pair_rx_element_tx_element is not None
+        else 1
+    )
+    resolved_config = _layout_execution_config(
+        fft_size_range=range_size,
+        rx_elements=rx_elements,
+        tx_elements=tx_elements,
+        overrides=config,
+    )
+    sample = {
+        "sample_index": 0,
+        "sample_time_s": float(frame_idx),
+        "valid": True,
+        "phase_coherent": True,
+        "source": {
+            "source_generation_id": _TEST_GENERATION_ID,
+            "scene_frame_id": frame_idx,
+            "sample_offset": 0,
+        },
+    }
+    acquisition_config_id = canonical_sensing_hash({"kind": "layout_test", "config": config or {}})
+    temporal = build_sensing_temporal_contract(
+        clock_id=_TEST_GENERATION_ID,
+        acquisition_id=str(
+            uuid5(
+                NAMESPACE_URL,
+                f"layout-test:{frame_idx}:{acquisition_config_id}",
+            )
+        ),
+        acquisition_config_id=acquisition_config_id,
+        pair_id=canonical_sensing_hash({"tx_sensor_id": "layout-tx", "rx_sensor_id": "layout-rx"}),
+        tx_sensor_id="layout-tx",
+        rx_sensor_id="layout-rx",
+        samples=[sample],
+        processing_run_id=_TEST_GENERATION_ID,
+        processing_recipe_id=canonical_sensing_hash(resolved_config["processing_recipe"]),
+        reference_time_s=float(frame_idx),
+        reference_time_policy="source_scene_exact",
+        display_scene_frame_id=frame_idx,
+        display_policy="source_scene_exact",
+        display_reason="packed_layout_boundary_test",
+    )
+    sensing = {
+        "schema_version": SENSING_SCHEMA_VERSION,
+        "temporal": temporal,
+        "processing_strategy": "coherent_cpi_fft",
+        "config_resolved": deepcopy(resolved_config),
+        "config": deepcopy(resolved_config),
+    }
+
+    pair_axis = catalog_axis("pair", size=1, catalog_key="pair_axis")
+    if range_profile_by_pair is not None:
+        values = np.asarray(range_profile_by_pair)
+        if values.ndim != 2 or values.shape[0] != 1:
+            raise ValueError("range_profile_by_pair must have shape [1, range]")
+        sensing["range_axis_m"] = np.arange(values.shape[1], dtype=np.float64)
+        sensing["range_profile_by_pair"] = values
+        add_product_spec(
+            sensing,
+            data_key="range_profile_by_pair",
+            kind="range_profile",
+            axes=(
+                pair_axis,
+                dense_axis(
+                    "range",
+                    size=values.shape[1],
+                    unit="m",
+                    coordinate_key="range_axis_m",
+                    coordinate_semantics="bistatic_path_length",
+                    reference_frame="tx_target_rx_path",
+                ),
+            ),
+            representation="power_linear",
+            unit="1",
+            temporal_support=TEMPORAL_SUPPORT_LAST_VALID_SAMPLE,
+        )
+    if cir_by_pair_rx_element_tx_element is not None:
+        values = np.asarray(cir_by_pair_rx_element_tx_element)
+        if values.ndim != 4 or values.shape[0] != 1:
+            raise ValueError(
+                "cir_by_pair_rx_element_tx_element must have shape "
+                "[1, rx_element, tx_element, delay]"
+            )
+        sensing["rx_element_axis"] = [
+            {"element_index": index, "row": 0, "column": index} for index in range(values.shape[1])
+        ]
+        sensing["tx_element_axis"] = [
+            {"element_index": index, "row": 0, "column": index} for index in range(values.shape[2])
+        ]
+        sensing["delay_axis_s"] = np.arange(values.shape[3], dtype=np.float64) * 1e-9
+        sensing["cir_by_pair_rx_element_tx_element"] = values
+        add_product_spec(
+            sensing,
+            data_key="cir_by_pair_rx_element_tx_element",
+            kind="impulse_response",
+            axes=(
+                pair_axis,
+                catalog_axis(
+                    "rx_element",
+                    size=values.shape[1],
+                    catalog_key="rx_element_axis",
+                    reference_frame="rx_array_local",
+                ),
+                catalog_axis(
+                    "tx_element",
+                    size=values.shape[2],
+                    catalog_key="tx_element_axis",
+                    reference_frame="tx_array_local",
+                ),
+                dense_axis(
+                    "delay",
+                    size=values.shape[3],
+                    unit="s",
+                    coordinate_key="delay_axis_s",
+                    coordinate_semantics="propagation_delay",
+                    reference_frame="tx_to_rx",
+                ),
+            ),
+            representation="complex_voltage",
+            unit="1",
+            temporal_support=TEMPORAL_SUPPORT_LAST_VALID_SAMPLE,
+        )
+    materialize_product_specs(sensing)
+    finalize_sensing_v4_publication(sensing)
+    return sensing
 
 
 def _strategy(
@@ -421,7 +643,7 @@ def test_byte_limit_rotates_before_the_next_frame_is_appended(tmp_path, mocker):
 
 @pytest.mark.parametrize(
     "boundary_kind",
-    ["topology", "fixed_sensing", "cir", "sensing_config"],
+    ["topology", "fixed_sensing", "typed_cir", "sensing_config"],
 )
 def test_physical_layout_boundary_rotates_and_retries_cleanly(
     tmp_path,
@@ -434,14 +656,38 @@ def test_physical_layout_boundary_rotates_and_retries_cleanly(
         first = replace(first, rx_names=("rx-a",))
         second = replace(second, rx_names=("rx-b",))
     elif boundary_kind == "fixed_sensing":
-        first = replace(first, sensing={"range_profile": np.ones((3,), dtype=np.float32)})
-        second = replace(second, sensing={"range_profile": np.ones((4,), dtype=np.float32)})
-    elif boundary_kind == "cir":
-        first = replace(first, sensing={"cir": np.ones((2, 2), dtype=np.complex64)})
-        second = replace(second, sensing={"cir": np.ones((2, 2), dtype=np.complex128)})
+        first = replace(
+            first,
+            sensing=_sensing_v4(
+                0,
+                range_profile_by_pair=np.ones((1, 3), dtype=np.float32),
+            ),
+        )
+        second = replace(
+            second,
+            sensing=_sensing_v4(
+                1,
+                range_profile_by_pair=np.ones((1, 4), dtype=np.float32),
+            ),
+        )
+    elif boundary_kind == "typed_cir":
+        first = replace(
+            first,
+            sensing=_sensing_v4(
+                0,
+                cir_by_pair_rx_element_tx_element=np.ones((1, 1, 1, 2), dtype=np.complex64),
+            ),
+        )
+        second = replace(
+            second,
+            sensing=_sensing_v4(
+                1,
+                cir_by_pair_rx_element_tx_element=np.ones((1, 1, 1, 2), dtype=np.complex128),
+            ),
+        )
     else:
-        first = replace(first, sensing={"config": {"bandwidth_hz": 1.0}})
-        second = replace(second, sensing={"config": {"bandwidth_hz": 2.0}})
+        first = replace(first, sensing=_sensing_v4(0, config={"bandwidth_hz": 1.0}))
+        second = replace(second, sensing=_sensing_v4(1, config={"bandwidth_hz": 2.0}))
 
     mocker.patch(
         "generator.io.storage.hdf5_frame_output.standard_mpc_frame_from_raw",

@@ -114,6 +114,7 @@ MOBILITIES = (
         turns=2.0,
         start_angle_deg=90.0,
         clockwise=True,
+        interpolation="analytic",
         traversal=CONSTANT_SPEED,
     ),
     RandomSamplingMobilitySpec(
@@ -181,8 +182,9 @@ MOBILITIES = (
 
 
 @pytest.mark.parametrize("mobility", MOBILITIES, ids=lambda value: value.type)
-def test_all_canonical_models_round_trip_without_type_signal(qapp, mobility) -> None:
+def test_all_canonical_models_round_trip_without_type_signal(qtbot, mobility) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     editor.set_group_choices(((GROUP_ID, "Convoy"),))
     emitted: list[str] = []
     editor.mobility_type_changed.connect(emitted.append)
@@ -197,8 +199,9 @@ def test_all_canonical_models_round_trip_without_type_signal(qapp, mobility) -> 
     editor.close()
 
 
-def test_registry_drives_all_type_labels_and_pages(qapp) -> None:
+def test_registry_drives_all_type_labels_and_pages(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
 
     assert editor.type_combo.count() == 17
     assert [
@@ -212,8 +215,32 @@ def test_registry_drives_all_type_labels_and_pages(qapp) -> None:
     editor.close()
 
 
-def test_sampled_mobility_is_preserved_read_only_then_editor_recovers(qapp) -> None:
+def test_spiral_interpolation_selector_preserves_other_authored_fields(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
+    spec = SpiralMobilitySpec(
+        center_m=(1, -2, 3),
+        radius_m=4,
+        start_altitude_m=5,
+        end_altitude_m=8,
+        turns=0.75,
+        clockwise=True,
+        interpolation="analytic",
+        traversal=CONSTANT_SPEED,
+    )
+    editor.set_mobility(spec)
+    assert editor.spiral_interpolation_combo.currentData() == "analytic"
+    assert editor.mobility() == spec
+    editor.spiral_interpolation_combo.setCurrentIndex(
+        editor.spiral_interpolation_combo.findData("linear")
+    )
+    assert editor.mobility() == spec.model_copy(update={"interpolation": "linear"})
+    editor.close()
+
+
+def test_sampled_mobility_is_preserved_read_only_then_editor_recovers(qtbot) -> None:
+    editor = MobilityEditor()
+    qtbot.addWidget(editor)
     sampled = SampledMobilitySpec(
         positions_m=(
             (0.0, 1.0, 2.0),
@@ -259,8 +286,9 @@ def test_sampled_mobility_is_preserved_read_only_then_editor_recovers(qapp) -> N
     editor.close()
 
 
-def test_type_signal_controls_pages_without_constructing_a_model(qapp) -> None:
+def test_type_signal_controls_pages_without_constructing_a_model(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     emitted: list[str] = []
     editor.mobility_type_changed.connect(emitted.append)
 
@@ -275,8 +303,9 @@ def test_type_signal_controls_pages_without_constructing_a_model(qapp) -> None:
     editor.close()
 
 
-def test_waypoint_table_supports_reorder_add_remove_draw_and_apply(qapp) -> None:
+def test_waypoint_table_supports_reorder_add_remove_draw_and_apply(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     editor.set_mobility(
         WaypointMobilitySpec(points_m=((1.0, 0.0, 0.0), (2.0, 0.0, 0.0), (3.0, 0.0, 0.0)))
     )
@@ -306,8 +335,9 @@ def test_waypoint_table_supports_reorder_add_remove_draw_and_apply(qapp) -> None
     editor.close()
 
 
-def test_traversal_fields_live_in_initially_collapsed_advanced_sections(qapp) -> None:
+def test_traversal_fields_live_in_initially_collapsed_advanced_sections(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     editor.set_mobility(MOBILITIES[1])
 
     assert not editor.linear_advanced_section.expanded
@@ -322,8 +352,9 @@ def test_traversal_fields_live_in_initially_collapsed_advanced_sections(qapp) ->
     editor.close()
 
 
-def test_group_choices_store_uuid_and_restore_unavailable_reference(qapp) -> None:
+def test_group_choices_store_uuid_and_restore_unavailable_reference(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     editor.set_group_choices(((GROUP_ID, "Convoy"),))
     editor.set_mobility(MOBILITIES[-1])
 
@@ -338,8 +369,9 @@ def test_group_choices_store_uuid_and_restore_unavailable_reference(qapp) -> Non
     editor.close()
 
 
-def test_resource_browse_buttons_populate_editable_paths(qapp, monkeypatch) -> None:
+def test_resource_browse_buttons_populate_editable_paths(qtbot, monkeypatch) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     calls: list[tuple[object, ...]] = []
     selections = iter(
         (
@@ -363,8 +395,9 @@ def test_resource_browse_buttons_populate_editable_paths(qapp, monkeypatch) -> N
     editor.close()
 
 
-def test_seed_controls_cover_the_complete_shared_schema_range(qapp) -> None:
+def test_seed_controls_cover_the_complete_shared_schema_range(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     seed_spins = (
         editor.random_sampling_seed_spin,
         editor.gauss_markov_seed_spin,
@@ -382,8 +415,9 @@ def test_seed_controls_cover_the_complete_shared_schema_range(qapp) -> None:
     editor.close()
 
 
-def test_network_random_walk_suppresses_nodes_and_requires_a_default_seed(qapp) -> None:
+def test_network_random_walk_suppresses_nodes_and_requires_a_default_seed(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     editor.set_mobility(
         NetworkRouteMobilitySpec(
             route="shortest_path",
@@ -427,8 +461,9 @@ def test_network_random_walk_suppresses_nodes_and_requires_a_default_seed(qapp) 
     editor.close()
 
 
-def test_network_route_mode_round_trip_preserves_an_explicit_shortest_path_seed(qapp) -> None:
+def test_network_route_mode_round_trip_preserves_an_explicit_shortest_path_seed(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     editor.set_mobility(
         NetworkRouteMobilitySpec(
             route="shortest_path",
@@ -453,8 +488,9 @@ def test_network_route_mode_round_trip_preserves_an_explicit_shortest_path_seed(
     editor.close()
 
 
-def test_invalid_fields_raise_only_when_model_is_requested(qapp) -> None:
+def test_invalid_fields_raise_only_when_model_is_requested(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     editor.set_mobility(
         RandomSamplingMobilitySpec(
             x_bounds_m=(0.0, 1.0),
@@ -472,8 +508,9 @@ def test_invalid_fields_raise_only_when_model_is_requested(qapp) -> None:
     editor.close()
 
 
-def test_random_sampling_initial_observation_can_be_enabled_or_omitted(qapp) -> None:
+def test_random_sampling_initial_observation_can_be_enabled_or_omitted(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     unanchored = RandomSamplingMobilitySpec(
         x_bounds_m=(-10.0, 10.0),
         y_bounds_m=(-5.0, 5.0),
@@ -497,8 +534,9 @@ def test_random_sampling_initial_observation_can_be_enabled_or_omitted(qapp) -> 
     editor.close()
 
 
-def test_random_sampling_modes_explain_spacing_and_use_a_visible_poisson_default(qapp) -> None:
+def test_random_sampling_modes_explain_spacing_and_use_a_visible_poisson_default(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     editor.type_combo.setCurrentIndex(editor.type_combo.findData("random_sampling"))
 
     assert "independent spatial observation" in editor.random_sampling_explanation_label.text()
@@ -516,8 +554,9 @@ def test_random_sampling_modes_explain_spacing_and_use_a_visible_poisson_default
     editor.close()
 
 
-def test_gauss_markov_controls_explain_memory_heading_and_noise(qapp) -> None:
+def test_gauss_markov_controls_explain_memory_heading_and_noise(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
 
     explanation = editor.gauss_markov_explanation_label.text()
     assert "Memory α=0" in explanation
@@ -528,8 +567,9 @@ def test_gauss_markov_controls_explain_memory_heading_and_noise(qapp) -> None:
     editor.close()
 
 
-def test_numeric_controls_are_adaptive_and_editor_state_is_respected(qapp) -> None:
+def test_numeric_controls_are_adaptive_and_editor_state_is_respected(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
 
     assert editor.objectName() == "mobilityEditor"
     assert editor.type_combo.objectName() == "mobilityTypeCombo"
@@ -556,8 +596,9 @@ def test_numeric_controls_are_adaptive_and_editor_state_is_respected(qapp) -> No
     editor.close()
 
 
-def test_waypoint_drawing_reserves_editor_until_session_finishes(qapp) -> None:
+def test_waypoint_drawing_reserves_editor_until_session_finishes(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     editor.set_mobility(WaypointMobilitySpec(points_m=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))))
 
     editor.set_waypoint_drawing_active(True)
@@ -575,8 +616,9 @@ def test_waypoint_drawing_reserves_editor_until_session_finishes(qapp) -> None:
     editor.close()
 
 
-def test_target_only_mesh_sequence_role_is_surfaced_without_hiding_it(qapp) -> None:
+def test_target_only_mesh_sequence_role_is_surfaced_without_hiding_it(qtbot) -> None:
     editor = MobilityEditor()
+    qtbot.addWidget(editor)
     mesh_index = editor.type_combo.findData(MobilityKind.MESH_SEQUENCE.value)
 
     editor.set_actor_role(ActorRole.TX)

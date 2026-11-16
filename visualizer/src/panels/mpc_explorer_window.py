@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from PySide6.QtCore import QEvent, QModelIndex, QSignalBlocker, Qt, Signal
-from PySide6.QtGui import QPen
+from PySide6.QtCore import QEvent, QModelIndex, QSignalBlocker, Qt, QTimer, Signal
+from PySide6.QtGui import QMouseEvent, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -22,10 +22,10 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
-    QMainWindow,
     QMenu,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QStyledItemDelegate,
@@ -35,6 +35,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from ..widgets.auxiliary_dock import AuxiliaryDock
+from ..widgets.responsive import wrap_control_row
+
+ORDER_DRAWER_MAX_HEIGHT_PX = 240
 
 SCOPE_OPTIONS = (
     ("All paths", "all"),
@@ -191,7 +196,40 @@ class _GroupBoundaryDelegate(QStyledItemDelegate):
         painter.restore()
 
 
-class MpcExplorerWindow(QMainWindow):
+class _PathTableView(QTableView):
+    """A repeated plain click clears a path without changing keyboard navigation."""
+
+    deselectionRequested = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._deselecting_click = False
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        index = self.indexAt(event.position().toPoint())
+        selection = self.selectionModel()
+        self._deselecting_click = bool(
+            event.button() == Qt.LeftButton
+            and event.modifiers() == Qt.NoModifier
+            and index.isValid()
+            and selection is not None
+            and selection.isRowSelected(index.row(), index.parent())
+        )
+        if self._deselecting_click:
+            self.deselectionRequested.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._deselecting_click and event.button() == Qt.LeftButton:
+            self._deselecting_click = False
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
+class MpcExplorerWindow(AuxiliaryDock):
     """Resizable MPC Explorer shell backed by one shared table model."""
 
     activityChanged = Signal(bool)
@@ -203,16 +241,22 @@ class MpcExplorerWindow(QMainWindow):
     filtersChanged = Signal(object)
     columnVisibilityChanged = Signal(str, bool)
     pathSelectionRequested = Signal(int)
+    pathSelectionCleared = Signal()
+    analysisRequested = Signal()
+    matchingPathsCleared = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Build controls without constructing a catalog, model, or worker."""
-        super().__init__(parent)
-        self.setWindowTitle("MPC Explorer")
+        super().__init__("Path Explorer", parent)
+        self.setObjectName("pathExplorer")
         self.setAttribute(Qt.WA_DeleteOnClose, True)
-        self.setMinimumSize(820, 520)
+        self.setMinimumSize(440, 360)
         self.resize(1180, 760)
 
         self._activity_state = False
+        self._activity_timer = QTimer(self)
+        self._activity_timer.setSingleShot(True)
+        self._activity_timer.timeout.connect(self._sync_hidden_activity)
         self._selection_model: Any = None
         self._column_menu = QMenu(self)
         self._custom_sort_clauses: list[tuple[str, bool]] = []
@@ -232,13 +276,35 @@ class MpcExplorerWindow(QMainWindow):
         root = QVBoxLayout(central)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(6)
-        root.addLayout(self._create_primary_controls())
+        root.addLayout(wrap_control_row(self._create_primary_controls(), [2]))
+        self.matching_row = QWidget()
+        matching_layout = QHBoxLayout(self.matching_row)
+        matching_layout.setContentsMargins(0, 0, 0, 0)
+        self.matching_label = QLabel()
+        self.matching_label.setWordWrap(True)
+        matching_layout.addWidget(self.matching_label, 1)
+        clear_matching = QPushButton("Clear matching set")
+        clear_matching.clicked.connect(self.matchingPathsCleared.emit)
+        matching_layout.addWidget(clear_matching)
+        self.matching_row.hide()
+        root.addWidget(self.matching_row)
         root.addWidget(self._create_filter_drawer())
-        root.addWidget(self._create_ordering_tabs())
-        root.addWidget(self._create_sort_chip_row())
+        self.order_drawer = QScrollArea()
+        self.order_drawer.setWidgetResizable(True)
+        order_content = QWidget()
+        order_layout = QVBoxLayout(order_content)
+        order_layout.setContentsMargins(0, 0, 0, 0)
+        order_layout.addWidget(self._create_ordering_tabs())
+        order_layout.addWidget(self._create_sort_chip_row())
+        self.order_drawer.setWidget(order_content)
+        self.order_drawer.setMaximumHeight(ORDER_DRAWER_MAX_HEIGHT_PX)
+        self.order_drawer.hide()
+        root.addWidget(self.order_drawer)
         root.addWidget(self._create_content_splitter(), 1)
         root.addLayout(self._create_footer())
-        self.setCentralWidget(central)
+        self.setWidget(central)
+        self.attach()
+        self._set_activity(False)
 
         self._seed_custom_from_preset("tx_rx_strongest", mark_applied=True)
         self._set_preset_chips("tx_rx_strongest")
@@ -259,6 +325,11 @@ class MpcExplorerWindow(QMainWindow):
         row.addWidget(self.scope_combo)
         row.addStretch(1)
 
+        self.analysis_button = QPushButton("Analysis…")
+        self.analysis_button.setToolTip("Open linked arrival-time and delay–angle plots.")
+        self.analysis_button.clicked.connect(self.analysisRequested.emit)
+        row.addWidget(self.analysis_button)
+
         self.column_button = QToolButton()
         self.column_button.setText("Columns")
         self.column_button.setPopupMode(QToolButton.InstantPopup)
@@ -270,6 +341,13 @@ class MpcExplorerWindow(QMainWindow):
         self.filter_button.setCheckable(True)
         self.filter_button.toggled.connect(self._set_filter_drawer_visible)
         row.addWidget(self.filter_button)
+        self.order_button = QToolButton()
+        self.order_button.setText("Order")
+        self.order_button.setCheckable(True)
+        self.order_button.setToolTip("Choose a preset recipe or edit the compound sorting order.")
+        self.order_button.toggled.connect(lambda visible: self.order_drawer.setVisible(visible))
+        row.addWidget(self.order_button)
+        row.addWidget(self.create_placement_button())
         return row
 
     def _create_ordering_tabs(self) -> QTabWidget:
@@ -354,7 +432,7 @@ class MpcExplorerWindow(QMainWindow):
         layout.addWidget(self.mixed_only_checkbox, button_row, 0, 1, 2)
         self.filter_value_hint = QLabel(
             "Mechanism IDs: 0 LoS, 1 Specular, 2 Diffuse, 4 Refraction, "
-            "8 Diffraction, 99 Virtual. " + self._material_filter_hint
+            "8 Diffraction, 16 Sensing, 99 Virtual. " + self._material_filter_hint
         )
         self.filter_value_hint.setWordWrap(True)
         layout.addWidget(self.filter_value_hint, button_row + 1, 0, 1, 8)
@@ -445,7 +523,8 @@ class MpcExplorerWindow(QMainWindow):
         """Create the read-only path table and selected-path details pane."""
         splitter = QSplitter(Qt.Vertical)
 
-        self.table = QTableView()
+        self.table = _PathTableView()
+        self.table.deselectionRequested.connect(self.pathSelectionCleared.emit)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -481,6 +560,7 @@ class MpcExplorerWindow(QMainWindow):
         row.addWidget(self.count_label)
         row.addStretch()
         self.status_label = QLabel()
+        self.status_label.setWordWrap(True)
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         row.addWidget(self.status_label, 1)
         return row
@@ -496,7 +576,7 @@ class MpcExplorerWindow(QMainWindow):
             return
         if self._selection_model is not None:
             try:
-                self._selection_model.currentChanged.disconnect(self._on_current_changed)
+                self._selection_model.selectionChanged.disconnect(self._on_selection_changed)
             except (RuntimeError, TypeError):
                 pass
         if self._group_boundary_delegate is not None:
@@ -511,7 +591,7 @@ class MpcExplorerWindow(QMainWindow):
             return
         self._selection_model = self.table.selectionModel()
         if self._selection_model is not None:
-            self._selection_model.currentChanged.connect(self._on_current_changed)
+            self._selection_model.selectionChanged.connect(self._on_selection_changed)
         if optional_start_column is not None:
             for column in range(max(0, int(optional_start_column)), model.columnCount()):
                 columns = getattr(model, "columns", ())
@@ -544,6 +624,11 @@ class MpcExplorerWindow(QMainWindow):
         """Show current query rows versus the canonical frame population."""
         self.count_label.setText(f"{max(0, int(visible)):,} / {max(0, int(total)):,} paths")
 
+    def set_matching_paths(self, description: str) -> None:
+        """Explain the plot selection currently restricting the table's rows."""
+        self.matching_label.setText(description)
+        self.matching_row.setVisible(bool(description))
+
     def set_status(self, text: str) -> None:
         """Update the compact lifecycle/query status message."""
         self.status_label.setText(str(text))
@@ -561,7 +646,7 @@ class MpcExplorerWindow(QMainWindow):
         self._material_filter_hint = material_hint
         self.filter_value_hint.setText(
             "Mechanism IDs: 0 LoS, 1 Specular, 2 Diffuse, 4 Refraction, "
-            "8 Diffraction, 99 Virtual. " + material_hint
+            "8 Diffraction, 16 Sensing, 99 Virtual. " + material_hint
         )
 
     def set_details(self, details: str | Mapping[str, Any] | Iterable[tuple[Any, Any]]) -> None:
@@ -623,6 +708,13 @@ class MpcExplorerWindow(QMainWindow):
         finally:
             self._programmatic_path_selection = False
         return True
+
+    def clear_path_selection(self) -> None:
+        """Clear focus as well as row emphasis so the next click can select again."""
+        selection = self.table.selectionModel()
+        if selection is not None:
+            with QSignalBlocker(selection):
+                selection.clear()
 
     def _emit_scope(self) -> None:
         self.scopeChanged.emit(self.current_scope())
@@ -850,11 +942,10 @@ class MpcExplorerWindow(QMainWindow):
             chip.setText(f"{prefix}{SORT_LABELS.get(key, key)} {direction}{suffix}")
             chip.setAutoRaise(True)
             if can_remove and not is_group and source_index is not None:
-                chip.clicked.connect(
-                    lambda _checked=False, clause_index=source_index: (
-                        self._remove_sort_clause(clause_index)
-                    )
-                )
+                chip.setProperty("sortClauseIndex", source_index)
+                # A bound QObject slot does not keep the window alive through a
+                # child-button closure while Qt drains deferred deletions.
+                chip.clicked.connect(self._on_sort_chip_clicked)
             else:
                 chip.setEnabled(False)
             self.sort_chip_layout.insertWidget(self.sort_chip_layout.count() - 1, chip)
@@ -865,6 +956,11 @@ class MpcExplorerWindow(QMainWindow):
             tie_chip.setAutoRaise(True)
             tie_chip.setEnabled(False)
             self.sort_chip_layout.insertWidget(self.sort_chip_layout.count() - 1, tie_chip)
+
+    def _on_sort_chip_clicked(self) -> None:
+        chip = self.sender()
+        if isinstance(chip, QToolButton):
+            self._remove_sort_clause(int(chip.property("sortClauseIndex")))
 
     def _rebuild_column_menu(self) -> None:
         self._column_menu.clear()
@@ -984,9 +1080,15 @@ class MpcExplorerWindow(QMainWindow):
         stripped = str(text).strip()
         return float(stripped) if stripped else None
 
-    def _on_current_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
-        if self._programmatic_path_selection or not current.isValid():
+    def _on_selection_changed(self, selected: Any, _deselected: Any) -> None:
+        # Qt may assign a current index merely because focus returns after a
+        # model reset. Only a selected row represents an individual path choice.
+        if self._programmatic_path_selection:
             return
+        indexes = selected.indexes()
+        if not indexes:
+            return
+        current = indexes[0]
         model = current.model()
         path_id = self._model_path_id_for_row(model, current.row())
         if path_id is not None:
@@ -1031,11 +1133,18 @@ class MpcExplorerWindow(QMainWindow):
 
     def showEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().showEvent(event)
+        self._activity_timer.stop()
         self._set_activity(not self.isMinimized())
 
     def hideEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
-        self._set_activity(False)
         super().hideEvent(event)
+        # Native docking briefly hides and shows a window. Reconcile after
+        # the move; inactive dock tabs are not explicitly hidden either.
+        self._activity_timer.start(0)
+
+    def _sync_hidden_activity(self) -> None:
+        if self.isHidden():
+            self._set_activity(False)
 
     def changeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().changeEvent(event)

@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<scene version="2.1.0">
+
+<!-- Defaults, these can be set via the command line: -Darg=value -->
+
+<!-- Camera and Rendering Parameters -->
+
+<!-- Materials -->
+	<bsdf type="itu-radio-material" id="mat-itu_concrete">
+	<string name="type" value="concrete" />
+	<float name="thickness" value="1." />
+	<rgb value="0.854902 0.854902 0.854902" name="color" />
+	</bsdf>
+
+<!-- Emitters -->
+
+<!-- Shapes -->
+	<shape type="ply" id="mesh-box">
+	<string name="filename" value="meshes/box.ply" />
+	<boolean name="face_normals" value="true" />
+	<ref id="mat-itu_concrete" name="bsdf" />
+	<transform name="to_world">
+	<scale value="1.000000" />
+	</transform>
+	</shape>
+
+<!-- Volumes -->
+
+</scene>

@@ -1,0 +1,192 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "scenarios/sensing/cube_radar/two_moving",
+  "source_identity": {
+    "generation_id": "5694e913-014e-4d3a-b688-58f3bb1982b2",
+    "frame_set_id": "8fbaf5d468f462baefcc8d64ff10db5ec2abb265dddaa20b2ad0cd96b8725d1e"
+  },
+  "manifest_sha256": "ee422de3402ca9bc68683e27658f42efa948eff088f37d0e67632e8efc436ac9",
+  "source_files_sha256": {
+    "frames_manifest.json": "ee422de3402ca9bc68683e27658f42efa948eff088f37d0e67632e8efc436ac9",
+    "mpc_frames_00000-00062.h5": "545c05d5bd81900953b0685e3ea172701531774c5f88db9e0340201f48b16ebf",
+    "mpc_frames_00063-00063.h5": "e60bdf52b340db0e633222bd1fa841241c5448817333fa738c3e01961027fdbb",
+    "mpc_frames_00064-00126.h5": "964b99f840b68fc69c775ad0cf861ffd906223c9df80dca7a17dccec904fbfe7",
+    "mpc_frames_00127-00127.h5": "754dc082ebee08cc6545e2c8ebd441b1827c7a5ebdc932fcfdee16a2f5ab1758",
+    "mpc_frames_00128-00190.h5": "d63e4f351e301a0c63abb97db14d867db35040ac8e8a4c7d06ef10ce9262223c",
+    "mpc_frames_00191-00191.h5": "166d4ec4f3eea2aff9ea2a9f67d154073d5d4cd6c0fff4a98dace4724a9c42e7",
+    "mpc_frames_00192-00254.h5": "ad2c9ff5015ddb0b4d53ef6949a8f7a3b21c6c6b7f694122ec597056d4fe8d57",
+    "mpc_frames_00255-00255.h5": "15cc4df256835b51db610232d433d3257e054a75027d5108dc35fc0f7e0a027c",
+    "mpc_frames_00256-00318.h5": "3007315c73489a5f320ec23c3552ff2419d93f5b3bce31b7db4b667e82ba4a5c",
+    "mpc_frames_00319-00319.h5": "a6b874a78f418c917ef6ba1688e1442890819d5ae7e30d0b503efd0a90456797",
+    "mpc_frames_00320-00382.h5": "4077d639bbe38ceee419ab26542c59082afd175c89f22ec839c65d72d38601c3",
+    "mpc_frames_00383-00383.h5": "7eff7290dc82683d34789c4ba602ba796c971794fe4b1b7986fa5c3e07db79c1",
+    "mpc_frames_00384-00446.h5": "826a20d8f216b406fc321e0dec27c2e601e71a92727cd206ba9ad3c222460aa6",
+    "mpc_frames_00447-00447.h5": "bbec1a1fabfda8085aa7f889430f04d40a8ade98fbb4c666bedf417f9e842f19",
+    "mpc_frames_00448-00510.h5": "b0b4253ed9b794801c758957e5cfda4a96c11eb36c0e399891afa15a43b38182",
+    "mpc_frames_00511-00511.h5": "a2dc1bf144181d037a8acbd7163e180dba7f72ce9f88aa296095f22ed86a7eb0",
+    "mpc_frames_00512-00574.h5": "2ecc139ef6dd79b47e72c335ef1d9ac54dab4a298cb216ce873d62a70b775dfa",
+    "mpc_frames_00575-00575.h5": "a169c66fa3a63f9a5eb53563cd8c94fc86b82bd99ecbb9d2bcbed494eceeee65",
+    "mpc_frames_00576-00638.h5": "960b9305f859e62b6a4f55ac762f55f16338173e828210b741d62b690bf50f77",
+    "mpc_frames_00639-00639.h5": "332c30d15ca384d5e23fe8a251b0d8f38b9edf4ffd03ae1b70d859f079fbc980",
+    "mpc_frames_00640-00702.h5": "0257b3de7557dba45a5b9d8d5d5e977649f98b792a92752f19143b0cc193dd92",
+    "mpc_frames_00703-00703.h5": "ed85c10ebb57972d234af92ed8580da803ea26e59e014cdf04964662ae6a50cd",
+    "mpc_frames_00704-00766.h5": "4afe9c1dbe9cc0c78621762a66c387f6c220b875ae668d1fd02409e42b733b48",
+    "mpc_frames_00767-00767.h5": "ad9bcd18379a0076e18ceac2d6e5934134c10d0cf8e9b7bbffba7ac4d6351bd7",
+    "mpc_frames_00768-00830.h5": "24571ca3db924acae8160c02072d1bf249fe011e914a158d39836e90fbd59948",
+    "mpc_frames_00831-00831.h5": "7ec33d5f3e1182ecaf3b758947de617505482da2f37ea2567ffa3c076b12f299",
+    "mpc_frames_00832-00894.h5": "53e4fbd5f8b428c36d0e878e6f7343a1ee1bbdd9302c95c4f57faa819bc60eee",
+    "mpc_frames_00895-00895.h5": "603e80cc7c875da03b2ea034b47b50ff6a408e2e171fb35b2d84e695ab7ac52f",
+    "mpc_frames_00896-00958.h5": "958a5d4f231d2636beaeff5e36ff885bda793122b24a94c43622cf523e891ea5",
+    "mpc_frames_00959-00959.h5": "b132b95d6b24dc8ec8e62b02982ffb49f34268ad37929f3ddde49cfc0942d196",
+    "mpc_frames_00960-01022.h5": "2856730f89ec241b8cf84418ef00d8c6c9fae89682d95f056cfa04aa92a3503e",
+    "mpc_frames_01023-01023.h5": "9067e4200f7db7273661a632956b900ef68986cb220de397d2babd4ba5f87cb7"
+  },
+  "figures": [
+    "range_doppler",
+    "tracking"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 16,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "d1b99b36-412d-539e-9dbe-3e4300bcf9c6",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 0
+    },
+    {
+      "frame_index": 127,
+      "reference_time_s": 0.064,
+      "acquisition_id": "fae5da3c-cb21-53c8-a4e2-9740708fa123",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 191,
+      "reference_time_s": 0.128,
+      "acquisition_id": "48825e93-2de4-5f3a-a895-b8d5739ec117",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 255,
+      "reference_time_s": 0.192,
+      "acquisition_id": "1b54fbdd-7cb5-5747-9e0f-5732948d2873",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 319,
+      "reference_time_s": 0.256,
+      "acquisition_id": "6e2d9e06-a0ba-5f9f-b577-d05195e05dcd",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 383,
+      "reference_time_s": 0.32,
+      "acquisition_id": "cc2aeb38-fc80-5b12-9ab1-17766ce148d6",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 447,
+      "reference_time_s": 0.384,
+      "acquisition_id": "7ea0e11b-cf3d-54ab-9fcb-f2a7895501de",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 511,
+      "reference_time_s": 0.448,
+      "acquisition_id": "7da86271-b443-5cff-a616-2bc9a509ab0a",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 575,
+      "reference_time_s": 0.512,
+      "acquisition_id": "7ad8e51c-a09d-5ff5-94e1-f09716f90871",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 639,
+      "reference_time_s": 0.576,
+      "acquisition_id": "543c9b1a-ed59-513f-be05-a66f7f28fb90",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 703,
+      "reference_time_s": 0.64,
+      "acquisition_id": "144484b2-be61-5b34-a497-ff3d39706300",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 767,
+      "reference_time_s": 0.704,
+      "acquisition_id": "d6aa92fb-9703-553d-a195-3461ab8f39e0",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 831,
+      "reference_time_s": 0.768,
+      "acquisition_id": "280fb5a3-de87-503f-9cdf-c27762b57687",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 895,
+      "reference_time_s": 0.832,
+      "acquisition_id": "773fcad8-37a3-5f8e-9e68-758a4ccc9e4b",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 959,
+      "reference_time_s": 0.896,
+      "acquisition_id": "727301a2-5571-5799-8864-426fcb6e34c9",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    },
+    {
+      "frame_index": 1023,
+      "reference_time_s": 0.96,
+      "acquisition_id": "66db5305-c10a-5135-a7e0-c7764622220d",
+      "processing_recipe_id": "18814b9cca6b8f31f059a56f5f6d71a6f5d23bb784da4d4342d0a5118861ab18",
+      "detection_count": 2
+    }
+  ],
+  "outputs": [
+    "sensing/range_doppler.png",
+    "sensing/range_doppler_full.png",
+    "sensing/tracking.png"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "image": "cube_radar_summary_two_moving_tracks.png",
+  "sha256": "bfed6ef197ba615d047174975ed02ef42c2fca47e8017b79ef9d462978116d36",
+  "tutorial_scenario": "scenarios/sensing/cube_radar/two_moving/scenario.yaml",
+  "tutorial_scenario_sha256": "e7804f1f9e6923b87ca8959e84eaeb7b0c092812cec4334cab0557dcb99de6ec",
+  "license_spdx": "GPL-3.0-only",
+  "plotting_source_sha256": {
+    "generator/figures/summary/sensing.py": "0866c47e1189f22189dbc854e1c16599729d252bd416c54fb2787e197130bb85"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.summary.saved_sensing",
+    "scenarios/sensing/cube_radar/two_moving",
+    "-o",
+    "analysis/curriculum-two-moving-figures",
+    "--figure",
+    "range_doppler",
+    "--figure",
+    "tracking"
+  ],
+  "execution_backend": "CPU figures from CUDA acquisition"
+}

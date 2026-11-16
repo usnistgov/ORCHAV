@@ -18,11 +18,14 @@ import numpy as np
 from ...types.camera_state import CameraState
 from ..camera_ops import object_contributes_to_camera_bounds
 from .camera import SceneBounds
-from .canvas import _AA_MODES, _refresh_renderer_effect_passes
+from .canvas import _AA_MODES, _normalize_aa_mode, _refresh_renderer_effect_passes
 from .lighting_profiles import (
     CUSTOM_PROFILE,
     PYGFX_LIGHTING_PROFILE_LABELS,
     PYGFX_LIGHTING_PROFILES,
+    PYGFX_PRIMARY_LIGHTING_PROFILES,
+    PygfxLightingProfile,
+    environment_lighting_profile,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,7 +69,8 @@ class PygfxSceneControlsMixin:
             self._remove_solid_background()
         else:
             self._ibl_manager.set_skybox_visible(False, self._scene)
-            self._sync_solid_background()
+            if not getattr(self, "_dusk_enabled", False):
+                self._sync_solid_background()
         for name, obj in self._objects.items():
             if name == self.COVERAGE_MESH_NAME:
                 continue
@@ -140,6 +144,8 @@ class PygfxSceneControlsMixin:
         if len(color) >= 3:
             r, g, b = float(color[0]), float(color[1]), float(color[2])
             a = float(color[3]) if len(color) > 3 else 1.0
+            if getattr(self, "_dusk_enabled", False):
+                self.set_dusk_enabled(False)
             self._clear_color = (r, g, b, a)
             self._rebuild_effect_passes()
             if not self._skybox_visible:
@@ -154,6 +160,18 @@ class PygfxSceneControlsMixin:
         if updated:
             self.request_redraw()
         return True
+
+    def get_line_width(self) -> float:
+        """Return the live MPC path width in pixels."""
+        return self._line_width
+
+    def get_point_size(self) -> float:
+        """Return the live MPC interaction-marker size in pixels."""
+        return self._point_size
+
+    def get_edge_line_width(self) -> float:
+        """Return the environment-outline width in pixels."""
+        return self._edge_line_width
 
     def set_edge_line_width(self, width: float) -> bool:
         """Update outline/edge line thickness for live edge geometries."""
@@ -220,6 +238,23 @@ class PygfxSceneControlsMixin:
 
     def clear(self) -> None:
         """Remove renderer-owned scene objects and reset cached render state."""
+        configure_dusk = getattr(self, "configure_dusk", None)
+        if callable(configure_dusk):
+            configure_dusk(None)
+        for method in ("_clear_section_contours", "_clear_scene_guides", "_clear_compass"):
+            clear_effect = getattr(self, method, None)
+            if callable(clear_effect):
+                clear_effect()
+        clear_silhouette = getattr(self, "_clear_target_silhouette", None)
+        if callable(clear_silhouette):
+            clear_silhouette()
+        target_views = getattr(self, "_target_views", None)
+        if target_views is not None:
+            target_views.dispose()
+            self._target_views = None
+        self._shadow_fit_signature = None
+        self._shadow_fit_available = False
+        self._shadow_focus_center = None
         clear_mpc_selection = getattr(self, "clear_mpc_path_inspection", None)
         if callable(clear_mpc_selection):
             clear_mpc_selection()
@@ -363,14 +398,21 @@ class PygfxSceneControlsMixin:
         # Extract the canonical IBL name from the path so the manager can resolve
         # the corresponding HDR file.
         name = raw
+        if name == "default":
+            name = "neutral_outdoor"
         if raw.lower().endswith("_ibl.ktx"):
             stem = Path(raw).stem  # "neutral_outdoor_ibl"
             name = stem[:-4]  # strip "_ibl" suffix
         self._deferred_default_ibl_name = None
         self._deferred_ibl_load_scheduled = False
+        was_dusk = bool(getattr(self, "_dusk_enabled", False))
+        if was_dusk:
+            self.set_dusk_enabled(False)
         loaded = self._load_ibl_into_scene(name)
         if loaded:
             self.request_redraw()
+        elif was_dusk:
+            self.set_dusk_enabled(True)
         return loaded
 
     def set_ibl_intensity(self, intensity: float) -> bool:
@@ -398,14 +440,35 @@ class PygfxSceneControlsMixin:
         return str(getattr(self, "_lighting_profile_name", CUSTOM_PROFILE))
 
     def get_available_lighting_profiles(self) -> dict[str, str]:
-        """Return selectable pygfx lighting profile keys and display labels."""
-        return dict(PYGFX_LIGHTING_PROFILE_LABELS)
+        """Return distinct light setups and retain any additional active recipe."""
+        profiles = {
+            key: PYGFX_LIGHTING_PROFILE_LABELS[key] for key in PYGFX_PRIMARY_LIGHTING_PROFILES
+        }
+        active = self.get_lighting_profile()
+        if active in PYGFX_LIGHTING_PROFILES and active not in profiles:
+            profiles[active] = PYGFX_LIGHTING_PROFILE_LABELS[active]
+        profiles[CUSTOM_PROFILE] = PYGFX_LIGHTING_PROFILE_LABELS[CUSTOM_PROFILE]
+        return profiles
 
     def set_lighting_profile(self, name: str) -> bool:
         """Apply one named pygfx lighting profile as renderer runtime state."""
         profile = PYGFX_LIGHTING_PROFILES.get(str(name or ""))
         if profile is None:
             return False
+
+        return self._apply_lighting_profile(profile)
+
+    def apply_environment_lighting(self, name: str) -> bool:
+        """Apply a catalog sky's visual light rig without changing scene materials."""
+        profile = environment_lighting_profile(name)
+        if profile is None:
+            return False
+        self._apply_lighting_profile(profile)
+        self.set_shadow_quality("scene")
+        return True
+
+    def _apply_lighting_profile(self, profile: PygfxLightingProfile) -> bool:
+        """Share atomic rig updates between named profiles and environment recipes."""
 
         previous_suppress = getattr(self, "_suppress_lighting_profile_custom", False)
         self._suppress_lighting_profile_custom = True
@@ -426,6 +489,7 @@ class PygfxSceneControlsMixin:
             if self._key_light is not None:
                 try:
                     self._key_light.cast_shadow = self._shadows_enabled
+                    self._apply_profile_shadow_bias(profile.key)
                 except (AttributeError, RuntimeError):
                     pass
             self.set_ibl_intensity(float(profile.ibl_intensity))
@@ -517,6 +581,29 @@ class PygfxSceneControlsMixin:
             "fill_intensity": float(self._base_fill_intensity),
             "shadows_enabled": bool(self._shadows_enabled),
         }
+
+    def get_skybox_visible(self) -> bool:
+        """Return backdrop visibility independently of environment lighting."""
+        return bool(self._skybox_visible)
+
+    def restore_light_rig_state(self, state: dict, *, ibl: float) -> bool:
+        """Restore a validated appearance snapshot through the light-rig owner."""
+        profile = PygfxLightingProfile(
+            key=str(state.get("lighting_profile", "custom")),
+            label="Saved appearance",
+            ambient_intensity=float(state["ambient_intensity"]),
+            key_intensity=float(state["key_intensity"]),
+            fill_intensity=float(state["fill_intensity"]),
+            headlight_enabled=bool(state["headlight_enabled"]),
+            headlight_intensity=float(state["headlight_intensity"]),
+            key_azimuth_deg=float(state["key_azimuth_deg"]),
+            key_elevation_deg=float(state["key_elevation_deg"]),
+            fill_azimuth_deg=float(state["fill_azimuth_deg"]),
+            fill_elevation_deg=float(state["fill_elevation_deg"]),
+            ibl_intensity=float(ibl),
+            shadows_enabled=bool(state["shadows_enabled"]),
+        )
+        return self._apply_lighting_profile(profile)
 
     def poll_events(self) -> None:
         """Process pending Qt events so that canvas draws can complete."""
@@ -662,12 +749,13 @@ class PygfxSceneControlsMixin:
             clear_color=self._clear_color,
             aa_mode=self._aa_mode,
             depth_pass_enabled=self._depth_pass_enabled,
+            bloom=self._bloom_settings,
         )
         self.request_redraw()
 
     def set_antialiasing_mode(self, mode: str) -> None:
-        """Switch the interactive AA mode. Options: off, fxaa, ddaa, ppaa."""
-        normalized = str(mode).lower().strip()
+        """Switch interactive AA between Off and FXAA, accepting legacy saved modes."""
+        normalized = _normalize_aa_mode(mode)
         if normalized not in _AA_MODES:
             logger.warning("Unknown AA mode %r, ignoring", mode)
             return
@@ -676,6 +764,22 @@ class PygfxSceneControlsMixin:
         self._aa_mode = normalized
         self._rebuild_effect_passes()
         self._update_status_chip_overlay()
+
+    def get_bloom_settings(self) -> dict:
+        """Return a detached snapshot of the active glow effect."""
+        return dict(self._bloom_settings)
+
+    def set_bloom_settings(self, settings: dict) -> None:
+        """Change bloom without altering process-wide launch settings."""
+        from ..effect_settings import validate_bloom
+        from .canvas import load_physical_bloom_pass
+
+        settings = validate_bloom(settings)
+        if settings["enabled"] and load_physical_bloom_pass() is None:
+            raise RuntimeError("Bloom is unavailable in this pygfx installation")
+        if settings != self._bloom_settings:
+            self._bloom_settings = settings
+            self._rebuild_effect_passes()
 
     def get_antialiasing_mode(self) -> str:
         """Return the active post-process antialiasing mode token."""
@@ -701,6 +805,8 @@ class PygfxSceneControlsMixin:
 
     def show_skybox(self, show: bool) -> bool:
         """Toggle skybox visibility while keeping the solid background coherent."""
+        if getattr(self, "_dusk_enabled", False):
+            self.set_dusk_enabled(False)
         self._skybox_visible = bool(show)
         if self._skybox_visible:
             ok = self._ibl_manager.set_skybox_visible(True, self._scene)
@@ -804,6 +910,7 @@ class PygfxSceneControlsMixin:
             elevation_deg=self._fill_light_elevation_deg,
             radius=70.0,
         )
+        self._update_shadow_quality(force=True)
 
     def _apply_shadow_flags(self, name: str, obj: Any) -> None:
         """Set cast/receive shadow flags on *obj* based on geometry name."""
@@ -829,6 +936,8 @@ class PygfxSceneControlsMixin:
                 self._key_light.cast_shadow = self._shadows_enabled
             except (AttributeError, RuntimeError):
                 return False
+        if self._shadows_enabled:
+            self._update_shadow_quality(force=True)
         self._mark_lighting_profile_custom()
         self.request_redraw()
         return True
@@ -927,6 +1036,9 @@ class PygfxSceneControlsMixin:
     def _update_shadow_extent(self, extent: float) -> None:
         """Resize the shadow camera frustum to cover *extent* world units."""
         self._scene_extent = max(extent, 10.0)
+        if self.get_shadow_quality() != "standard":
+            self._update_shadow_quality(force=True)
+            return
         if self._key_light is None or not hasattr(self._key_light, "shadow"):
             return
         try:
@@ -936,8 +1048,41 @@ class PygfxSceneControlsMixin:
                 cam.width = dim
             if hasattr(cam, "height"):
                 cam.height = dim
+            self._apply_profile_shadow_bias(self.get_lighting_profile())
         except (AttributeError, RuntimeError):
             pass
+
+    def _apply_profile_shadow_bias(self, name: str) -> None:
+        """Apply the preset's depth offset without enlarging the shadow map.
+
+        pygfx 0.16 uses a 1024-square directional shadow map with a fixed PCF
+        neighborhood. Large urban footprints need a larger depth offset to
+        suppress self-shadow stripes. Scale that offset with world texel size;
+        existing profiles retain their original 0.001 bias.
+        """
+        profile = PYGFX_LIGHTING_PROFILES.get(name)
+        if self.get_shadow_quality() != "standard":
+            if profile is not None:
+                self._profile_shadow_bias_texels = profile.shadow_bias_texels
+            self._apply_fitted_shadow_bias()
+            return
+        shadow = getattr(self._key_light, "shadow", None)
+        if shadow is None:
+            return
+        if profile is not None:
+            self._profile_shadow_bias_texels = profile.shadow_bias_texels
+        elif getattr(self, "_profile_shadow_bias_texels", None) is None:
+            return
+        # Manual light edits mark the profile Custom. Keep scaling the chosen
+        # offset if the user subsequently opens a differently sized scene.
+        texels = self._profile_shadow_bias_texels
+        if texels is None:
+            shadow.bias = 0.001
+            return
+        camera = shadow.camera
+        depth = max(float(camera.far - camera.near), 1e-6)
+        texel_width = max(float(camera.width), float(camera.height)) / 1024.0
+        shadow.bias = texels * texel_width / depth
 
     @staticmethod
     def _set_directional_light_from_angles(
@@ -967,6 +1112,9 @@ class PygfxSceneControlsMixin:
             direction /= norm
         pos = -direction * float(radius)
         try:
+            target = getattr(light, "target", None)
+            if target is not None:
+                target.world.position = (0.0, 0.0, 0.0)
             local = getattr(light, "local", None)
             if local is not None and hasattr(local, "position"):
                 local.position = tuple(float(x) for x in pos)

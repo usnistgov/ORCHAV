@@ -9,9 +9,9 @@ or host when needed.
 
 To run it, see [Running](#running).
 
-## Scene Setup
+## Scene Layout
 
-![2D scene layout](../../../../docs/assets/scenarios/scenarios_visualizer_data_modes_hdf5_files_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_visualizer_data_modes_hdf5_files_topology.png)
 
 | Element | Configuration |
 | --- | --- |
@@ -19,36 +19,35 @@ To run it, see [Running](#running).
 | `MobileRx` | Receiver moving diagonally across the scene over 50 frames |
 | `data.mode` | `files` (the default Local HDF5 Playback mode) |
 
-## Scenario Configuration
+## Configuration Walkthrough
 
-`scenario.yaml` omits `data` because the `files` data-mode value is the default.
-The resolved settings use HDF5, the scenario's `frames/` directory, and the
-standard generated chunk names. Add a `data` block only when selecting Live
-Generator or Remote HDF5 Playback, or when a read-only workflow needs a custom
-frame location.
-
-See the [Shared Data Layer guide](../../../../docs/shared/README.md) for the
-comparison with `live_grpc` and `remote_hdf5`.
+The [scenario.yaml](scenario.yaml) omits `data` because local file output is
+the default. Generation saves reusable
+[HDF5 frames](../../../../docs/shared/frame_reference.md#hdf5-frame-layout)
+under `frames/`.
 
 ## Running
 
+From the repository root, generate the frames:
+
 ```bash
 orchav-generator scenarios/visualizer/data_modes/hdf5_files
-orchav-visualizer --scenario scenarios/visualizer/data_modes/hdf5_files
 ```
 
-## What To Notice
+Open the scenario in the Visualizer:
 
-- Open **System** and expand **Data Source**. It reports mode **File**, the
-  local HDF5 path and chunks, and a total of 50 frames.
-- Scrub from frame 0 to frame 49 and watch `MobileRx` move across the fixed
-  frame sequence.
-- Close the Visualizer and run the Visualizer command again. The saved frames
-  reopen without keeping the Generator or
-  [Sionna RT](https://nvlabs.github.io/sionna/) running.
-- The Generator writes `frames/mpc_frames_00000-00049.h5` and the authoritative
-  `frames/frames_manifest.json`.
-- The same frames can be inspected with `orchav-inspect` or loaded from Python.
+```bash
+orchav-visualizer --scenario scenarios/visualizer/data_modes/hdf5_files --no-resume
+```
+
+## What To Inspect
+
+1. Open **System → Data Source**. It reports mode **File**, the local HDF5
+   location, and a total of 50 frames.
+2. Scrub from the first frame to the last and watch `MobileRx` move across
+   the scene.
+3. Close the Visualizer and run its command again. The saved frames reopen
+   without running the Generator again.
 
 ## Local What-if Preview
 
@@ -59,10 +58,6 @@ for the controls and persistence boundary.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) |
-> [Visualizer](../../README.md) | [Data Modes](../README.md) | Current:
-> **Local HDF5 Playback**
->
-> Up: [Data Modes](../README.md) | Compare:
-> [Live Generator](../live_grpc/README.md) |
-> [Remote HDF5 Playback](../remote_hdf5/README.md)
+Up: [Data Modes](../README.md) ·
+[Live Generator](../live_grpc/README.md) ·
+[Remote HDF5 Playback](../remote_hdf5/README.md)

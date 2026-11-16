@@ -612,6 +612,88 @@ class SceneAppearanceService(BaseService):
             return False
         return renderer_capabilities(renderer).transparency
 
+    def apply_procedural_defaults(self, defaults: dict) -> bool:
+        """Apply explicit scenario appearance choices in one refresh, then mirror UI.
+
+        Workspace restoration follows scenario defaults and remains authoritative.
+        This never enables textures against the launch policy.
+        """
+        from ..materials.scene_variation import THEMES
+
+        choices = {
+            "building_appearance": {"original", "procedural", "varied"},
+            "facade_theme": set(THEMES),
+            "road_appearance": {"original", "marked"},
+        }
+        updates = {key: defaults[key] for key in choices if defaults.get(key) is not None}
+        if any(value not in choices[key] for key, value in updates.items()):
+            raise ValueError("Invalid procedural appearance defaults")
+        if defaults.get("authored_surface_textures") is not None:
+            updates["authored_surface_textures"] = bool(defaults["authored_surface_textures"])
+        if not updates:
+            return False
+        for key, value in updates.items():
+            setattr(self.visualizer, key, value)
+        appearance = getattr(self.visualizer, "object_appearance_service", None)
+        refresh = getattr(appearance, "refresh_entry_appearance_batch", None)
+        changed = bool(
+            callable(refresh) and refresh(list(getattr(self.visualizer, "mesh_entries", []) or []))
+        )
+        panels = getattr(getattr(self.visualizer, "ui_manager", None), "panels", {})
+        panel = panels.get("materials") if isinstance(panels, dict) else None
+        sync = getattr(panel, "sync_procedural_controls", None)
+        if callable(sync):
+            sync()
+        return changed
+
+    def set_building_appearance(self, mode: str) -> bool:
+        """Apply optional illustrative styling without editing RF/source assets."""
+        if mode not in {"original", "procedural", "varied"}:
+            raise ValueError(f"Unknown building appearance: {mode}")
+        self.visualizer.building_appearance = mode
+        appearance = getattr(self.visualizer, "object_appearance_service", None)
+        refresh = getattr(appearance, "refresh_entry_appearance_batch", None)
+        if not callable(refresh):
+            return False
+        return bool(refresh(list(getattr(self.visualizer, "mesh_entries", []) or [])))
+
+    def set_authored_surface_textures(self, enabled: bool) -> bool:
+        """Show local custom surface maps; disabled restores the source material."""
+        self.visualizer.authored_surface_textures = bool(enabled)
+        appearance = getattr(self.visualizer, "object_appearance_service", None)
+        refresh = getattr(appearance, "refresh_entry_appearance_batch", None)
+        changed = bool(
+            callable(refresh) and refresh(list(getattr(self.visualizer, "mesh_entries", []) or []))
+        )
+        panels = getattr(getattr(self.visualizer, "ui_manager", None), "panels", {})
+        panel = panels.get("materials") if isinstance(panels, dict) else None
+        sync = getattr(panel, "sync_procedural_controls", None)
+        if callable(sync):
+            sync()
+        return changed
+
+    def set_facade_theme(self, theme: str) -> bool:
+        """Choose illustrative architecture without assigning geographic truth."""
+        from ..materials.scene_variation import THEMES
+
+        if theme not in THEMES:
+            raise ValueError(f"Unknown facade theme: {theme}")
+        self.visualizer.facade_theme = theme
+        return self.set_building_appearance(
+            getattr(self.visualizer, "building_appearance", "original")
+        )
+
+    def set_road_appearance(self, mode: str) -> bool:
+        """Toggle graph-aligned illustrative markings on classified road meshes."""
+        if mode not in {"original", "marked"}:
+            raise ValueError(f"Unknown road appearance: {mode}")
+        self.visualizer.road_appearance = mode
+        appearance = getattr(self.visualizer, "object_appearance_service", None)
+        refresh = getattr(appearance, "refresh_entry_appearance_batch", None)
+        if not callable(refresh):
+            return False
+        return bool(refresh(list(getattr(self.visualizer, "mesh_entries", []) or [])))
+
     def set_building_transparency(self, alpha: float) -> None:
         """Set transparency for scene/building meshes when supported."""
         viz = self.visualizer

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 logger = get_logger("orchav.geometry_helpers")
 
-NodeLabelMode = Literal["role", "name"]
+NodeLabelMode = Literal["role", "name", "sensing"]
 
 
 def ensure_scene_mesh_render_state(
@@ -106,7 +106,7 @@ def require_target_mesh_render_state(
 def normalize_node_label_mode(mode: Any) -> NodeLabelMode:
     """Normalize node label mode values used by UI and sessions."""
     normalized = str(mode or "role").strip().lower()
-    return "name" if normalized == "name" else "role"
+    return normalized if normalized in {"role", "name", "sensing"} else "role"
 
 
 def resolve_node_label(
@@ -139,7 +139,7 @@ def resolve_node_label(
     role_label = f"{node_type}{index + 1}"
     if custom_labels and index < len(custom_labels) and custom_labels[index]:
         return custom_labels[index]
-    if normalize_node_label_mode(label_mode) == "role":
+    if normalize_node_label_mode(label_mode) != "name":
         return role_label
     if device_names and index < len(device_names) and device_names[index]:
         return device_names[index]

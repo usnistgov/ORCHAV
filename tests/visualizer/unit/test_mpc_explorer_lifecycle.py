@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -454,6 +457,53 @@ def test_window_shell_has_no_model_until_a_session_feeds_it() -> None:
         _APP.processEvents()
 
 
+def test_table_focus_after_query_reset_does_not_select_an_individual_path() -> None:
+    from PySide6.QtCore import QItemSelectionModel
+    from PySide6.QtTest import QTest
+
+    from tests.visualizer.unit.mpc_explorer_test_data import make_test_catalog
+    from visualizer.src.metrics.mpc_path_query import MpcPathQueryEngine, MpcQuerySpec
+    from visualizer.src.model.mpc_explorer_model import MpcExplorerTableModel
+
+    window = MpcExplorerWindow()
+    model = MpcExplorerTableModel()
+    catalog = make_test_catalog()
+    emitted = []
+    window.pathSelectionRequested.connect(emitted.append)
+    window.set_model(model)
+    window.show()
+    try:
+        for generation in range(1, 4):
+            model.begin_generation(catalog, generation=generation)
+            result = MpcPathQueryEngine(catalog).execute(MpcQuerySpec(), generation=generation)
+            assert model.apply_query_result(result)
+            window.table.selectionModel().setCurrentIndex(
+                model.index(0, 0), QItemSelectionModel.NoUpdate
+            )
+            window.table.setFocus()
+            _APP.processEvents()
+            assert emitted == []
+            assert not window.table.selectionModel().hasSelection()
+        window.table.selectRow(1)
+        assert emitted[-1] == model.path_id_for_row(1)
+        count = len(emitted)
+        window.clear_path_selection()
+        assert len(emitted) == count
+        window.table.setFocus()
+        QTest.keyClick(window.table, Qt.Key_Down)
+        assert len(emitted) == count + 1
+        assert window.table.selectionModel().hasSelection()
+        count = len(emitted)
+        revision, path_ids = model.path_lookup_snapshot()
+        row = int(np.flatnonzero(path_ids == emitted[-1])[0])
+        assert model.cache_path_row(emitted[-1], row, permutation_revision=revision)
+        assert window.select_path(emitted[-1])
+        assert len(emitted) == count
+    finally:
+        window.close()
+        _APP.processEvents()
+
+
 def test_window_emits_unbounded_compound_filters() -> None:
     window = MpcExplorerWindow()
     emitted: list[dict[str, Any]] = []
@@ -566,6 +616,49 @@ def test_window_separates_complete_presets_from_custom_ordering() -> None:
     finally:
         window.close()
         _APP.processEvents()
+
+
+def test_custom_sort_controls_close_without_native_lifetime_error() -> None:
+    """Exercise deferred deletion in a subprocess: regressions can abort Qt."""
+    script = """
+import gc
+from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtWidgets import QApplication, QToolButton
+from visualizer.src.panels.mpc_explorer_window import MpcExplorerWindow
+app = QApplication([])
+for _ in range(8):
+    window = MpcExplorerWindow()
+    window.ordering_tabs.setCurrentIndex(1)
+    window.grouping_combo.setCurrentIndex(window.grouping_combo.findData('none'))
+    window.sort_column_combo.setCurrentIndex(window.sort_column_combo.findData('aod_azimuth'))
+    window._set_custom_sort_primary()
+    window._apply_custom_sort()
+    removable = [window.sort_chip_layout.itemAt(i).widget()
+                 for i in range(window.sort_chip_layout.count())]
+    removable = [chip for chip in removable
+                 if isinstance(chip, QToolButton) and chip.isEnabled()]
+    assert removable
+    removable[0].click()
+    assert len(window._displayed_sort_clauses) == 2
+    del removable
+    window.ordering_tabs.setCurrentIndex(0)
+    window.close()
+    del window
+    gc.collect()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    app.processEvents()
+print('Explorer cleanup passed')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "shared QObject was deleted" not in result.stderr
+    assert "Explorer cleanup passed" in result.stdout
 
 
 def test_table_header_sort_becomes_an_explicit_global_custom_order() -> None:
@@ -778,6 +871,7 @@ def test_hiding_waits_for_inflight_query_then_has_no_worker_or_catalog() -> None
         releaser.start()
         started_at = time.monotonic()
         session.window.hide()
+        _APP.processEvents()
         elapsed = time.monotonic() - started_at
         releaser.join(timeout=1.0)
         _APP.processEvents()

@@ -15,6 +15,7 @@ from shared.source_identity import (
     SourceIdentityError,
     loaded_source_identity,
     resolve_source_git_sha,
+    resolve_source_identity,
     source_bound_module_command,
 )
 
@@ -39,7 +40,7 @@ def test_loaded_identity_uses_imported_tree_not_current_directory(
     identity = loaded_source_identity("shared")
 
     assert identity.source_root.samefile(expected_root)
-    assert identity.version == "0.1.0"
+    assert identity.version == "0.2.0"
     assert identity.git_sha == resolve_source_git_sha(expected_root)
 
 
@@ -77,6 +78,25 @@ def test_git_sha_does_not_climb_from_a_nested_non_checkout_root(
     monkeypatch.chdir(repository_root)
 
     assert resolve_source_git_sha(repository_root / "shared") is None
+
+
+def test_resolving_disk_metadata_does_not_refresh_loaded_identity(monkeypatch) -> None:
+    source_identity_module._loaded_source_identity_for_process.cache_clear()
+    monkeypatch.setattr(source_identity_module, "resolve_source_git_sha", lambda _root: "first")
+    try:
+        loaded = loaded_source_identity("shared")
+        monkeypatch.setattr(
+            source_identity_module, "resolve_source_git_sha", lambda _root: "second"
+        )
+
+        current = resolve_source_identity(loaded.source_root)
+
+        assert current.git_sha == "second"
+        assert loaded_source_identity("shared") is loaded
+        assert loaded.git_sha == "first"
+        assert not loaded.matches(current)
+    finally:
+        source_identity_module._loaded_source_identity_for_process.cache_clear()
 
 
 def test_git_sha_matches_head_of_the_exact_source_root() -> None:

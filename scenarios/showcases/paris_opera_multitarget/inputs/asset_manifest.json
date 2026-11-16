@@ -1,0 +1,233 @@
+{
+  "schema": "orchav.paris-showcase-inputs.v1",
+  "source_revision": "c665d77a4f525535005a8a5602a906414325e3fd",
+  "files": [
+    {
+      "path": "scene/building_visuals.json",
+      "source_sha256": "841bb889f164473cc41c6d51b631dcad7b10b471da47157d1f154e6131ae472d",
+      "bytes": 2481736,
+      "sha256": "841bb889f164473cc41c6d51b631dcad7b10b471da47157d1f154e6131ae472d"
+    },
+    {
+      "path": "scene/mesh/buildings_concrete.ply",
+      "source_sha256": "8b966eacf165055524002a9190ca4f03dd4c723de85e65f48ad80ace1766893f",
+      "bytes": 1531017,
+      "sha256": "8b966eacf165055524002a9190ca4f03dd4c723de85e65f48ad80ace1766893f"
+    },
+    {
+      "path": "scene/mesh/buildings_glass.ply",
+      "source_sha256": "df52ed41f66f3b911175222137fc542b02c0498562a4f6176376436ea7088cc3",
+      "bytes": 279558,
+      "sha256": "df52ed41f66f3b911175222137fc542b02c0498562a4f6176376436ea7088cc3"
+    },
+    {
+      "path": "scene/mesh/buildings_marble.ply",
+      "source_sha256": "514029e1b8a00ac4b719915775b80cba200de1dc99c7ba5e3845cf677ea00a0d",
+      "bytes": 1649,
+      "sha256": "514029e1b8a00ac4b719915775b80cba200de1dc99c7ba5e3845cf677ea00a0d"
+    },
+    {
+      "path": "scene/mesh/buildings_metal.ply",
+      "source_sha256": "18fb6bfc1851fb1f3e10fc58cc2a86f9122dc09cf92bca9cf63778f3f83a1018",
+      "bytes": 22987,
+      "sha256": "18fb6bfc1851fb1f3e10fc58cc2a86f9122dc09cf92bca9cf63778f3f83a1018"
+    },
+    {
+      "path": "scene/mesh/ground.ply",
+      "source_sha256": "c6a850964e9584e9d72cfc8d21f5dc2a366247059f70a8236b8ef60bb01b48a8",
+      "bytes": 33356,
+      "sha256": "c6a850964e9584e9d72cfc8d21f5dc2a366247059f70a8236b8ef60bb01b48a8"
+    },
+    {
+      "path": "scene/mesh/streets.ply",
+      "source_sha256": "961212fe7af18556c0b97fa553b23a7f706b34132232efbd5b1d304a2982d947",
+      "bytes": 837615,
+      "sha256": "961212fe7af18556c0b97fa553b23a7f706b34132232efbd5b1d304a2982d947"
+    },
+    {
+      "path": "scene/mesh/vegetation.ply",
+      "source_sha256": "5a67142b04b50586d8565635cdb1e39bb5a2bfa7b99644a129ef8a6e1d3d057b",
+      "bytes": 393279,
+      "sha256": "5a67142b04b50586d8565635cdb1e39bb5a2bfa7b99644a129ef8a6e1d3d057b"
+    },
+    {
+      "path": "scene/mesh/water.ply",
+      "source_sha256": "ff681eb1a44f8428718134e54666eef869e3960c5f7f7c2b4aef48e50aeaa8d5",
+      "bytes": 469,
+      "sha256": "ff681eb1a44f8428718134e54666eef869e3960c5f7f7c2b4aef48e50aeaa8d5"
+    },
+    {
+      "path": "scene/osm_metadata.json",
+      "source_sha256": "0ec122076d03d98ca5e53b6cd901c1b657cc03c192ae4184ed4edbffe8d492eb",
+      "bytes": 2605917,
+      "sha256": "0ec122076d03d98ca5e53b6cd901c1b657cc03c192ae4184ed4edbffe8d492eb"
+    },
+    {
+      "path": "scene/provenance.json",
+      "source_sha256": "557fe6756e5f82e773612d73308012f148367912fbb7267e6254901e33efe407",
+      "bytes": 1532,
+      "sha256": "6f37a5abe7189cf78a30dc85a373cacbbc587111ce1a525ff93098504235b285",
+      "relocation": "Local bindings and standalone provenance; UAV UV builder accepts explicit mesh; geometry and images unchanged"
+    },
+    {
+      "path": "scene/scene.xml",
+      "source_sha256": "7c999e35873ec12aa7319b8b9acc605c62f5815ac3cdb6546008767e6eed2b23",
+      "bytes": 2878,
+      "sha256": "7c999e35873ec12aa7319b8b9acc605c62f5815ac3cdb6546008767e6eed2b23"
+    },
+    {
+      "path": "scene/street_network.graphml",
+      "source_sha256": "24dabaeb640f277e53b673dd1ce51a6a57335e9954ad1433684428d2e99b0ce4",
+      "bytes": 3100879,
+      "sha256": "24dabaeb640f277e53b673dd1ce51a6a57335e9954ad1433684428d2e99b0ce4"
+    },
+    {
+      "path": "scene/visual_surfaces.json",
+      "source_sha256": "b68f6518d9e0c6e44dbf0bd5a447f2a2f9976ee107fd26f1a99ed25c22f1601d",
+      "bytes": 80990,
+      "sha256": "a11a80c06f984f51dc0655b30adaf76b08fd9c48040bcdff11043671aa3880ed",
+      "relocation": "Local bindings and standalone provenance; UAV UV builder accepts explicit mesh; geometry and images unchanged"
+    },
+    {
+      "path": "vehicles/bmw/CC0-1.0.txt",
+      "source_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "bytes": 7048,
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    {
+      "path": "vehicles/bmw/albedo.png",
+      "source_sha256": "2534677a417d16ba7ca2f7904374b119b8b97d8739b52954a42d723e9215742b",
+      "bytes": 243,
+      "sha256": "2534677a417d16ba7ca2f7904374b119b8b97d8739b52954a42d723e9215742b"
+    },
+    {
+      "path": "vehicles/bmw/car.ply",
+      "source_sha256": "b43fceebdf899af1001709bef39c920eb36a8980f8d820e94ac1c8a87a32402d",
+      "bytes": 20904132,
+      "sha256": "b43fceebdf899af1001709bef39c920eb36a8980f8d820e94ac1c8a87a32402d"
+    },
+    {
+      "path": "vehicles/bmw/conversion.json",
+      "source_sha256": "c137ce8e19034ce81fd5a7a24a2cc1984d775dd170bc8f805d238cff0965af6b",
+      "bytes": 570,
+      "sha256": "c137ce8e19034ce81fd5a7a24a2cc1984d775dd170bc8f805d238cff0965af6b"
+    },
+    {
+      "path": "vehicles/bmw/provenance.json",
+      "source_sha256": "d7455e8b8b9a6973a2d3c55e0b24f1e7c7d278c4143ba08ad5f68a20f140afeb",
+      "bytes": 1109,
+      "sha256": "d7455e8b8b9a6973a2d3c55e0b24f1e7c7d278c4143ba08ad5f68a20f140afeb"
+    },
+    {
+      "path": "vehicles/bmw/source_license.js",
+      "source_sha256": "17b0d7fcc5a587a3dd03f259f6fdcb37f4eb01033efdd05dcfd28f4559891b64",
+      "bytes": 701,
+      "sha256": "17b0d7fcc5a587a3dd03f259f6fdcb37f4eb01033efdd05dcfd28f4559891b64"
+    },
+    {
+      "path": "vehicles/bmw/surface.json",
+      "source_sha256": "5b827afb70373d1a42d70381a00ec218ae070b65c17c344b8525109dd1225ca9",
+      "bytes": 100,
+      "sha256": "5b827afb70373d1a42d70381a00ec218ae070b65c17c344b8525109dd1225ca9"
+    },
+    {
+      "path": "vehicles/bmw/surface_uv.npz",
+      "source_sha256": "a4cca76b42b6e8236d2afea5b2756ba5151ce519e3123673b0b4ce43ba475c4a",
+      "bytes": 1337068,
+      "sha256": "a4cca76b42b6e8236d2afea5b2756ba5151ce519e3123673b0b4ce43ba475c4a"
+    },
+    {
+      "path": "vehicles/bmw/target_metadata.json",
+      "source_sha256": "8738360120822ed65033dd8e4288cc8489e3b0943dcae00946a1c71071162692",
+      "bytes": 63,
+      "sha256": "8738360120822ed65033dd8e4288cc8489e3b0943dcae00946a1c71071162692"
+    },
+    {
+      "path": "vehicles/scooter/model.glb",
+      "source_sha256": "f19aeedc31907d94039b3820551073f495ed09dadbcadcc8ce4afdcf2e022e63",
+      "bytes": 7158864,
+      "sha256": "f19aeedc31907d94039b3820551073f495ed09dadbcadcc8ce4afdcf2e022e63"
+    },
+    {
+      "path": "vehicles/scooter/provenance.json",
+      "source_sha256": "3aad38d8a26b56f2d59efd03750d9afa5fde264113a6798a9b495c6dbebb1d95",
+      "bytes": 547,
+      "sha256": "3aad38d8a26b56f2d59efd03750d9afa5fde264113a6798a9b495c6dbebb1d95"
+    },
+    {
+      "path": "vehicles/scooter/source.txt",
+      "source_sha256": "ac4b6eee1f2debaf0e8dfe76fa4eb1649d821ad4fd9e1d9fe3049ae0a86f58ad",
+      "bytes": 1976,
+      "sha256": "ac4b6eee1f2debaf0e8dfe76fa4eb1649d821ad4fd9e1d9fe3049ae0a86f58ad"
+    },
+    {
+      "path": "uav_surface/albedo.png",
+      "source_sha256": "48daa08339ff80d23ce67e61ac3c0e2026ac847a7646f53eb924788ac2deee46",
+      "bytes": 3363436,
+      "sha256": "48daa08339ff80d23ce67e61ac3c0e2026ac847a7646f53eb924788ac2deee46"
+    },
+    {
+      "path": "uav_surface/build_uv.py",
+      "source_sha256": "c3041c15d75d58cf717cda1d891e64afe75ef8470c73face0252d9e2793e73ec",
+      "bytes": 3787,
+      "sha256": "59764ea6747bfd28c12998dccb7b5d8230349c4b02c80c40b31a361b26ef52a1",
+      "relocation": "Local bindings and standalone provenance; UAV UV builder accepts explicit mesh; geometry and images unchanged"
+    },
+    {
+      "path": "uav_surface/provenance.json",
+      "source_sha256": "bc3164b748706d30cd11238151ec07629cba058dc14538d8220662878a258fdd",
+      "bytes": 2472,
+      "sha256": "bc3164b748706d30cd11238151ec07629cba058dc14538d8220662878a258fdd"
+    },
+    {
+      "path": "uav_surface/surface.json",
+      "source_sha256": "9e1198f362b226be20168a96a8e3eabb962d322c1c5c1fb6a178ef3c616523af",
+      "bytes": 377,
+      "sha256": "9e1198f362b226be20168a96a8e3eabb962d322c1c5c1fb6a178ef3c616523af"
+    },
+    {
+      "path": "uav_surface/surface_uv.npz",
+      "source_sha256": "0b1af362f7df1359a9d1e50a1a66eb2eb0eaee9a49a372e45a041f0324145f51",
+      "bytes": 6890,
+      "sha256": "0b1af362f7df1359a9d1e50a1a66eb2eb0eaee9a49a372e45a041f0324145f51"
+    },
+    {
+      "path": "scene/textures/opera_south_facade_albedo.png",
+      "source_sha256": "0e2e1cebf3403b028a04d53767ea3ee82819794b58659191a6654d3175a8fa87",
+      "bytes": 3175549,
+      "sha256": "0e2e1cebf3403b028a04d53767ea3ee82819794b58659191a6654d3175a8fa87"
+    },
+    {
+      "path": "scene/textures/opera_verdigris_copper_albedo.png",
+      "source_sha256": "ed0d7fc5a258be294e3d361d9d52f0eb69ae83109069d9e971925419f7e8af44",
+      "bytes": 2979405,
+      "sha256": "ed0d7fc5a258be294e3d361d9d52f0eb69ae83109069d9e971925419f7e8af44"
+    },
+    {
+      "path": "scene/textures/README.md",
+      "source_sha256": "746962e5c4dc30fe08ca7d2fb7afecd7d562a05422f4f8591b0e3bb8230ae7aa",
+      "bytes": 1685,
+      "sha256": "5c6a284527ae8150ac61b0c492461734764ef94fff0713e1e7eb7b2b856463d7",
+      "relocation": "Local bindings and standalone provenance; UAV UV builder accepts explicit mesh; geometry and images unchanged"
+    },
+    {
+      "path": "scene/textures/mapping.json",
+      "source_sha256": "06ba012f8500d00b0552920915a7e810b415ce873de54ee9e847c2c5929677c4",
+      "bytes": 4234,
+      "sha256": "d638aefeb60878e2d2f58870a5e1f87c4f35f37a81c1a95ce606c1c7e270defd",
+      "relocation": "Local bindings and standalone provenance; UAV UV builder accepts explicit mesh; geometry and images unchanged"
+    },
+    {
+      "path": "vehicles/CC0-1.0.txt",
+      "source_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "bytes": 7048,
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    {
+      "path": "vehicles/library_terms.txt",
+      "source_sha256": "28db077d0a04ae193a88e7268092ef290da481268fef0e0edf35bfc3e7a12b94",
+      "bytes": 3401,
+      "sha256": "28db077d0a04ae193a88e7268092ef290da481268fef0e0edf35bfc3e7a12b94"
+    }
+  ]
+}

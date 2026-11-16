@@ -7,6 +7,7 @@ capture work.
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -62,10 +63,7 @@ class ExportPanel(BasePanel):
         self.widgets["screenshot_resolution_spin"].setSingleStep(0.25)
         self.widgets["screenshot_resolution_spin"].setValue(1.0)
         self.widgets["screenshot_resolution_spin"].setSuffix("×")
-        self.widgets["screenshot_resolution_spin"].setToolTip(
-            "Post-capture bilinear resize (1× keeps native renderer pixels; "
-            "larger values do not add scene detail)"
-        )
+        self._refresh_screenshot_scale_tooltip()
         options_row.addWidget(self.widgets["screenshot_resolution_spin"])
 
         self.widgets["include_hud_cb"] = QCheckBox("Include viewport HUD")
@@ -101,8 +99,25 @@ class ExportPanel(BasePanel):
         """Mirror scenario frame-count changes into future video dialogs."""
         self.total_steps = new_total_steps
 
+    def _refresh_screenshot_scale_tooltip(self) -> None:
+        """Describe the active backend, including late renderer initialization."""
+        if "screenshot_resolution_spin" not in self.widgets:
+            return
+        native_high_resolution = (
+            getattr(getattr(self.parent, "renderer", None), "renderer_id", "") == "pygfx"
+        )
+        self.widgets["screenshot_resolution_spin"].setToolTip(
+            "1× keeps native renderer pixels. Above 1× renders additional scene detail "
+            "while preserving text and marker sizes; large images are tiled. "
+            "Tiled export requires bloom and EDL to be disabled. Below 1× downsamples."
+            if native_high_resolution
+            else "Post-capture bilinear resize (1× keeps native renderer pixels; "
+            "larger values do not add scene detail)"
+        )
+
     def set_screenshot_export_enabled(self, enabled: bool) -> None:
         """Enable/disable screenshot and video export controls."""
+        self._refresh_screenshot_scale_tooltip()
         btn = self.widgets.get("screenshot_btn")
         if btn is not None:
             btn.setEnabled(bool(enabled))
@@ -153,18 +168,73 @@ class ExportPanel(BasePanel):
             hud_widget = self.widgets.get("include_hud_cb")
             resolution_scale = float(scale_widget.value()) if scale_widget is not None else 1.0
             include_hud = bool(hud_widget.isChecked()) if hud_widget is not None else False
-            success = renderer.export_screenshot(
-                file_path,
-                resolution_scale=resolution_scale,
-                include_hud=include_hud,
-            )
+            if getattr(renderer, "renderer_id", "") == "pygfx" and resolution_scale > 1.0:
+                success = self._export_high_resolution_screenshot(
+                    renderer, file_path, resolution_scale, include_hud
+                )
+            else:
+                success = renderer.export_screenshot(
+                    file_path,
+                    resolution_scale=resolution_scale,
+                    include_hud=include_hud,
+                )
             if hasattr(self.parent, "_set_status_message"):
                 if success:
                     self.parent._set_status_message(f"Screenshot saved to {file_path}", 5000)
                 else:
-                    self.parent._set_status_message(
-                        f"Failed to export screenshot to {file_path}", 5000
-                    )
+                    detail = getattr(renderer, "last_screenshot_error", None)
+                    message = detail or f"Failed to export screenshot to {file_path}"
+                    self.parent._set_status_message(message, 10000)
+
+    def _export_high_resolution_screenshot(
+        self, renderer, file_path: str, resolution_scale: float, include_hud: bool
+    ) -> bool:
+        """Paint safe progress without dispatching timers or scene-changing input.
+
+        Deliberately do not pump the Qt event loop for a Cancel button: a tile
+        must not observe a different simulation frame or camera than its peers.
+        Programmatic callers can use the renderer's between-tile cancel check.
+        """
+        button = self.widgets.get("screenshot_btn")
+        previous_text = button.text() if button is not None else ""
+        previous_enabled = button.isEnabled() if button is not None else False
+        previous_cursor = self.parent.cursor()
+
+        def progress(fraction: float) -> None:
+            percentage = max(0, min(100, round(fraction * 100)))
+            message = f"Rendering {resolution_scale:g}× figure: {percentage}%"
+            if button is not None:
+                button.setText(f"Rendering {percentage}%")
+                button.repaint()
+            if hasattr(self.parent, "_set_status_message"):
+                self.parent._set_status_message(message)
+                label = getattr(self.parent, "status_scenario_label", None)
+                if label is not None:
+                    label.repaint()
+
+        try:
+            if button is not None:
+                button.setEnabled(False)
+            self.parent.setCursor(Qt.WaitCursor)
+            progress(0.0)
+            return bool(
+                renderer.export_screenshot(
+                    file_path,
+                    resolution_scale=resolution_scale,
+                    include_hud=include_hud,
+                    progress_callback=progress,
+                )
+            )
+        except Exception as exc:
+            renderer.last_screenshot_error = str(exc)
+            logger.warning("High-resolution screenshot failed: %s", exc)
+            return False
+        finally:
+            self.parent.setCursor(previous_cursor)
+            if button is not None:
+                button.setText(previous_text)
+                button.setEnabled(previous_enabled)
+                button.repaint()
 
     # Video / GIF
 

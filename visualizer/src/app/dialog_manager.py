@@ -36,7 +36,7 @@ class DialogManager:
             self.parent,
             "Open Scenario",
             default_dir or "",
-            "Scenario Files (*.yaml *.yml);;All Files (*.*)",
+            "Scenarios and sensing volumes (*.yaml *.yml sensing_volume.json);;All Files (*.*)",
         )
 
         if file_path:

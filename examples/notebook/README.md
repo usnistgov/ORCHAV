@@ -1,11 +1,23 @@
 # Notebook Examples
 
-These cells show the shortest notebook workflows. They assume a source
-checkout with the optional notebook renderer dependencies installed:
+Explore stored scenario frames with the pygfx notebook viewer. Run the commands
+below from the repository root with your ORCHAV environment active.
+
+Install notebook support:
 
 ```bash
 python -m pip install -e ".[jupyter]"
+```
+
+Generate the notebook recording:
+
+```bash
 orchav-generator scenarios/visualizer/notebook_mode/
+```
+
+Start Jupyter and follow its displayed connection instructions:
+
+```bash
 jupyter lab --no-browser examples/notebook/notebook_mode.ipynb
 ```
 
@@ -20,10 +32,13 @@ See [Notebook Visualization](../../docs/visualizer/notebooks.md) for the full
 interface, its local HDF5 scope, and the difference between rendering and
 regeneration.
 
-Open the full notebook at
-[`notebook_mode.ipynb`](notebook_mode.ipynb), or use the cells below in another
-notebook. `--no-browser` is recommended on remote or VNC-backed machines. Copy
-the URL printed by Jupyter into your browser.
+The [example notebook](notebook_mode.ipynb) opens a looping interactive view
+with TX/RX cards, then compares appearance presets, static renders, and
+callouts before session cleanup. Its
+saved outputs are cleared. Run its cells in order. The snippets below use paths
+relative to the checkout root. If your notebook runs in another directory,
+pass the absolute path to `scenarios/visualizer/notebook_mode` to `PygfxNotebookViz`. `--no-browser` is recommended on remote or VNC-backed
+machines. Copy the URL printed by Jupyter into your browser.
 
 ## Static Notebook Image
 
@@ -45,9 +60,35 @@ Use `show()` for an in-cell orbit/pan/zoom widget. This path requires
 ```python
 from visualizer.src.notebook.pygfx import PygfxNotebookViz
 
-viz = PygfxNotebookViz("scenarios/visualizer/notebook_mode")
+viz = PygfxNotebookViz(
+    "scenarios/visualizer/notebook_mode", appearance="Dark", label_style="card"
+)
 viz.show(frame=0, width=900, height=650)
 ```
+
+## Playback And Cleanup
+
+Reuse the same viewer to loop through the 100-frame recording:
+
+```python
+animation = viz.animate(frames=viz.frames, fps=24, loop=True)
+animation
+```
+
+Orbit, pan, and zoom remain available during playback. Set `loop=False` to stop
+on the last frame. Select indices from `viz.frames`; unavailable indices raise
+`ValueError`.
+
+Use `appearance="Detailed"`, `"Paper"`, `"Dark"`, or `"Glow"` on the constructor
+or a rendering call. Each view retains its own appearance. Use
+`label_style="plain"`, `"callout"`, or `"card"` for TX/RX labels; a settings
+dictionary can adjust pixel sizes and offsets. See
+[Appearance And Labels](../../docs/visualizer/notebooks.md#choose-appearance-and-labels)
+for color and marker options.
+
+When finished, call `viz.close()` to stop playback, close the viewer's canvases,
+and release its frame files. `viz.reload()` also closes existing views before
+reopening the recording. Create a new widget or animation after reloading.
 
 ## Generate and Visualize
 
@@ -59,8 +100,8 @@ from visualizer.src.notebook.pygfx import PygfxNotebookViz
 
 viz = PygfxNotebookViz("scenarios/visualizer/notebook_mode")
 viz.regenerate(
-    tx_positions=[[0.0, 0.0, 25.0]],
-    rx_positions=[[70.0, -25.0, 1.5]],
+    tx_positions=[[80.0, 100.0, 30.0]],
+    rx_positions=[[25.0, 80.0, 1.5]],
     quality="ultra-low",
     steps=1,
 )

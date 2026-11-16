@@ -21,6 +21,7 @@ from ..types.render_payloads import MaterialPayload
 
 if TYPE_CHECKING:
     from ..pipeline.core import FrameRenderPacket
+    from ..services.viewport_hud_service import AnalysisLegend
     from .mpc_path_inspection import MpcPathInspectionSnapshot
 
 MpcPathSelectionCallback = Callable[[int, int], None]
@@ -48,14 +49,21 @@ class RendererCapabilities:
     scene_shader: bool = False
     frustum_culling: bool = False
     shadow_toggle: bool = False
+    shadow_quality: bool = False
     # Retained as an explicit backend-specific settings affordance until the
     # corresponding UI is renamed or moved behind a renderer-provided panel.
     open3d_settings_panel: bool = False
     camera_lookat: bool = False
     transparency: bool = False
+    volume_rendering: bool = False
+    # Backend-provided explanation, without importing it from panels/services.
+    volume_rendering_unavailable_reason: str = ""
     line_width: bool = False
     ibl: bool = False
+    hdr_ibl: bool = False
     clipping_planes: bool = False
+    dusk_lighting: bool = False
+    section_contours: bool = False
 
     # Camera, interaction, preview, and export affordances.
     fly_mode: bool = False
@@ -63,6 +71,7 @@ class RendererCapabilities:
     trajectories: bool = False
     screenshot_export: bool = False
     screen_space_labels: bool = False
+    label_callouts: bool = False
     skybox: bool = False
     axes: bool = False
     aperture_preview: bool = False
@@ -72,6 +81,7 @@ class RendererCapabilities:
     rf_xray_overlay: bool = False
     viewport_hud: bool = False
     picking: bool = False
+    target_silhouette: bool = False
     transform_gizmo: bool = False
     hover_info: bool = False
     # Dedicated, embedded Scenario Builder workspace support. Generic picking
@@ -81,8 +91,12 @@ class RendererCapabilities:
     # The backend can construct its native canvas directly inside a persistent
     # Qt parent supplied by the application workspace.
     embedded_viewport: bool = False
+    depth_precision: bool = False
+    texture_mipmaps: bool = False
     antialiasing: bool = False
     ground_grid: bool = False
+    scene_guides: bool = False
+    compass: bool = False
     direct_lighting: bool = False
     lighting_profiles: bool = False
     wireframe: bool = False
@@ -117,6 +131,16 @@ def renderer_capabilities(renderer: Any) -> RendererCapabilities:
     if isinstance(explicit, RendererCapabilities):
         return explicit
     raise TypeError(f"{type(renderer).__name__} must expose a RendererCapabilities instance")
+
+
+def volume_rendering_unavailable_reason(renderer: Any) -> str:
+    """Explain disabled volume access consistently in GUI and scripted entry points."""
+    capabilities = renderer_capabilities(renderer)
+    if capabilities.volume_rendering:
+        return ""
+    return (
+        capabilities.volume_rendering_unavailable_reason or "3D volumes require the pygfx renderer."
+    )
 
 
 class RendererProtocol(Protocol):
@@ -157,8 +181,73 @@ class RendererProtocol(Protocol):
         """Request a future draw without requiring immediate presentation."""
         ...
 
+    def configure_dusk(self, recipe: dict | None) -> bool:
+        """Register optional scenario lighting without enabling it."""
+        ...
+
+    def set_dusk_enabled(self, enabled: bool) -> bool: ...
+
+    def get_dusk_state(self) -> dict: ...
+
+    def set_dusk_progress(self, progress: float, *, request_redraw: bool = True) -> bool:
+        """Blend authored daylight and dusk; defer redraws during ordinary playback."""
+        ...
+
+    def set_section_contours(self, enabled: bool, *, width: float = 2.0) -> bool:
+        """Outline architectural sections on the existing clipping planes."""
+        ...
+
+    def get_section_contour_state(self) -> dict: ...
+
+    def get_axes_visible(self) -> bool: ...
+
+    def set_ground_grid_divisions(self, divisions: int) -> bool: ...
+
+    def get_ground_grid_divisions(self) -> int: ...
+
+    def set_environment_dimensions_visible(self, visible: bool) -> bool: ...
+
+    def set_environment_dimensions_style(self, style: str) -> bool: ...
+
+    def get_environment_dimensions_state(self) -> dict: ...
+
+    def set_map_attribution(self, text: str) -> bool: ...
+
+    def configure_compass(self, north_direction_xy=None, *, label="", reason="") -> bool: ...
+
+    def get_compass_state(self) -> dict: ...
+
+    def set_compass_visible(self, visible: bool) -> bool: ...
+
+    def get_compass_visible(self) -> bool: ...
+
+    def set_target_silhouette(self, object_id: str | None) -> bool:
+        """Optionally outline one explicitly selected actor in screen pixels."""
+        ...
+
     def refresh_viewport_hud(self) -> None:
         """Reconcile viewport HUD presentation with current application state."""
+        ...
+
+    def set_analysis_legend(self, legend: AnalysisLegend | None) -> None:
+        """Replace or clear the active analysis legend on HUD-capable backends."""
+        ...
+
+    def set_hud_overlay(
+        self,
+        overlay_id: str,
+        *,
+        html: str,
+        visible: bool,
+        role: str,
+        corner: str,
+        priority: int,
+    ) -> None:
+        """Replace one named overlay, subject to the viewport HUD policy."""
+        ...
+
+    def clear_hud_overlay(self, overlay_id: str) -> None:
+        """Hide one named overlay without changing other HUD content."""
         ...
 
     def defer_until_next_render_turn(self, callback: Callable[[], None]) -> bool:

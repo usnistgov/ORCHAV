@@ -32,7 +32,7 @@ def load_notebook_visual_frame(
         raise RuntimeError("Notebook frame source does not expose a DataProvider")
 
     projection = provider.load_frame_projection(step, visual_frame_read_request())
-    payload = projection_to_visual_frame(projection)
+    payload = projection_to_visual_frame(projection, provider=provider)
     if tx_positions is not None:
         payload["tx_positions"] = np.asarray(tx_positions, dtype=np.float32)
     if rx_positions is not None:

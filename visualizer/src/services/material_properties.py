@@ -34,6 +34,7 @@ def sync_entry_pbr_properties_from_catalog(entry: dict[str, Any], material_type:
         "roughness_map_path": pbr.get("roughness_map_path"),
         "ao_map_path": pbr.get("ao_map_path"),
         "metallic_map_path": pbr.get("metallic_map_path"),
+        "clearcoat_roughness_map_path": pbr.get("clearcoat_roughness_map_path"),
         "uv_scale_meters": pbr.get("uv_scale_meters", 2.0),
         "uv_repeat_scale": pbr.get("uv_repeat_scale"),
         "shader_variant": pbr.get("shader_variant"),

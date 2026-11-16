@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ._adapters import discriminator, value
 from .errors import PosePreparationError
@@ -20,12 +21,17 @@ from .types import (
     Timeline,
 )
 
+if TYPE_CHECKING:
+    from .animated_asset import PreparedAnimatedAsset
+
 
 def prepare_scenario(
     scenario_model: object,
     *,
     base_dir: str | Path | None = None,
     asset_alignments: Mapping[str, Quaternion | object] | None = None,
+    _animated_assets: dict[str, PreparedAnimatedAsset] | None = None,
+    on_progress: Callable[[str, int, int], None] | None = None,
 ) -> PreparedScenario:
     """Prepare all actors into one immutable renderer-neutral index.
 
@@ -34,6 +40,8 @@ def prepare_scenario(
     ``timeline``, ``actors``, and ``groups`` attributes and small test doubles.
     ``base_dir`` is reserved for resource-backed mobility resolution; ordinary
     actor/group preparation performs no filesystem or renderer work.
+    The runtime's optional output mapping retains authenticated animation
+    bindings for its mesh publication step, avoiding a second full bind.
     """
 
     scenario = _unwrap_scenario(scenario_model)
@@ -41,6 +49,7 @@ def prepare_scenario(
     timeline = Timeline(
         steps=int(value(timeline_spec, "steps")),
         duration_s=float(value(timeline_spec, "duration_s")),
+        sample_rate_hz=value(timeline_spec, "sample_rate_hz", default=None),
     )
     actor_records = _collect_actor_records(value(scenario, "actors", default={}))
     _validate_actor_names(actor_records)
@@ -113,7 +122,39 @@ def prepare_scenario(
                 actor_name=name,
             )
         mobility_spec = value(actor, "mobility")
-        if discriminator(mobility_spec) == "group_member":
+        asset_spec = value(actor, "asset", default=None)
+        if asset_spec is not None and value(asset_spec, "source") == "animated_asset":
+            from .animated_asset import prepare_animated_asset
+
+            if discriminator(mobility_spec) != "stationary" or any(
+                value(mobility_spec, "position_m")
+            ):
+                raise ValueError(
+                    "animated_asset owns root motion; stationary origin mobility is required"
+                )
+            orientation_spec = value(actor, "orientation", default=None)
+            if orientation_spec is not None and (
+                discriminator(orientation_spec) != "fixed"
+                or any(
+                    value(orientation_spec, key, default=0.0)
+                    for key in ("yaw_deg", "pitch_deg", "roll_deg")
+                )
+            ):
+                raise ValueError(
+                    "animated_asset owns orientation; fixed zero orientation is required"
+                )
+            animation = prepare_animated_asset(
+                asset_spec,
+                timeline,
+                target_name=name,
+                base_dir=base_dir or Path.cwd(),
+                project_root=value(scenario, "project_root", default=base_dir),
+                on_progress=on_progress,
+            )
+            prepared_mobility[name] = animation.mobility(timeline)
+            if _animated_assets is not None:
+                _animated_assets[name] = animation
+        elif discriminator(mobility_spec) == "group_member":
             group_name = str(value(mobility_spec, "group"))
             group_spec = groups_by_name[group_name]
             offset = value(mobility_spec, "offset_m", default=(0.0, 0.0, 0.0))

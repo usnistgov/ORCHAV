@@ -74,7 +74,10 @@ class TransportButton(QAbstractButton):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        rect = QRectF(0.5, 0.5, self._size - 1, self._size - 1)
+        # Interface scaling changes the fixed widget geometry after construction.
+        # Paint inside that current geometry so the icon remains centered.
+        size = min(self.width(), self.height())
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
 
         if self.isDown():
             bg = QColor(t.border_subtle)
@@ -87,7 +90,8 @@ class TransportButton(QAbstractButton):
 
         painter.setPen(QPen(QColor(t.border_primary), 1.0))
         painter.setBrush(QBrush(bg))
-        painter.drawRoundedRect(rect, 6, 6)
+        radius = 6 * size / self._size
+        painter.drawRoundedRect(rect, radius, radius)
 
         if self.isChecked():
             icon_color = QColor("#ffffff")
@@ -99,10 +103,10 @@ class TransportButton(QAbstractButton):
         painter.setPen(Qt.NoPen)
         painter.setBrush(QBrush(icon_color))
 
-        cx = self._size / 2.0
-        cy = self._size / 2.0
+        cx = self.width() / 2.0
+        cy = self.height() / 2.0
         # Keep icon proportions independent of the fixed logical button size.
-        s = self._size * 0.4
+        s = size * 0.4
 
         if self._icon_type == "play":
             self._draw_play(painter, cx, cy, s)

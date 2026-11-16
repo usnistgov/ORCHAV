@@ -11,7 +11,9 @@ import math
 import time
 from typing import Dict, Optional
 
-from PySide6.QtCore import QEvent, QObject, QTimer
+import numpy as np
+import pyqtgraph as pg
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -26,12 +28,13 @@ from PySide6.QtWidgets import (
 
 from shared.logging import get_logger
 
-from ..app.plot_theme import apply_matplotlib_legend_theme, apply_matplotlib_theme
 from ..app.theme import current_theme, get_theme_manager
 from ..services.trajectory_load_service import (
     TrajectoryLoadCoordinator,
     TrajectorySnapshot,
 )
+from ..widgets.inline_plot import InlinePlot
+from ..widgets.responsive import wrap_control_row
 from .base import BasePanel
 from .ui_theme import compact_progress_bar_style, configure_label
 
@@ -86,12 +89,12 @@ class TrajectoryPreviewPanel(BasePanel):
         "Strongest Single-Path Loss",
     ]
 
-    # Matplotlib is expensive to repaint at animation speed. Keep the marker
+    # Coalesce high-rate playback updates. Keep the marker
     # responsive while bounding canvas work to roughly 15 Hz.
     FRAME_UPDATE_INTERVAL_MS = 67
 
     def __init__(self, parent_widget):
-        """Initialize lazy trajectory loading and matplotlib state."""
+        """Initialize lazy trajectory loading and native plot state."""
         super().__init__(parent_widget)
         self._trajectories: TrajectorySnapshot | None = None
         self._trajectory_coordinator: TrajectoryLoadCoordinator = (
@@ -101,9 +104,8 @@ class TrajectoryPreviewPanel(BasePanel):
         # assembling its tabs.  Connect only after this panel has created its
         # controls so queued progress updates cannot address an empty registry.
         self._coordinator_connected = False
-        self._has_matplotlib = False
+        self._plot_ready = False
         self._current_frame = 0
-        self._figure = None
         self._ax = None
         self._per_frame_stats: Optional[Dict] = None
         self._colorbar = None
@@ -217,16 +219,19 @@ class TrajectoryPreviewPanel(BasePanel):
             "Color trajectory segments by a per-frame channel metric.\n"
             "Requires statistics to be computed first."
         )
-        self.widgets["color_by_combo"].setFixedWidth(180)
+        self.widgets["color_by_combo"].setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.widgets["color_by_combo"].setMinimumContentsLength(14)
         self.widgets["color_by_combo"].currentTextChanged.connect(self._update_plot)
         row.addWidget(self.widgets["color_by_combo"])
 
         self.widgets["status_label"] = QLabel("Not loaded")
+        self.widgets["status_label"].setWordWrap(True)
         configure_label(self.widgets["status_label"], role="secondary", italic=True)
         row.addWidget(self.widgets["status_label"])
 
-        row.addStretch()
-        return row
+        return wrap_control_row(row, [1, 1, 1, 1, 1, 2, 1])
 
     def _create_trajectory_canvas(self):
         """Create matplotlib canvas for trajectory visualization."""
@@ -234,37 +239,13 @@ class TrajectoryPreviewPanel(BasePanel):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        try:
-            import matplotlib
-
-            matplotlib.use("QtAgg")
-            from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-            from matplotlib.figure import Figure
-
-            self._has_matplotlib = True
-
-            fig = Figure(figsize=(6, 4), tight_layout=True)
-            self._ax = fig.add_subplot(111)
-            self._ax.set_xlabel("X (m)", fontsize=9)
-            self._ax.set_ylabel("Y (m)", fontsize=9)
-            self._ax.set_title("TX/RX Trajectories (Top-Down View)", fontsize=10)
-            apply_matplotlib_theme(fig, self._ax)
-            self._ax.set_aspect("equal", adjustable="datalim")
-            self._ax.tick_params(axis="both", which="major", labelsize=8)
-
-            canvas = FigureCanvasQTAgg(fig)
-            canvas.setMinimumHeight(250)
-            canvas.setMaximumHeight(450)
-
-            self.widgets["canvas"] = canvas
-            self._figure = fig
-            layout.addWidget(canvas)
-
-        except ImportError:
-            self._has_matplotlib = False
-            error_label = QLabel("Matplotlib not available.\nInstall with: pip install matplotlib")
-            configure_label(error_label, role="error", word_wrap=True)
-            layout.addWidget(error_label)
+        self._plot_ready = True
+        self._ax = InlinePlot("TX/RX/Target Trajectories (Top-Down View)", "X (m)", "Y (m)")
+        self._ax.setAspectLocked(True)
+        self._ax.setMinimumHeight(250)
+        self._ax.setMaximumHeight(450)
+        self.widgets["canvas"] = self._ax
+        layout.addWidget(self._ax)
 
         return container
 
@@ -299,12 +280,8 @@ class TrajectoryPreviewPanel(BasePanel):
 
     def _apply_theme(self, *_args) -> None:
         """Apply the current application theme to the trajectory plot."""
-        if self._figure is not None and self._ax is not None:
-            apply_matplotlib_theme(self._figure, self._ax)
-            apply_matplotlib_legend_theme(self._ax)
-            canvas = self.widgets.get("canvas")
-            if canvas is not None:
-                canvas.draw_idle()
+        if self._ax is not None:
+            self._ax.apply_theme()
 
     def _on_load_clicked(self):
         """Request the shared background load or consume its current snapshot."""
@@ -381,31 +358,10 @@ class TrajectoryPreviewPanel(BasePanel):
         self._static_plot_dirty = False
         self._current_marker_artist = None
         self._frame_update_timer.stop()
-        if self._colorbar is not None:
-            try:
-                self._colorbar.remove()
-            except (ValueError, AttributeError):
-                pass
-            self._colorbar = None
-        if self._has_matplotlib and self._ax is not None:
+        self._colorbar = None
+        if self._ax is not None:
             self._ax.clear()
-            self._ax.set_xlabel("X (m)", fontsize=9)
-            self._ax.set_ylabel("Y (m)", fontsize=9)
-            self._ax.set_title("TX/RX/Target Trajectories (Top-Down View)", fontsize=10)
-            apply_matplotlib_theme(self._figure, self._ax)
-            self._ax.text(
-                0.5,
-                0.5,
-                "No trajectory data",
-                ha="center",
-                va="center",
-                transform=self._ax.transAxes,
-                fontsize=12,
-                color=current_theme().text_muted,
-            )
-            canvas = self.widgets.get("canvas")
-            if canvas is not None:
-                canvas.draw_idle()
+            self._ax.set_empty_message("No trajectory data")
         load_button = self.widgets.get("load_btn")
         if load_button is not None:
             load_button.setEnabled(True)
@@ -445,94 +401,64 @@ class TrajectoryPreviewPanel(BasePanel):
         return dict(zip(frame_indices, values))
 
     def _plot_colored_trajectory(
-        self,
-        sorted_pos: list,
-        frame_metric_map: Dict[int, float],
-        metric_mode: str,
-        label: str,
-        linestyle: str = "-",
-        marker: str = "o",
-    ) -> bool:
-        """Plot a single trajectory with per-segment metric coloring.
-
-        Args:
-            sorted_pos: Sorted list of ``(frame_idx, x, y, z)`` tuples.
-            frame_metric_map: Mapping from frame index to metric value.
-            metric_mode: The selected color-by mode string.
-            label: Legend label for the trajectory.
-            linestyle: Line style (solid or dashed).
-            marker: Scatter marker style.
-
-        Returns:
-            True if any data was plotted.
-        """
-        import numpy as np
-        from matplotlib.collections import LineCollection
-
+        self, sorted_pos, frame_metric_map, metric_mode, label, linestyle="-", marker="o"
+    ):
         if len(sorted_pos) < 2:
             return False
-
-        xs = [p[1] for p in sorted_pos]
-        ys = [p[2] for p in sorted_pos]
-        frame_ids = [p[0] for p in sorted_pos]
-
-        # Build segment values: each segment gets the metric of its starting frame
-        seg_values = []
-        for fid in frame_ids[:-1]:
-            val = frame_metric_map.get(fid)
-            if val is None:
-                seg_values.append(float("nan"))
-            else:
-                seg_values.append(float(val))
-
-        points = np.column_stack([xs, ys])
-        segments = np.array([[points[i], points[i + 1]] for i in range(len(points) - 1)])
-        seg_values_arr = np.array(seg_values, dtype=np.float64)
-
-        import matplotlib.pyplot as plt
-
-        cmap = plt.get_cmap("plasma")
-        finite_mask = np.isfinite(seg_values_arr)
-        if not finite_mask.any():
-            return False
-
-        if metric_mode == "Direct-Path Pair Share":
-            vmin, vmax = 0.0, 1.0
-        else:
-            vmin = float(np.nanmin(seg_values_arr))
-            vmax = float(np.nanmax(seg_values_arr))
-            if vmin == vmax:
-                vmax = vmin + 1.0
-
-        norm = plt.Normalize(vmin=vmin, vmax=vmax)
-        lc = LineCollection(
-            segments,
-            cmap=cmap,
-            norm=norm,
-            linewidths=2.0,
-            alpha=0.8,
-            label=label,
+        points = np.asarray([(p[1], p[2]) for p in sorted_pos])
+        values = np.asarray(
+            [frame_metric_map.get(p[0], np.nan) for p in sorted_pos[:-1]], dtype=float
         )
-        if linestyle == "--":
-            lc.set_linestyle("--")
-        lc.set_array(seg_values_arr)
-        self._ax.add_collection(lc)
-
+        valid = (
+            np.isfinite(values)
+            & np.isfinite(points[:-1]).all(axis=1)
+            & np.isfinite(points[1:]).all(axis=1)
+        )
+        if not valid.any():
+            return False
+        low, high = (
+            (0.0, 1.0)
+            if metric_mode == "Direct-Path Pair Share"
+            else (float(values[valid].min()), float(values[valid].max()))
+        )
+        if low == high:
+            high = low + 1
+        cmap = pg.colormap.get("plasma")
+        adjacency = np.column_stack((np.arange(len(points) - 1), np.arange(1, len(points))))[valid]
+        colors = cmap.map(np.clip((values[valid] - low) / (high - low), 0, 1), mode="byte")
+        pens = np.empty(
+            len(colors),
+            dtype=[(channel, "u1") for channel in ("red", "green", "blue", "alpha")]
+            + [("width", "f4")],
+        )
+        for index, channel in enumerate(("red", "green", "blue", "alpha")):
+            pens[channel] = colors[:, index]
+        pens["width"] = 2
+        graph = pg.GraphItem(
+            pos=points,
+            adj=adjacency,
+            pen=pens,
+            symbol="o",
+            size=0,
+            symbolBrush=current_theme().text_muted,
+            symbolPen=None,
+        )
+        self._ax.addItem(graph)
+        self._ax.curve([], [], name=label)
         if self._colorbar is None:
-            theme = current_theme()
             metric_labels = {
-                "Direct-Path Pair Share": "Direct-Path Pair Share",
                 "Pooled Path Delay Spread": "Pooled Path Delay Spread (ns)",
-                "Path Count": "Path Count",
                 "Strongest Single-Path Loss": "Single-Path Loss (dB)",
             }
-            self._colorbar = self._figure.colorbar(lc, ax=self._ax, pad=0.02, fraction=0.04)
-            self._colorbar.set_label(metric_labels.get(metric_mode, metric_mode), fontsize=8)
-            self._colorbar.ax.yaxis.label.set_color(theme.text_primary)
-            self._colorbar.ax.tick_params(colors=theme.text_primary)
-
-        # Scatter dots at positions
-        self._ax.scatter(xs, ys, c=current_theme().text_muted, s=3, alpha=0.3, zorder=1)
+            self._colorbar = pg.ColorBarItem(
+                values=(low, high),
+                colorMap=cmap,
+                label=metric_labels.get(metric_mode, metric_mode),
+                interactive=False,
+            )
+            self._colorbar.setImageItem([], insert_in=self._ax.getPlotItem())
+            self._ax._colorbars.append(self._colorbar)
+            self._ax.apply_theme()
         return True
 
     def _set_trajectory_snapshot(self, trajectories: TrajectorySnapshot) -> None:
@@ -587,203 +513,73 @@ class TrajectoryPreviewPanel(BasePanel):
             self._rebuild_static_plot()
 
     def _rebuild_static_plot(self):
-        """Rebuild trajectory lines, labels, legend, and plot bounds."""
-        if not self._has_matplotlib or not self._trajectories:
+        """Rebuild source trajectories only when data or presentation settings change."""
+        if not self._plot_ready or not self._trajectories:
             return
-
         self._ensure_frame_position_index()
         self._static_plot_dirty = False
         self._frame_update_timer.stop()
-
-        # Remove existing colorbar before clearing axes
-        if self._colorbar is not None:
-            try:
-                self._colorbar.remove()
-            except (ValueError, AttributeError):
-                pass
-            self._colorbar = None
-
         self._ax.clear()
+        self._colorbar = None
         self._current_marker_artist = None
-        self._ax.set_xlabel("X (m)", fontsize=9)
-        self._ax.set_ylabel("Y (m)", fontsize=9)
-        self._ax.set_title("TX/RX/Target Trajectories (Top-Down View)", fontsize=10)
-        apply_matplotlib_theme(self._figure, self._ax)
-        theme = current_theme()
-
-        show_tx = self.widgets["show_tx"].isChecked()
-        show_rx = self.widgets["show_rx"].isChecked()
-        show_targets = self.widgets["show_targets"].isChecked()
-        show_labels = self.widgets["show_labels"].isChecked()
-        color_mode = self._get_metric_color_mode()
-
-        # Determine metric map for coloring
-        metric_map: Optional[Dict[int, float]] = None
-        metric_key_map = {
+        metric_mode = self._get_metric_color_mode()
+        metric_key = {
             "Direct-Path Pair Share": "direct_path_pair_share_evolution",
             "Pooled Path Delay Spread": "delay_spread_evolution",
             "Path Count": "mpc_evolution",
             "Strongest Single-Path Loss": "strongest_single_path_loss_evolution",
-        }
-        if color_mode != "None":
-            metric_key = metric_key_map.get(color_mode)
-            if metric_key:
-                metric_map = self._build_frame_index_to_metric(metric_key)
-
-        use_metric_coloring = metric_map is not None and color_mode != "None"
-
+        }.get(metric_mode)
+        metrics = self._build_frame_index_to_metric(metric_key) if metric_key else None
         has_data = False
-        label_positions = []  # Collect positions for labels
-
-        # Plot TX trajectories
-        if show_tx:
-            for tx_idx, positions in self._trajectories.get("tx_positions", {}).items():
-                if positions:
-                    sorted_pos = sorted(positions, key=lambda x: x[0])
-                    label = f"TX{tx_idx}"
-                    if use_metric_coloring:
-                        plotted = self._plot_colored_trajectory(
-                            sorted_pos, metric_map, color_mode, label
-                        )
-                        has_data = has_data or plotted
-                    else:
-                        xs = [p[1] for p in sorted_pos]
-                        ys = [p[2] for p in sorted_pos]
-                        self._ax.plot(
-                            xs, ys, color=self.TX_COLOR, alpha=0.7, linewidth=1.5, label=label
-                        )
-                        self._ax.scatter(xs, ys, c=self.TX_COLOR, s=4, alpha=0.5)
-                        has_data = True
-                    xs = [p[1] for p in sorted_pos]
-                    ys = [p[2] for p in sorted_pos]
-                    if xs and ys:
-                        label_positions.append((xs[0], ys[0], label, self.TX_COLOR, "tx"))
-
-        # Plot RX trajectories
-        if show_rx:
-            for rx_idx, positions in self._trajectories.get("rx_positions", {}).items():
-                if positions:
-                    sorted_pos = sorted(positions, key=lambda x: x[0])
-                    label = f"RX{rx_idx}"
-                    if use_metric_coloring:
-                        plotted = self._plot_colored_trajectory(
-                            sorted_pos, metric_map, color_mode, label
-                        )
-                        has_data = has_data or plotted
-                    else:
-                        xs = [p[1] for p in sorted_pos]
-                        ys = [p[2] for p in sorted_pos]
-                        self._ax.plot(
-                            xs, ys, color=self.RX_COLOR, alpha=0.7, linewidth=1.5, label=label
-                        )
-                        self._ax.scatter(xs, ys, c=self.RX_COLOR, s=4, alpha=0.5)
-                        has_data = True
-                    xs = [p[1] for p in sorted_pos]
-                    ys = [p[2] for p in sorted_pos]
-                    if xs and ys:
-                        label_positions.append((xs[0], ys[0], label, self.RX_COLOR, "rx"))
-
-        # Plot Target trajectories (each target gets a different color)
-        if show_targets:
-            target_names = list(self._trajectories.get("target_positions", {}).keys())
-            for i, target_name in enumerate(target_names):
-                positions = self._trajectories["target_positions"][target_name]
-                if positions:
-                    color = self.TARGET_COLORS[i % len(self.TARGET_COLORS)]
-                    sorted_pos = sorted(positions, key=lambda x: x[0])
-                    if use_metric_coloring:
-                        plotted = self._plot_colored_trajectory(
-                            sorted_pos,
-                            metric_map,
-                            color_mode,
-                            target_name,
-                            linestyle="--",
-                            marker="D",
-                        )
-                        has_data = has_data or plotted
-                    else:
-                        xs = [p[1] for p in sorted_pos]
-                        ys = [p[2] for p in sorted_pos]
-                        self._ax.plot(
-                            xs,
-                            ys,
-                            color=color,
-                            alpha=0.7,
-                            linewidth=1.5,
-                            linestyle="--",
-                            label=target_name,
-                        )
-                        self._ax.scatter(xs, ys, c=color, s=6, alpha=0.5, marker="D")
-                        has_data = True
-                    xs = [p[1] for p in sorted_pos]
-                    ys = [p[2] for p in sorted_pos]
-                    if xs and ys:
-                        label_positions.append((xs[0], ys[0], target_name, color, "target"))
-
-        if show_labels and label_positions:
-            for x, y, text, color, node_type in label_positions:
-                offset_x = 2 if node_type == "tx" else (-2 if node_type == "rx" else 0)
-                offset_y = 2 if node_type == "target" else -2
-                self._ax.annotate(
-                    text,
-                    (x, y),
-                    textcoords="offset points",
-                    xytext=(offset_x, offset_y),
-                    fontsize=8,
-                    fontweight="bold",
-                    color=color,
-                    ha="center",
-                    va="bottom" if offset_y > 0 else "top",
-                    bbox=dict(
-                        boxstyle="round,pad=0.2",
-                        facecolor=theme.bg_secondary,
-                        edgecolor=color,
-                        alpha=0.8,
-                    ),
+        for kind, field, toggle in (
+            ("TX", "tx_positions", "show_tx"),
+            ("RX", "rx_positions", "show_rx"),
+            ("target", "target_positions", "show_targets"),
+        ):
+            if not self.widgets[toggle].isChecked():
+                continue
+            for index, (identity, positions) in enumerate(
+                self._trajectories.get(field, {}).items()
+            ):
+                if not positions:
+                    continue
+                points = sorted(positions, key=lambda p: p[0])
+                name = str(identity) if kind == "target" else f"{kind}{identity}"
+                color = (
+                    self.TARGET_COLORS[index % len(self.TARGET_COLORS)]
+                    if kind == "target"
+                    else self.TX_COLOR if kind == "TX" else self.RX_COLOR
                 )
-
-        # Create one reusable collection for every current-frame marker. Frame
-        # changes only mutate this artist instead of clearing the full axes.
+                if metrics is not None:
+                    has_data |= self._plot_colored_trajectory(
+                        points, metrics, metric_mode, name, marker="D" if kind == "target" else "o"
+                    )
+                else:
+                    self._ax.curve(
+                        [p[1] for p in points],
+                        [p[2] for p in points],
+                        name=name,
+                        color=color,
+                        symbol="d" if kind == "target" else "o",
+                        style=Qt.DashLine if kind == "target" else Qt.SolidLine,
+                    )
+                    has_data = True
+                if self.widgets["show_labels"].isChecked():
+                    self._ax.text(name, points[0][1], points[0][2], color=color, anchor=(0.5, 1))
         self._highlight_current_frame()
+        self._ax.set_empty_message("" if has_data else "No trajectory data")
+        self._ax.enableAutoRange()
+        self._ax._external_legend.setVisible(len(self._ax._external_legend.items) <= 8)
+        self.widgets["canvas"].update()
 
-        if has_data:
-            self._ax.set_aspect("equal", adjustable="datalim")
-            # Auto-scale for LineCollection (not auto-fitted by matplotlib)
-            self._ax.autoscale_view()
-            # Only show legend if not too many entries (avoid clutter)
-            handles, labels = self._ax.get_legend_handles_labels()
-            if len(handles) <= 8:
-                self._ax.legend(loc="upper right", fontsize=7, framealpha=0.9, ncol=2)
-                apply_matplotlib_legend_theme(self._ax)
-        else:
-            self._ax.text(
-                0.5,
-                0.5,
-                "No trajectory data",
-                ha="center",
-                va="center",
-                transform=self._ax.transAxes,
-                fontsize=12,
-                color=theme.text_muted,
-            )
-
-        self.widgets["canvas"].draw_idle()
-
-    def _highlight_current_frame(self) -> None:
-        """Create and position the reusable current-frame marker collection."""
+    def _highlight_current_frame(self):
         if not self._trajectories or self._ax is None:
             return
-
-        self._current_marker_artist = self._ax.scatter(
-            [],
-            [],
-            c=self.CURRENT_COLOR,
-            s=120,
-            marker="*",
-            zorder=10,
-            edgecolors=current_theme().bg_secondary,
-            linewidths=0.5,
+        self._current_marker_artist = pg.ScatterPlotItem(
+            symbol="star", size=14, brush=self.CURRENT_COLOR, pen=current_theme().bg_secondary
         )
+        self._current_marker_artist.setZValue(10)
+        self._ax.addItem(self._current_marker_artist, ignoreBounds=True)
         self._update_current_frame_marker(draw=False)
 
     def _visible_current_frame_positions(self) -> list[tuple[float, float]]:
@@ -815,11 +611,11 @@ class TrajectoryPreviewPanel(BasePanel):
             if positions
             else np.empty((0, 2), dtype=float)
         )
-        self._current_marker_artist.set_offsets(offsets)
+        self._current_marker_artist.setData(x=offsets[:, 0], y=offsets[:, 1])
         if draw:
             canvas = self.widgets.get("canvas")
             if canvas is not None:
-                canvas.draw_idle()
+                canvas.update()
 
     def _schedule_current_frame_update(self) -> None:
         """Update now or coalesce rapid playback frames into one repaint."""

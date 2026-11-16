@@ -337,3 +337,13 @@ def test_state_at_step_does_not_reprepare_or_reread_ply_positions(monkeypatch) -
 
     assert ply_calls == 1
     assert orientation.prepare_calls == 1
+
+
+@pytest.mark.parametrize("mode", ["cached", "step"])
+def test_actor_state_preserves_authored_sample_clock(mode):
+    manager = ActorStateManager(
+        [], [], [], steps=150, duration=149 / 30, motion_mode=mode, sample_rate_hz=30
+    )
+    manager.prepare_cached()
+    assert manager._timeline.timestamps_s == tuple(i / 30 for i in range(150))
+    assert manager.state_at_step(23).target_positions == []

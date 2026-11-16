@@ -1,20 +1,23 @@
 # ITU Preset Diffuse Scattering
 
-[Scenarios](../../../../README.md) > [Generator](../../../README.md) > [Scene Diffuse Scattering](../README.md) > ITU Preset
-
 This variant enables diffuse solving and applies ORCHAV's known scattering
 coefficients to recognized scene-material families. It uses the same open room,
-fixed transmitter, and fixed receiver as the parent comparison.
+fixed transmitter, and fixed receiver as the
+[starting configuration](../README.md#1-enable-diffuse-solving-only).
 
 To run it, see [Running](#running).
 
 ## Scene Layout
+
+![Scenario topology](../../../../../docs/assets/scenarios/scenarios_generator_propagation_and_materials_scene_diffuse_scattering_itu_preset_topology.png)
 
 The transmitter is stationary at `(-3.0 m, -3.0 m, 4.0 m)`, and the receiver
 is stationary at `(3.0 m, 3.0 m, 1.0 m)`. The room contains concrete, wood,
 brick, plasterboard, and chipboard surfaces.
 
 ## Configuration Walkthrough
+
+See [scenario.yaml](scenario.yaml) for the complete configuration.
 
 ```yaml
 raytracing:
@@ -26,19 +29,31 @@ raytracing:
       diffuse_reflection: true
 ```
 
-The solver switch allows diffuse interactions. The preset then gives known
-material families nonzero scattering coefficients. Brick stays at its loaded
-value because the preset does not define its family.
+The solver switch allows diffuse interactions. The preset gives concrete,
+wood, plasterboard, and chipboard nonzero scattering coefficients. It assigns
+no coefficient to brick, which retains its loaded value of `0` and produces
+no diffuse paths.
 
 Material values are resolved from the loaded scene, then the optional preset,
 then any explicit override. This variant has no explicit override.
 
 ## Running
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset
 orchav-generator scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset
+```
+
+Inspect the effective material coefficients:
+
+```bash
 orchav-inspect scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset --frame 0 --materials
+```
+
+Open the scenario in the Visualizer:
+
+```bash
 orchav-visualizer --scenario scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset
 ```
 
@@ -49,7 +64,7 @@ environment.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../../README.md) | [Generator](../../../README.md) |
-> Parent: [Scene Diffuse Scattering](../README.md) | Current: **ITU Preset**
->
-> Compare: [Solver Switch Only](../README.md#1-enable-diffuse-solving-only) | [Preset With Concrete Override](../itu_preset_concrete_override/README.md) | [Explicit Concrete](../explicit_concrete/README.md)
+Up: [Scene Diffuse Scattering](../README.md) ·
+[Solver Switch Only](../README.md#1-enable-diffuse-solving-only) ·
+[Preset With Concrete Override](../itu_preset_concrete_override/README.md) ·
+[Explicit Concrete](../explicit_concrete/README.md)

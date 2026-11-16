@@ -8,10 +8,15 @@ does for the active renderer.
 
 from __future__ import annotations
 
+import logging
+from contextlib import ExitStack
+
+from PySide6.QtCore import QSignalBlocker, QTimer
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -22,6 +27,28 @@ from PySide6.QtWidgets import (
 )
 
 from .base import BasePanel
+
+logger = logging.getLogger(__name__)
+
+
+class _FieldOfViewSpinBox(QDoubleSpinBox):
+    """Read the active lens while visible, without interrupting numeric edits."""
+
+    def __init__(self, refresh):
+        super().__init__()
+        self._refresh = refresh
+        self.timer = QTimer(self)
+        self.timer.setInterval(200)
+        self.timer.timeout.connect(refresh)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.timer.start()
+        self._refresh()
+
+    def hideEvent(self, event):
+        self.timer.stop()
+        super().hideEvent(event)
 
 
 class CameraControlPanel(BasePanel):
@@ -46,14 +73,13 @@ class CameraControlPanel(BasePanel):
             ("Front", "view_front_btn"),
         ]:
             btn = QPushButton(name)
-            btn.setFixedSize(50, 22)
+            btn.setMinimumWidth(50)
             btn.setToolTip(f"Set camera to {name.lower()} view")
             self.widgets[key] = btn
             row0.addWidget(btn)
 
         self.widgets["reset_camera_btn"] = QPushButton("Reset")
         self.widgets["reset_camera_btn"].setMinimumWidth(84)
-        self.widgets["reset_camera_btn"].setFixedHeight(22)
         self.widgets["reset_camera_btn"].setToolTip(
             "Reset to the scenario camera default, or fit the whole scene"
         )
@@ -133,6 +159,7 @@ class CameraControlPanel(BasePanel):
         pov_combo = QComboBox()
         pov_combo.setStyleSheet("QComboBox { padding: 2px; min-width: 120px; }")
         for text, data in [
+            ("Motion", "motion"),
             ("Forward", "forward"),
             ("+X (East)", "x"),
             ("+Y (North)", "y"),
@@ -142,7 +169,10 @@ class CameraControlPanel(BasePanel):
             ("-Z (Down)", "-z"),
         ]:
             pov_combo.addItem(text, data)
-        pov_combo.setToolTip("Select look direction in POV mode")
+        pov_combo.setToolTip(
+            "Motion looks along the recorded travel direction, including climbs and descents.\n"
+            "It holds the last direction when stopped; Forward uses the actor's recorded orientation."
+        )
         self.widgets["pov_axis_combo"] = pov_combo
         pov_layout.addWidget(pov_combo)
 
@@ -163,7 +193,7 @@ class CameraControlPanel(BasePanel):
         row4.addWidget(self._saved_views_label)
 
         save_btn = QPushButton("Save")
-        save_btn.setFixedSize(46, 24)
+        save_btn.setMinimumSize(46, 24)
         save_btn.setCheckable(True)
         save_btn.setToolTip("Click, then choose a view number to save the current view")
         self.widgets["camera_preset_save_btn"] = save_btn
@@ -172,7 +202,7 @@ class CameraControlPanel(BasePanel):
         self.widgets["camera_preset_buttons"] = []
         for i in range(1, 5):
             btn = QPushButton(str(i))
-            btn.setFixedSize(24, 24)
+            btn.setMinimumSize(24, 24)
             btn.setStyleSheet("QPushButton { font-size: 10px; padding: 2px; }")
             btn.setCheckable(False)
             btn.setToolTip(f"View {i}: empty. Click Save, then {i} to store current view")
@@ -190,7 +220,118 @@ class CameraControlPanel(BasePanel):
         row4.addStretch()
         layout.addWidget(self._saved_views_row)
 
+        lens_row = QHBoxLayout()
+        lens_row.setSpacing(6)
+        lens_row.setContentsMargins(0, 0, 0, 0)
+        fov_label = QLabel("FOV:")
+        fov = _FieldOfViewSpinBox(self.refresh_field_of_view)
+        fov.setRange(5, 150)
+        fov.setDecimals(1)
+        fov.setSingleStep(5)
+        fov.setSuffix(" °")
+        fov.setValue(60)
+        fov.setKeyboardTracking(False)
+        fov.setToolTip(
+            "Camera field of view in Overview, Follow and POV.\n"
+            "Smaller angles narrow the view; larger angles widen it without moving the camera."
+        )
+        fov_label.setBuddy(fov)
+        self.widgets["camera_fov_spin"] = fov
+        lens_row.addWidget(fov_label)
+        lens_row.addWidget(fov)
+        advanced = QCheckBox("Advanced camera")
+        advanced.setToolTip("Show camera motion, framing and saved sequences in the Rendering tab")
+        advanced.setVisible(
+            getattr(getattr(self.parent, "renderer", None), "renderer_id", None) == "pygfx"
+        )
+        self.widgets["advanced_camera_cb"] = advanced
+        lens_row.addWidget(advanced)
+        lens_row.addStretch()
+        layout.addLayout(lens_row)
+        views_row = QHBoxLayout()
+        target_view = QPushButton("Actor view +")
+        target_view.setToolTip(
+            "Open another camera following a target, TX or RX; drag to orbit and wheel to zoom"
+        )
+        target_view.setVisible(
+            callable(getattr(getattr(self.parent, "renderer", None), "open_target_view", None))
+        )
+        target_view.clicked.connect(self._open_target_view)
+        self.widgets["camera_target_view_btn"] = target_view
+        views_row.addWidget(target_view)
+        live_figure = QPushButton("Live figure +")
+        live_figure.setToolTip("Show up to four live channel or sensing figures beside the scene")
+        live_figure.clicked.connect(self._open_live_figure)
+        self.widgets["live_figure_btn"] = live_figure
+        views_row.addWidget(live_figure)
+        views_row.addStretch()
+        layout.addLayout(views_row)
+
+        self.sync_from_state(getattr(self.parent, "app_state", None))
         return group
+
+    def _open_live_figure(self) -> None:
+        """Create optional figure placement only when explicitly requested."""
+        from ..widgets.live_figure_dock import LiveFigureManager
+
+        manager = getattr(self.parent, "live_figure_manager", None)
+        if manager is None:
+            manager = LiveFigureManager(self.parent)
+            self.parent.live_figure_manager = manager
+        try:
+            manager.add()
+        except (ImportError, RuntimeError, ValueError, OSError) as exc:
+            logger.exception("Could not open a live figure")
+            self.parent.statusBar().showMessage(f"Live figure unavailable: {exc}", 6000)
+
+    def _open_target_view(self) -> None:
+        """Request a renderer-owned camera without importing a backend into the panel."""
+        callback = getattr(getattr(self.parent, "renderer", None), "open_target_view", None)
+        if not callable(callback):
+            return
+        try:
+            if callback() is not None:
+                return
+            message = "Open a scenario with a target, TX or RX first."
+        except Exception as exc:
+            logger.exception("Could not open an actor view")
+            message = f"Actor view unavailable: {exc}"
+        status_bar = getattr(self.parent, "statusBar", None)
+        if callable(status_bar):
+            status_bar().showMessage(message, 6000)
+
+    def refresh_field_of_view(self) -> None:
+        """Mirror saved views, resets and animated lenses without driving the camera."""
+        fov = self.widgets["camera_fov_spin"]
+        renderer = getattr(self.parent, "renderer", None)
+        if fov.hasFocus() or renderer is None:
+            return
+        state = renderer.get_camera_state()
+        if state is not None:
+            with QSignalBlocker(fov):
+                fov.setValue(state.fov_deg)
+
+    def sync_from_state(self, state: object | None) -> None:
+        """Reflect restored camera intent without moving the camera or emitting actions."""
+        if state is None or "camera_mode_group" not in self.widgets:
+            return
+        mode = getattr(state, "camera_mode", "overview")
+        buttons = self.widgets["camera_mode_group"].buttons()
+        # Checking one exclusive radio also unchecks another. Block both ends.
+        with ExitStack() as stack:
+            for button in buttons:
+                stack.enter_context(QSignalBlocker(button))
+            button = self.widgets.get(f"{mode}_mode_rb")
+            if button is not None:
+                button.setChecked(True)
+        advanced = self.widgets.get("advanced_camera_cb")
+        self.widgets["track_group"].setVisible(
+            mode in ("follow", "pov") or bool(advanced and advanced.isChecked())
+        )
+        self.widgets["pov_axis_container"].setVisible(mode == "pov")
+        combo = self.widgets["pov_axis_combo"]
+        with QSignalBlocker(combo):
+            combo.setCurrentIndex(combo.findData(getattr(state, "pov_axis", "motion")))
 
     def set_compact_mode(self, compact: bool) -> None:
         """Tighten the saved-view row when the window is narrow."""

@@ -13,33 +13,39 @@ import csv
 import logging
 import os
 import time
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import numpy as np
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
     QFileDialog,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QToolTip,
+    QScrollArea,
+    QSizePolicy,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
 from shared.logging import get_logger
 
 from ..app.plot_theme import apply_matplotlib_legend_theme, apply_matplotlib_theme
-from ..app.theme import get_theme_manager
+from ..app.theme import current_theme, get_theme_manager
 from ..config import INTERACTION_TYPE_COLORS
 from ..coverage.analysis import (
     compute_coverage_scalar_plot_data,
@@ -59,6 +65,7 @@ from ..services.scenario_statistics_service import (
     resolve_statistics_provider,
 )
 from .base import BasePanel
+from .collapsible_section import CollapsibleSection
 
 logger = get_logger("orchav.statistics_panel")
 
@@ -74,9 +81,15 @@ _CHART_ORDER_COLORS = [
 _CHART_LINE_COLOR = "#1976D2"
 _MAX_CDF_POINTS = 5000
 _GRAPHS_STATUS_CLEAR_MS = 4000
-EMPTY_VALUE = "--"
+EMPTY_VALUE = "N/A"
 
 _GRAPH_EXPLANATIONS = {
+    "delay_time_chart": (
+        "Sum of retained path powers in each delay bin, without phase interference. "
+        "Time bins containing multiple observations show their mean power. Blank cells "
+        "have no co-valid delay/power data; they do not establish an outage. "
+        "Click to inspect the nearest recorded frame. Coverage retains its own selection."
+    ),
     "coverage_distribution_chart": (
         "For scalar coverage, each bar shows the share of usable cells in one value "
         "range at the selected height. For Serving TX, each bar shows the share of "
@@ -259,9 +272,29 @@ def _log_timing(event: str, **fields: Any) -> None:
 class _StatsWorkerSignals(QObject):
     """Qt signals for delivering background statistics results to the main thread."""
 
-    provider_finished = Signal(dict, bool, int)
+    provider_finished = Signal(object, bool, int)
     provider_progress = Signal(int, int, int)
     provider_failed = Signal(str, int)
+
+
+class _GraphVisibilityObserver(QObject):
+    """Refresh expanded charts only after their tab becomes visible."""
+
+    def __init__(self, section, callback):
+        super().__init__(section)
+        self.section = section
+        self.callback = callback
+        self.window = None
+        section.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if event.type() in {QEvent.Show, QEvent.Hide, QEvent.WindowStateChange}:
+            window = self.section.window()
+            if window is not self.window:
+                self.window = window
+                window.installEventFilter(self)
+            QTimer.singleShot(0, self.callback)
+        return False
 
 
 class StatisticsPanel(BasePanel):
@@ -270,7 +303,7 @@ class StatisticsPanel(BasePanel):
     def __init__(self, parent_widget: Any) -> None:
         """Initialize cache, graph, and background-worker state."""
         super().__init__(parent_widget)
-        self.has_matplotlib = False
+        self.has_pyqtgraph = False
         self._plot_deps_checked = False
         self.stats = None
         self._distribution_group = None
@@ -285,6 +318,12 @@ class StatisticsPanel(BasePanel):
         self._stats_signals.provider_failed.connect(self._on_provider_stats_error)
         self._statistics_provider: Optional[Any] = None
         self._provider_stats_generation: Optional[int] = None
+        self._automatic_statistics = QSettings().value(
+            "analysis/automaticScenarioStatistics", False, type=bool
+        )
+        self._cancel_stats_btn = None
+        self._stats_error_section = None
+        self._stats_error_text = None
         self._compute_btn: Optional[QPushButton] = None
         self._compute_status: Optional[QLabel] = None
         self._progress_bar: Optional[QProgressBar] = None
@@ -303,18 +342,78 @@ class StatisticsPanel(BasePanel):
         self._theme_manager = get_theme_manager()
         self._theme_changed_callback = self._on_theme_changed
         self._theme_manager.theme_changed.connect(self._theme_changed_callback)
+        self._metrics_section = None
+        self._metrics_host = None
+        self._graph_tabs = None
+        self._graphs_grid_visible = False
+        self._graphs_grid_cb = None
+        self._graphs_root = None
+        self._panel_root = None
+        self._chart_specs = {}
+        self._whole_run_stats = None
+        self._scope_bar = None
+        self._selection_pair = None
+        self._selection_steps = None
+        self._delay_time_group = None
+        self._root_widgets: dict[str, tuple[set[str], set[str]]] = {}
+
+    def _watch_root(self, owner: str, root: QWidget, previous_keys: set[str]) -> None:
+        """Associate each independently owned root with its widget references."""
+        attributes = {
+            name
+            for name, value in vars(self).items()
+            if isinstance(value, QWidget) and (value is root or root.isAncestorOf(value))
+        }
+        self._root_widgets[owner] = (set(self.widgets) - previous_keys, attributes)
+        root.destroyed.connect(partial(self._on_root_destroyed, owner))
+
+    def _on_root_destroyed(self, owner: str, _object: object = None) -> None:
+        """Release one view while preserving its live sibling and cached results."""
+        keys, attributes = self._root_widgets.pop(owner, (set(), set()))
+        for key in keys:
+            self.widgets.pop(key, None)
+        for name in attributes:
+            setattr(self, name, None)
+        if owner == "panel":
+            metrics_service = getattr(self.parent, "metrics_service", None)
+            if self._metrics_host is not None and metrics_service is not None:
+                metrics_service.close()
+                self._metrics_host = None
+        if owner == "graphs":
+            self._graphs_panel_created = False
+            self._graphs_visible = False
+            self._chart_groups = ()
+            self._graphs_section = None
+            if self._graphs_status_clear_timer is not None:
+                self._graphs_status_clear_timer.stop()
+                self._graphs_status_clear_timer.deleteLater()
+                self._graphs_status_clear_timer = None
+        if not self._root_widgets:
+            self.cleanup()
 
     def _on_theme_changed(self, _theme: object) -> None:
-        """Invalidate cached graph styling after application theme changes."""
-        self._mark_graphs_dirty()
+        """Recolor existing charts without rescanning the run or changing zoom."""
+        from ..app.plot_theme import path_stats_style
+
+        for root in (self._panel_root, self._graphs_root):
+            if root is not None:
+                root.setStyleSheet(path_stats_style(current_theme()))
+        for widget in self.widgets.values():
+            if hasattr(widget, "apply_theme"):
+                widget.apply_theme()
 
     def cleanup(self) -> None:
         """Stop transient UI work and release the process-wide theme subscription."""
+        metrics_service = getattr(self.parent, "metrics_service", None)
+        if self._metrics_host is not None and metrics_service is not None:
+            metrics_service.close()
+            self._metrics_host = None
         statistics_service = self._get_scenario_statistics_service()
         if statistics_service is not None and self._statistics_provider is not None:
             statistics_service.cancel_collection()
         self._statistics_provider = None
         self._provider_stats_generation = None
+        self._graphs_section = None
         if self._graphs_status_clear_timer is not None:
             self._graphs_status_clear_timer.stop()
         if self._theme_manager is not None:
@@ -325,28 +424,21 @@ class StatisticsPanel(BasePanel):
             self._theme_manager = None
 
     def _ensure_plot_dependencies(self) -> bool:
-        """Import plotting dependencies on first graph use."""
+        """Check the interactive backend; Matplotlib is loaded only for PNG export."""
         if self._plot_deps_checked:
-            return self.has_matplotlib
-
+            return self.has_pyqtgraph
         self._plot_deps_checked = True
         try:
-            import matplotlib
-            from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-            from matplotlib.figure import Figure
+            import pyqtgraph  # noqa: F401
 
-            self.has_matplotlib = True
-            self.matplotlib = matplotlib
-            self.FigureCanvas = FigureCanvasQTAgg
-            self.Figure = Figure
-            logger.info("Statistics panel: matplotlib available")
-        except ImportError as e:
-            logger.warning(f"Statistics panel: matplotlib not available: {e}")
-            self.has_matplotlib = False
+            self.has_pyqtgraph = True
+        except ImportError as exc:
+            logger.warning("Statistics panel: pyqtgraph not available: %s", exc)
             self.missing_dependency_message = (
-                "Statistics graphs require matplotlib.\n" "Install with: pip install matplotlib"
+                "Interactive path statistics require pyqtgraph. "
+                "Install with: pip install pyqtgraph"
             )
-        return self.has_matplotlib
+        return self.has_pyqtgraph
 
     @staticmethod
     def _has_values(values: Any) -> bool:
@@ -365,12 +457,22 @@ class StatisticsPanel(BasePanel):
 
     def create_panel(self) -> QGroupBox:
         """Create and return the statistics panel."""
-        group = self.create_group_box("Statistics")
+        previous_keys = set(self.widgets)
+        group = self.create_group_box("")
+        group.setObjectName("PathStatistics")
+        group.setAttribute(Qt.WA_StyledBackground, True)
+        from ..app.plot_theme import path_stats_style
 
+        self._panel_root = group
+        group.setStyleSheet(path_stats_style(current_theme()))
         layout = QVBoxLayout(group)
         layout.setSpacing(8)
         layout.setContentsMargins(8, 8, 8, 8)
+        layout.setAlignment(Qt.AlignTop)
 
+        self._metrics_section = CollapsibleSection("Live frame metrics", start_open=False)
+        self._metrics_section.toggled.connect(self._on_metrics_toggled)
+        layout.addWidget(self._metrics_section)
         layout.addWidget(self._create_compute_section())
 
         # Summary section
@@ -379,10 +481,47 @@ class StatisticsPanel(BasePanel):
         # Export buttons
         layout.addWidget(self._create_export_section())
 
+        self._watch_root("panel", group, previous_keys)
         return group
 
+    def _on_metrics_toggled(self, expanded: bool) -> None:
+        """Allocate plots only after the user first expands live metrics."""
+        if not expanded or self._metrics_host is not None:
+            return
+        service = getattr(self.parent, "metrics_service", None)
+        if service is None or not service.available:
+            layout = self._metrics_section.content_layout()
+            if layout.count() == 0:
+                layout.addWidget(QLabel("Install pyqtgraph to enable live frame metrics."))
+            return
+        from ..widgets.dashboard_host import DashboardHost
+
+        self._metrics_host = DashboardHost(
+            title="ORCHAV MPC Analysis Dashboard",
+            settings_key="visualizer/metrics_dashboard_geometry",
+        )
+        self._metrics_section.content_layout().addWidget(self._metrics_host)
+        self._metrics_host.returned.connect(self.show_metrics)
+        service.attach_host(self._metrics_host)
+
+    def show_metrics(self) -> None:
+        """Reveal the existing analysis when it returns from a pop-out."""
+        manager = getattr(self.parent, "ui_manager", None)
+        if manager is not None:
+            manager.show_panel("statistics")
+        self._metrics_section.expand()
+
+    def toggle_metrics(self) -> None:
+        """Use the Metrics menu action to expand, collapse, or return its content."""
+        if self._metrics_host is not None and self._metrics_host.is_detached():
+            self._metrics_host.dock()
+        elif self._metrics_section.is_expanded() and self._metrics_section.isVisible():
+            self._metrics_section.collapse()
+        else:
+            self.show_metrics()
+
     def _create_missing_dependency_message(self) -> QGroupBox:
-        """Create message when matplotlib is missing."""
+        """Create message when the interactive plotting dependency is missing."""
         group = self.create_group_box("Statistics")
         layout = QVBoxLayout(group)
         layout.setSpacing(8)
@@ -407,7 +546,7 @@ class StatisticsPanel(BasePanel):
         layout.addWidget(message)
 
         # Installation instruction
-        install_label = QLabel("To enable statistics visualizations, run:\npip install matplotlib")
+        install_label = QLabel("To enable statistics visualizations, run:\npip install pyqtgraph")
         install_label.setWordWrap(True)
         install_label.setAlignment(Qt.AlignCenter)
         install_label.setStyleSheet("font-size: 10px; padding: 5px;")
@@ -416,53 +555,125 @@ class StatisticsPanel(BasePanel):
         return group
 
     def create_graphs_panel(self) -> QGroupBox:
-        """Create scenario-level statistics graph containers."""
-        group = self.create_group_box("Graphs")
+        """Create a whole-run workspace with lazy, responsive chart families."""
+        if self._graphs_root is not None:
+            return self._graphs_root
+        if not self._ensure_plot_dependencies():
+            return self._create_missing_dependency_message()
+        from ..app.plot_theme import path_stats_style
+
+        previous_keys = set(self.widgets)
+        group = self.create_group_box("")
+        group.setObjectName("PathStatisticsGraphs")
+        group.setStyleSheet(path_stats_style(current_theme()))
+        group.setAttribute(Qt.WA_StyledBackground, True)
+        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._graphs_root = group
         layout = QVBoxLayout(group)
         layout.setSpacing(8)
-        layout.setContentsMargins(8, 8, 8, 8)
-
-        status = QLabel("Graphs render when this section is opened after statistics are ready.")
-        status.setStyleSheet("font-size: 10px;")
+        layout.setContentsMargins(16, 12, 16, 12)
+        eyebrow = QLabel("PATH STATISTICS  /  RUN ANALYSIS")
+        eyebrow.setObjectName("pathEyebrow")
+        layout.addWidget(eyebrow)
+        title = QLabel("Path statistics")
+        title.setObjectName("pathTitle")
+        layout.addWidget(title)
+        self._graphs_scope = QLabel(
+            "All retained scenario frames · independent of the playback cursor"
+        )
+        self._graphs_scope.setObjectName("pathScope")
+        self._graphs_scope.setWordWrap(True)
+        layout.addWidget(self._graphs_scope)
+        status = QLabel("Open a scenario and compute statistics to explore its paths")
+        status.setObjectName("pathScope")
         status.setWordWrap(True)
         self._graphs_status_label = status
         layout.addWidget(status)
+        from .statistics_scope import StatisticsScopeBar
 
-        self._coverage_graphs_group = self._create_coverage_charts_section()
-        layout.addWidget(self._coverage_graphs_group)
-
-        # Distribution charts
+        self._scope_bar = StatisticsScopeBar()
+        self._scope_bar.selection_requested.connect(self._request_statistics_scope)
+        self._scope_bar.reset_requested.connect(self._reset_statistics_scope)
+        layout.addWidget(self._scope_bar)
+        if self._whole_run_stats is not None:
+            self._scope_bar.bind(
+                self._whole_run_stats, enabled=self._statistics_provider is not None
+            )
+        self._graphs_grid_cb = QCheckBox("Grid")
+        self._graphs_grid_cb.setChecked(self._graphs_grid_visible)
+        self._graphs_grid_cb.setToolTip(
+            "Show grid lines on the run-statistics figures and their PNG exports"
+        )
+        self._graphs_grid_cb.toggled.connect(self._on_graphs_grid_toggled)
+        layout.addWidget(self._graphs_grid_cb, alignment=Qt.AlignLeft)
+        self._graph_tabs = QTabWidget()
+        self._graph_tabs.setDocumentMode(True)
+        self._graph_tabs.setMinimumHeight(560)
+        layout.addWidget(self._graph_tabs, 1)
         self._distribution_group = self._create_distribution_charts_section()
-        layout.addWidget(self._distribution_group)
-
-        # CDF charts
         self._cdf_group = self._create_cdf_charts_section()
-        layout.addWidget(self._cdf_group)
-
-        # Angular charts
         self._polar_group = self._create_polar_charts_section()
-        layout.addWidget(self._polar_group)
-
-        # Evolution charts — hidden when total_frames <= 1
         self._evolution_group = self._create_evolution_charts_section()
-        layout.addWidget(self._evolution_group)
-
-        # Channel Evolution charts — hidden when total_frames <= 1
         self._channel_evolution_group = self._create_channel_evolution_section()
-        layout.addWidget(self._channel_evolution_group)
-
+        self._coverage_graphs_group = self._create_coverage_charts_section()
+        self._delay_time_group = self._chart_family(("delay_time_chart",))
+        self.widgets["delay_time_chart"].frame_requested.connect(self._inspect_statistics_frame)
+        self._chart_groups = (
+            self._distribution_group,
+            self._cdf_group,
+            self._polar_group,
+            self._evolution_group,
+            self._channel_evolution_group,
+            self._coverage_graphs_group,
+            self._delay_time_group,
+        )
+        for name, page in zip(
+            ("Distributions", "CDFs", "Angles", "Evolution", "Channels", "Coverage", "Delay–time"),
+            self._chart_groups,
+        ):
+            scroll = QScrollArea()
+            scroll.setFrameShape(QScrollArea.NoFrame)
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(page)
+            self._graph_tabs.addTab(scroll, name)
+        hint = QLabel("Scroll to zoom · drag to pan · double-click to fit · hover for exact values")
+        hint.setObjectName("pathScope")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
         self._graphs_panel_created = True
-        self._graphs_dirty = True
-        self._coverage_graphs_dirty = True
+        self._graphs_dirty = self._coverage_graphs_dirty = True
         if (self.stats or self._coverage_data()) and self._graphs_visible:
             self._render_statistics_graphs()
-
+        self._watch_root("graphs", group, previous_keys)
         return group
+
+    def _on_graphs_grid_toggled(self, visible: bool) -> None:
+        """Update display guides without recomputing or invalidating statistics."""
+        self._graphs_grid_visible = bool(visible)
+        for widget in self.widgets.values():
+            set_grid = getattr(widget, "set_grid_visible", None)
+            if callable(set_grid):
+                set_grid(self._graphs_grid_visible)
+
+    def _sync_chart_tabs(self) -> None:
+        """Disable unavailable families without leaving an empty selected page."""
+        if self._graph_tabs is None:
+            return
+        for index, group in enumerate(self._chart_groups):
+            self._graph_tabs.setTabEnabled(index, not group.isHidden())
+        if not self._graph_tabs.isTabEnabled(self._graph_tabs.currentIndex()):
+            for index in range(self._graph_tabs.count()):
+                if self._graph_tabs.isTabEnabled(index):
+                    self._graph_tabs.setCurrentIndex(index)
+                    break
 
     def bind_graphs_section(self, section: Any) -> None:
         """Track Graphs section visibility so chart rendering can be lazy."""
         self._graphs_section = section
-        self._graphs_visible = bool(section.is_expanded())
+        self._graphs_visible = bool(section.is_expanded() and section.isVisible())
+        self._graph_visibility_observer = _GraphVisibilityObserver(
+            section, self._sync_graph_visibility
+        )
         if hasattr(section, "toggled"):
             section.toggled.connect(self._on_graphs_section_toggled)
         if (
@@ -484,7 +695,7 @@ class StatisticsPanel(BasePanel):
             return
 
         if self._graphs_status_clear_timer is None:
-            self._graphs_status_clear_timer = QTimer()
+            self._graphs_status_clear_timer = QTimer(self._graphs_root)
             self._graphs_status_clear_timer.setSingleShot(True)
             self._graphs_status_clear_timer.timeout.connect(self._clear_transient_graphs_status)
         self._graphs_status_clear_timer.start(_GRAPHS_STATUS_CLEAR_MS)
@@ -532,13 +743,26 @@ class StatisticsPanel(BasePanel):
 
     def _on_graphs_section_toggled(self, checked: bool) -> None:
         """Render charts lazily when the Graphs section is opened."""
-        self._graphs_visible = bool(checked)
+        self._sync_graph_visibility()
+
+    def _sync_graph_visibility(self) -> None:
+        section = self._graphs_section
+        self._graphs_visible = bool(
+            section is not None
+            and section.is_expanded()
+            and section.isVisible()
+            and not section.window().isMinimized()
+        )
         if (
-            checked
+            self._graphs_visible
             and (self.stats or self._coverage_data())
             and (self._graphs_dirty or self._coverage_graphs_dirty)
         ):
             self._render_statistics_graphs()
+        if self._graphs_visible:
+            for widget in self.widgets.values():
+                if hasattr(widget, "render_pending") and widget.isVisible():
+                    widget.render_pending()
 
     def _create_compute_section(self) -> QWidget:
         """Create the compute-statistics button and progress bar."""
@@ -555,12 +779,42 @@ class StatisticsPanel(BasePanel):
         self._compute_btn.setEnabled(False)
         self._compute_btn.clicked.connect(self._on_compute_clicked)
         row.addWidget(self._compute_btn)
+        self._cancel_stats_btn = QPushButton("Cancel")
+        self._cancel_stats_btn.setEnabled(False)
+        self._cancel_stats_btn.clicked.connect(self._cancel_statistics)
+        row.addWidget(self._cancel_stats_btn)
 
         self._compute_status = QLabel("No frames loaded")
         self._compute_status.setStyleSheet("font-size: 10px;")
+        self._compute_status.setWordWrap(True)
         row.addWidget(self._compute_status, stretch=1)
 
         layout.addLayout(row)
+        scope = QLabel(
+            "Whole scenario · all recorded frames and links · display filters do not apply"
+        )
+        scope.setWordWrap(True)
+        scope.setProperty("role", "secondary")
+        layout.addWidget(scope)
+        automatic = QCheckBox("Compute automatically on cache miss")
+        automatic.setChecked(self._automatic_statistics)
+        automatic.setToolTip(
+            "Scans all recorded frames in the background. Leave off to avoid competing with playback for CPU and disk access."
+        )
+        automatic.toggled.connect(self._set_automatic_statistics)
+        layout.addWidget(automatic)
+        self._stats_error_section = CollapsibleSection("Error details", start_open=False)
+        self._stats_error_text = QPlainTextEdit()
+        self._stats_error_text.setReadOnly(True)
+        self._stats_error_text.setMaximumHeight(100)
+        self._stats_error_section.content_layout().addWidget(self._stats_error_text)
+        copy = QPushButton("Copy details")
+        copy.clicked.connect(
+            lambda: QApplication.clipboard().setText(self._stats_error_text.toPlainText())
+        )
+        self._stats_error_section.content_layout().addWidget(copy)
+        self._stats_error_section.hide()
+        layout.addWidget(self._stats_error_section)
 
         self._progress_bar = QProgressBar()
         self._progress_bar.setMaximumHeight(12)
@@ -571,28 +825,84 @@ class StatisticsPanel(BasePanel):
 
         return widget
 
-    def set_statistics_source(self, source: Any) -> bool:
+    def _set_automatic_statistics(self, enabled: bool) -> None:
+        self._automatic_statistics = bool(enabled)
+        QSettings().setValue("analysis/automaticScenarioStatistics", bool(enabled))
+        if enabled and self.stats is None:
+            self._start_provider_statistics(force=False)
+        elif not enabled:
+            self._cancel_statistics()
+
+    def _cancel_statistics(self) -> None:
+        service = self._get_scenario_statistics_service()
+        if service is not None:
+            service.cancel_collection()
+        self._provider_stats_generation = None
+        self._finish_statistics_job("Paused. Compute to refresh; existing results are retained.")
+
+    def _finish_statistics_job(self, message: str) -> None:
+        if self._cancel_stats_btn is not None:
+            self._cancel_stats_btn.setEnabled(False)
+        if self._compute_btn is not None:
+            self._compute_btn.setEnabled(self._statistics_provider is not None)
+        if self._progress_bar is not None:
+            self._progress_bar.hide()
+        if self._compute_status is not None:
+            self._compute_status.setText(message)
+            self._compute_status.setStyleSheet("")
+
+    def set_statistics_source(self, source: Any, *, start_loading: bool = True) -> bool:
         """Bind a provider and start cache-first selective statistics loading.
 
         The source can be a shared ``DataProvider`` or a visualizer frame source
         exposing one as ``source.provider``. Providers without native selective
         I/O retain correct behavior through the shared full-frame projection
-        fallback.
+        fallback. ``None`` retires the source. Hidden panels can bind without
+        starting a cache lookup, while remaining ready for manual computation.
         """
 
         provider = resolve_statistics_provider(source)
-        if provider is None:
+        if provider is None and source is not None:
             logger.warning("Statistics source has no shared frame provider")
-            return False
 
         statistics_service = self._get_scenario_statistics_service()
-        if statistics_service is None:
+        if statistics_service is None and provider is not None:
             logger.warning("Scenario statistics service is unavailable")
-            return False
+            provider = None
+        if statistics_service is not None:
+            statistics_service.cancel_collection()
 
         self._statistics_provider = provider
         self._provider_stats_generation = None
+        if self._stats_error_section is not None:
+            self._stats_error_section.hide()
+        if self._stats_error_text is not None:
+            self._stats_error_text.clear()
+        if self._compute_btn is not None:
+            self._compute_btn.setText("Compute Statistics")
+        self._whole_run_stats = None
+        self._selection_pair = self._selection_steps = None
+        if self._scope_bar is not None:
+            self._scope_bar.bind({}, enabled=False)
         self.stats = None
+        self._chart_specs.clear()
+        for widget in self.widgets.values():
+            if isinstance(widget, QLabel):
+                widget.setText(EMPTY_VALUE)
+        for group in (
+            self._distribution_group,
+            self._cdf_group,
+            self._polar_group,
+            self._evolution_group,
+            self._channel_evolution_group,
+        ):
+            if group is not None:
+                group.hide()
+        if self._delay_time_group is not None:
+            self._delay_time_group.hide()
+        self._graphs_dirty = True
+        self._graphs_rendered = False
+        self._set_graphs_status("Compute statistics to populate these graphs.")
         if self._compute_btn is not None:
             self._compute_btn.setEnabled(False)
         if self._compute_status is not None:
@@ -606,8 +916,50 @@ class StatisticsPanel(BasePanel):
         if self._export_charts_btn is not None:
             self._export_charts_btn.setEnabled(False)
 
-        self._start_provider_statistics(force=False)
+        if provider is None:
+            self._set_graphs_status("Open a recording to compute statistics.")
+            self._finish_statistics_job("No statistics source.")
+            return False
+        if start_loading:
+            self._start_provider_statistics(force=False)
+        else:
+            self._finish_statistics_job("Compute statistics to analyze this recording.")
         return True
+
+    def _request_statistics_scope(self, pair, steps) -> None:
+        """Collect an explicitly requested subset without replacing the run cache."""
+        if pair is None and steps is None:
+            self._reset_statistics_scope()
+            return
+        self._selection_pair, self._selection_steps = pair, steps
+        self._set_graphs_status(
+            "Preparing selected link/interval; charts still show the previous scope."
+        )
+        self._start_provider_statistics(force=False)
+
+    def _reset_statistics_scope(self) -> None:
+        service = self._get_scenario_statistics_service()
+        if service is not None:
+            service.cancel_collection()
+        self._provider_stats_generation = None
+        self._selection_pair = self._selection_steps = None
+        if self._whole_run_stats is not None:
+            self._finish_statistics_job("")
+            self._apply_stats_result(
+                self._whole_run_stats, status_text="Whole-run statistics restored"
+            )
+
+    def _inspect_statistics_frame(self, step: int) -> None:
+        update = getattr(self.parent, "update_frame", None)
+        if not callable(update):
+            return
+        controller = getattr(self.parent, "animation_controller", None)
+        if getattr(self.parent, "animation_running", False) and controller is not None:
+            controller.toggle_animation()
+        cancel_scrub = getattr(self.parent, "cancel_pending_slider_scrub", None)
+        if callable(cancel_scrub):
+            cancel_scrub()
+        update(step)
 
     def _start_provider_statistics(self, *, force: bool) -> None:
         """Start the cache-first provider job through the application service."""
@@ -628,6 +980,12 @@ class StatisticsPanel(BasePanel):
             self._progress_bar.setValue(0)
             self._progress_bar.hide()
 
+        if self._cancel_stats_btn is not None:
+            self._cancel_stats_btn.setEnabled(True)
+        if self._stats_error_section is not None:
+            self._stats_error_section.hide()
+        if self._compute_btn is not None:
+            self._compute_btn.setText("Compute Statistics")
         signals = self._stats_signals
 
         def _complete(result: ScenarioStatisticsResult) -> None:
@@ -650,10 +1008,14 @@ class StatisticsPanel(BasePanel):
                 statistics_service.current_generation,
             )
 
+        scoped = self._selection_pair is not None or self._selection_steps is not None
+        selection = {"pair": self._selection_pair, "steps": self._selection_steps} if scoped else {}
         self._provider_stats_generation = statistics_service.start_collection(
             provider,
             scenario=getattr(self.parent, "scenario", None),
             force=force,
+            cache_only=not (force or self._automatic_statistics or scoped),
+            **selection,
             on_progress=_progress,
             on_complete=_complete,
             on_error=_error,
@@ -684,8 +1046,23 @@ class StatisticsPanel(BasePanel):
         self._export_charts_btn.clicked.connect(self._on_export_charts)
         row.addWidget(self._export_charts_btn)
 
+        compare_btn = QPushButton("Compare links…")
+        compare_btn.setToolTip("Compare named TX/RX power traces and export matched observations")
+        compare_btn.clicked.connect(self._open_link_comparison)
+        row.addWidget(compare_btn)
         row.addStretch()
         return widget
+
+    def _open_link_comparison(self) -> None:
+        """Load the optional comparison UI only on explicit user request."""
+        from .link_comparison import LinkComparisonDialog
+
+        dialog = getattr(self, "_link_comparison_dialog", None)
+        if dialog is None:
+            dialog = LinkComparisonDialog(self.parent)
+            self._link_comparison_dialog = dialog
+        dialog.show()
+        dialog.raise_()
 
     def _default_export_dir(self) -> str:
         """Return the default directory for exports (scenario_dir/statistics/)."""
@@ -720,6 +1097,11 @@ class StatisticsPanel(BasePanel):
             return
 
         rows: list[tuple[str, str]] = [
+            (
+                "Scope",
+                "Selected link/interval" if self.stats.get("selection_scoped") else "Whole run",
+            ),
+            ("TX-RX selection", str(self.stats.get("selection_pair") or "All links")),
             ("Total MPCs", str(self.stats.get("total_mpcs", ""))),
             ("Total Frames", str(self.stats.get("total_frames", ""))),
             ("Unique TX-RX Pairs", str(self.stats.get("unique_tx_rx_pairs", ""))),
@@ -727,6 +1109,14 @@ class StatisticsPanel(BasePanel):
 
         total_frames = self.stats.get("total_frames", 0)
         if total_frames > 0:
+            frames = self.stats.get("frame_indices", [])
+            if len(frames):
+                rows.extend(
+                    (
+                        ("First retained frame", str(frames[0])),
+                        ("Last retained frame", str(frames[-1])),
+                    )
+                )
             ratio = self.stats["total_mpcs"] / total_frames
             rows.append(("MPCs per Frame", f"{ratio:.0f}"))
 
@@ -809,73 +1199,42 @@ class StatisticsPanel(BasePanel):
             logger.error("CSV export failed: %s", exc)
 
     def _on_export_charts(self) -> None:
-        """Save all matplotlib chart figures as PNG images."""
+        """Export publication PNGs without allocating hidden interactive plots."""
         if not self.stats and self._coverage_data() is None:
             QMessageBox.warning(None, "No Statistics", self._NO_STATS_MSG)
             return
-        if not self._ensure_plot_dependencies():
-            QMessageBox.warning(None, "Charts Unavailable", self.missing_dependency_message)
+        try:
+            from matplotlib.backends.backend_agg import FigureCanvasAgg  # noqa: F401
+        except ImportError:
+            QMessageBox.warning(
+                None,
+                "PNG export unavailable",
+                "PNG export requires matplotlib. Install with: pip install matplotlib",
+            )
             return
-        if self._graphs_dirty or self._coverage_graphs_dirty or not self._graphs_rendered:
-            self._render_statistics_graphs(force=True)
-
         default_dir = self._default_export_dir()
         os.makedirs(default_dir, exist_ok=True)
         dir_path = QFileDialog.getExistingDirectory(
-            None,
-            "Select Directory for Chart Export",
-            default_dir,
+            None, "Select Directory for Chart Export", default_dir
         )
         if not dir_path:
             return
-
-        chart_keys = [
-            "coverage_distribution_chart",
-            "coverage_success_chart",
-            "reflection_order_chart",
-            "interaction_type_chart",
-            "path_loss_histogram_chart",
-            "delay_histogram_chart",
-            "delay_cdf_chart",
-            "path_loss_cdf_chart",
-            "pair_gain_cdf_chart",
-            "pair_delay_spread_cdf_chart",
-            "aod_az_polar_chart",
-            "aod_el_polar_chart",
-            "aoa_az_polar_chart",
-            "aoa_el_polar_chart",
-            "mpc_evolution_chart",
-            "delay_spread_trend_chart",
-            "mpc_order_evolution_hist_chart",
-            "mpc_type_evolution_chart",
-            "pair_visibility_chart",
-            "strongest_path_loss_chart",
-        ]
-
+        if not self._graphs_panel_created:
+            self.create_graphs_panel()
+        if self._graphs_dirty or self._coverage_graphs_dirty or not self._graphs_rendered:
+            self._render_statistics_graphs(force=True)
         saved = 0
-        for key in chart_keys:
-            widget = self.widgets.get(key)
-            if widget is None:
-                continue
-            is_hidden = getattr(widget, "isHidden", None)
-            if callable(is_hidden) and is_hidden():
-                continue
-            layout = widget.layout()
-            if layout is None:
-                continue
-            for i in range(layout.count()):
-                item = layout.itemAt(i)
-                if item and item.widget() and isinstance(item.widget(), self.FigureCanvas):
-                    canvas = item.widget()
-                    fig = canvas.figure
-                    out_path = _unique_export_path(Path(dir_path) / f"{key}.png")
-                    try:
-                        fig.savefig(str(out_path), dpi=150, bbox_inches="tight")
-                        saved += 1
-                    except OSError as exc:
-                        logger.error("Failed to save chart %s: %s", key, exc)
-                    break
-
+        for key, spec in self._chart_specs.items():
+            try:
+                figure = self._create_publication_figure(**spec)
+                if figure is None:
+                    continue
+                out_path = _unique_export_path(Path(dir_path) / f"{key}.png")
+                figure.savefig(str(out_path), dpi=150, bbox_inches="tight")
+                figure.clear()
+                saved += 1
+            except (OSError, ValueError, TypeError, RuntimeError) as exc:
+                logger.error("Failed to save chart %s: %s", key, exc)
         if saved:
             QMessageBox.information(
                 None, "Export Complete", f"Saved {saved} chart(s) to:\n{dir_path}"
@@ -885,256 +1244,177 @@ class StatisticsPanel(BasePanel):
             QMessageBox.warning(None, "Export", "No charts available to export.")
 
     def _create_summary_section(self) -> QGroupBox:
-        """Create the compact scenario and pair-channel summary grid."""
-        group = self.create_subgroup_box("Summary")
-        layout = QGridLayout(group)
-        layout.setSpacing(4)
-        layout.setContentsMargins(8, 8, 8, 8)
-
-        label_style = "min-width: 100px;"
-        value_style = ""
-        bold_value_style = "font-weight: bold;"
-
-        # Row 0: Total MPCs | Total Frames
-        layout.addWidget(self._summary_label("Total MPCs:", label_style), 0, 0)
-        self.widgets["total_mpcs"] = QLabel(EMPTY_VALUE)
-        self.widgets["total_mpcs"].setStyleSheet(bold_value_style)
-        layout.addWidget(self.widgets["total_mpcs"], 0, 1)
-
-        layout.addWidget(self._summary_label("Total Frames:", label_style), 0, 2)
-        self.widgets["total_frames"] = QLabel(EMPTY_VALUE)
-        self.widgets["total_frames"].setStyleSheet(value_style)
-        layout.addWidget(self.widgets["total_frames"], 0, 3)
-
-        # Row 1: Unique Pairs | MPCs per Frame
-        layout.addWidget(self._summary_label("Unique Pairs:", label_style), 1, 0)
-        self.widgets["unique_pairs"] = QLabel(EMPTY_VALUE)
-        self.widgets["unique_pairs"].setStyleSheet(value_style)
-        layout.addWidget(self.widgets["unique_pairs"], 1, 1)
-
-        layout.addWidget(self._summary_label("MPCs / Frame:", label_style), 1, 2)
-        self.widgets["mpc_frame_ratio"] = QLabel(EMPTY_VALUE)
-        self.widgets["mpc_frame_ratio"].setStyleSheet(value_style)
-        layout.addWidget(self.widgets["mpc_frame_ratio"], 1, 3)
-
-        # Row 2: Pooled Delay Spread (RMS) | Path Loss Range
-        layout.addWidget(self._summary_label("Pooled Delay Spread (RMS):", label_style), 2, 0)
-        self.widgets["overall_delay_spread"] = QLabel(EMPTY_VALUE)
-        self.widgets["overall_delay_spread"].setStyleSheet(value_style)
-        layout.addWidget(self.widgets["overall_delay_spread"], 2, 1)
-
-        layout.addWidget(self._summary_label("Path Loss Range:", label_style), 2, 2)
-        self.widgets["path_loss_range"] = QLabel(EMPTY_VALUE)
-        self.widgets["path_loss_range"].setStyleSheet(value_style)
-        layout.addWidget(self.widgets["path_loss_range"], 2, 3)
-
-        layout.addWidget(self._summary_label("MPC Count CV:", label_style), 3, 0)
-        self.widgets["mpc_count_cv"] = QLabel(EMPTY_VALUE)
-        self.widgets["mpc_count_cv"].setStyleSheet(value_style)
-        layout.addWidget(self.widgets["mpc_count_cv"], 3, 1, 1, 3)
-
-        gain_label = self._summary_label("Pair Gain P50 [P10, P90]:", label_style)
-        gain_label.setToolTip(
-            "Aggregate path gain across represented TX/RX pair-frames with valid path loss"
-        )
-        layout.addWidget(gain_label, 4, 0)
-        self.widgets["pair_gain_percentiles"] = QLabel(EMPTY_VALUE)
-        layout.addWidget(self.widgets["pair_gain_percentiles"], 4, 1)
-
-        spread_label = self._summary_label("Pair RMS DS P50 [P10, P90]:", label_style)
-        spread_label.setToolTip(
-            "Power-weighted RMS delay spread for represented pair-frames with "
-            "co-valid delay and path loss"
-        )
-        layout.addWidget(spread_label, 4, 2)
-        self.widgets["pair_delay_spread_percentiles"] = QLabel(EMPTY_VALUE)
-        layout.addWidget(self.widgets["pair_delay_spread_percentiles"], 4, 3)
-
-        state_label = self._summary_label("Pair-Frame States:", label_style)
-        state_label.setToolTip(
-            "Counts every represented TX/RX pair-frame as direct-path present, "
-            "indirect-only, or no-path"
-        )
-        layout.addWidget(state_label, 5, 0)
-        self.widgets["pair_visibility_summary"] = QLabel(EMPTY_VALUE)
-        layout.addWidget(self.widgets["pair_visibility_summary"], 5, 1, 1, 3)
-
-        return group
-
-    @staticmethod
-    def _summary_label(text: str, style: str) -> QLabel:
-        """Create a styled label for summary rows."""
-        label = QLabel(text)
-        label.setStyleSheet(style)
-        return label
-
-    def _create_distribution_charts_section(self) -> QGroupBox:
-        """Create distribution charts section."""
-        group = self.create_subgroup_box("Distributions")
-        grid = QGridLayout(group)
-        grid.setSpacing(4)
-        grid.setContentsMargins(8, 8, 8, 8)
-
-        self.widgets["reflection_order_chart"] = self._create_chart_widget("reflection_order_chart")
-        grid.addWidget(self.widgets["reflection_order_chart"], 0, 0)
-
-        self.widgets["interaction_type_chart"] = self._create_chart_widget("interaction_type_chart")
-        grid.addWidget(self.widgets["interaction_type_chart"], 0, 1)
-
-        self.widgets["path_loss_histogram_chart"] = self._create_chart_widget(
-            "path_loss_histogram_chart"
-        )
-        grid.addWidget(self.widgets["path_loss_histogram_chart"], 1, 0)
-
-        self.widgets["delay_histogram_chart"] = self._create_chart_widget("delay_histogram_chart")
-        grid.addWidget(self.widgets["delay_histogram_chart"], 1, 1)
-
-        return group
-
-    def _create_coverage_charts_section(self) -> QGroupBox:
-        """Create charts for the active coverage metric and height slice."""
-        group = self.create_subgroup_box("Coverage at Selected Height")
+        """Readable primary cards with the complete pair-channel details below."""
+        group = self.create_subgroup_box("Whole-run summary")
         layout = QVBoxLayout(group)
-        layout.setSpacing(4)
-        layout.setContentsMargins(8, 8, 8, 8)
-
-        status = QLabel("Coverage figures appear when a coverage map is loaded.")
-        status.setStyleSheet("font-size: 10px;")
-        status.setWordWrap(True)
-        self._coverage_graphs_status = status
-        layout.addWidget(status)
-
-        grid = QGridLayout()
-        grid.setSpacing(4)
-        self.widgets["coverage_distribution_chart"] = self._create_chart_widget(
-            "coverage_distribution_chart"
+        layout.setContentsMargins(10, 12, 10, 10)
+        layout.setSpacing(10)
+        primary = QGridLayout()
+        primary.setSpacing(8)
+        definitions = (
+            ("total_mpcs", "RETAINED PATHS", "Across all recorded frames"),
+            ("total_frames", "FRAMES", "Whole retained scenario"),
+            ("unique_pairs", "TX/RX PAIRS", "Unique represented pairs"),
+            ("overall_delay_spread", "POOLED RMS DELAY", "Power weighted · co-valid paths"),
         )
-        grid.addWidget(self.widgets["coverage_distribution_chart"], 0, 0)
-        self.widgets["coverage_success_chart"] = self._create_chart_widget("coverage_success_chart")
-        grid.addWidget(self.widgets["coverage_success_chart"], 0, 1)
-        layout.addLayout(grid)
-
-        group.setVisible(False)
+        for index, (key, title, caption) in enumerate(definitions):
+            card = QFrame()
+            card.setObjectName("pathMetricCard")
+            box = QVBoxLayout(card)
+            box.setContentsMargins(10, 8, 10, 8)
+            box.setSpacing(2)
+            name = QLabel(title)
+            name.setObjectName("pathMetricName")
+            name.setWordWrap(True)
+            value = QLabel(EMPTY_VALUE)
+            value.setToolTip(f"{caption}. N/A: no usable data for this metric.")
+            value.setObjectName("pathMetricValue")
+            value.setWordWrap(True)
+            self.widgets[key] = value
+            note = QLabel(caption)
+            note.setObjectName("pathMetricCaption")
+            note.setWordWrap(True)
+            box.addWidget(name)
+            box.addWidget(value)
+            box.addWidget(note)
+            primary.addWidget(card, index // 2, index % 2)
+        primary.setColumnStretch(0, 1)
+        primary.setColumnStretch(1, 1)
+        layout.addLayout(primary)
+        details = QGridLayout()
+        details.setHorizontalSpacing(12)
+        details.setVerticalSpacing(6)
+        rows = (
+            ("mpc_frame_ratio", "Paths per frame", "Mean retained path count across all frames"),
+            (
+                "path_loss_range",
+                "Path loss range",
+                "Minimum and maximum valid single-path loss, in dB",
+            ),
+            (
+                "mpc_count_cv",
+                "Path count CV",
+                "Coefficient of variation of the per-frame retained path count",
+            ),
+            (
+                "pair_gain_percentiles",
+                "Pair gain P50 [P10, P90]",
+                "Aggregate path gain across represented TX/RX pair-frames with valid path loss",
+            ),
+            (
+                "pair_delay_spread_percentiles",
+                "Pair RMS delay P50 [P10, P90]",
+                "Power-weighted RMS delay spread for represented pair-frames with co-valid delay and path loss",
+            ),
+            (
+                "pair_visibility_summary",
+                "Pair-frame states",
+                "Every represented pair-frame is direct-path present, indirect-only, or no retained path",
+            ),
+        )
+        for row, (key, title, help_text) in enumerate(rows):
+            name = QLabel(title)
+            name.setObjectName("pathMetricCaption")
+            name.setWordWrap(True)
+            name.setToolTip(help_text)
+            value = QLabel(EMPTY_VALUE)
+            value.setWordWrap(True)
+            value.setToolTip(help_text)
+            self.widgets[key] = value
+            details.addWidget(name, row, 0)
+            details.addWidget(value, row, 1)
+        details.setColumnStretch(0, 2)
+        details.setColumnStretch(1, 3)
+        layout.addLayout(details)
         return group
 
-    def _create_cdf_charts_section(self) -> QGroupBox:
-        """Create path-level and represented-pair CDF charts."""
-        group = self.create_subgroup_box("Cumulative Distributions (CDF)")
-        grid = QGridLayout(group)
-        grid.setSpacing(4)
-        grid.setContentsMargins(8, 8, 8, 8)
+    def _chart_family(self, keys) -> QWidget:
+        from .statistics_plot import ResponsiveChartGrid
 
-        self.widgets["delay_cdf_chart"] = self._create_chart_widget("delay_cdf_chart")
-        grid.addWidget(self.widgets["delay_cdf_chart"], 0, 0)
+        cards = []
+        for key in keys:
+            self.widgets[key] = self._create_chart_widget(key)
+            cards.append(self.widgets[key])
+        return ResponsiveChartGrid(cards)
 
-        self.widgets["path_loss_cdf_chart"] = self._create_chart_widget("path_loss_cdf_chart")
-        grid.addWidget(self.widgets["path_loss_cdf_chart"], 0, 1)
-
-        self.widgets["pair_gain_cdf_chart"] = self._create_chart_widget("pair_gain_cdf_chart")
-        grid.addWidget(self.widgets["pair_gain_cdf_chart"], 1, 0)
-
-        self.widgets["pair_delay_spread_cdf_chart"] = self._create_chart_widget(
-            "pair_delay_spread_cdf_chart"
+    def _create_distribution_charts_section(self) -> QWidget:
+        return self._chart_family(
+            (
+                "reflection_order_chart",
+                "interaction_type_chart",
+                "path_loss_histogram_chart",
+                "delay_histogram_chart",
+            )
         )
-        grid.addWidget(self.widgets["pair_delay_spread_cdf_chart"], 1, 1)
 
-        return group
-
-    def _create_polar_charts_section(self) -> QGroupBox:
-        """Create angular distribution charts for AoD/AoA (2x2 grid)."""
-        group = self.create_subgroup_box("Angular Distributions")
-        grid = QGridLayout(group)
-        grid.setSpacing(4)
-        grid.setContentsMargins(8, 8, 8, 8)
-
-        self.widgets["aod_az_polar_chart"] = self._create_chart_widget("aod_az_polar_chart")
-        grid.addWidget(self.widgets["aod_az_polar_chart"], 0, 0)
-
-        self.widgets["aod_el_polar_chart"] = self._create_chart_widget("aod_el_polar_chart")
-        grid.addWidget(self.widgets["aod_el_polar_chart"], 0, 1)
-
-        self.widgets["aoa_az_polar_chart"] = self._create_chart_widget("aoa_az_polar_chart")
-        grid.addWidget(self.widgets["aoa_az_polar_chart"], 1, 0)
-
-        self.widgets["aoa_el_polar_chart"] = self._create_chart_widget("aoa_el_polar_chart")
-        grid.addWidget(self.widgets["aoa_el_polar_chart"], 1, 1)
-
-        return group
-
-    def _create_evolution_charts_section(self) -> QGroupBox:
-        """Create evolution charts section."""
-        group = self.create_subgroup_box("Evolution Over Frames")
-        grid = QGridLayout(group)
-        grid.setSpacing(4)
-        grid.setContentsMargins(8, 8, 8, 8)
-
-        self.widgets["mpc_evolution_chart"] = self._create_chart_widget("mpc_evolution_chart")
-        grid.addWidget(self.widgets["mpc_evolution_chart"], 0, 0)
-
-        self.widgets["delay_spread_trend_chart"] = self._create_chart_widget(
-            "delay_spread_trend_chart"
+    def _create_cdf_charts_section(self) -> QWidget:
+        return self._chart_family(
+            (
+                "delay_cdf_chart",
+                "path_loss_cdf_chart",
+                "pair_gain_cdf_chart",
+                "pair_delay_spread_cdf_chart",
+            )
         )
-        grid.addWidget(self.widgets["delay_spread_trend_chart"], 0, 1)
 
-        self.widgets["mpc_order_evolution_hist_chart"] = self._create_chart_widget(
-            "mpc_order_evolution_hist_chart"
+    def _create_polar_charts_section(self) -> QWidget:
+        return self._chart_family(
+            ("aod_az_polar_chart", "aod_el_polar_chart", "aoa_az_polar_chart", "aoa_el_polar_chart")
         )
-        grid.addWidget(self.widgets["mpc_order_evolution_hist_chart"], 1, 0)
 
-        self.widgets["mpc_type_evolution_chart"] = self._create_chart_widget(
-            "mpc_type_evolution_chart"
+    def _create_evolution_charts_section(self) -> QWidget:
+        return self._chart_family(
+            (
+                "mpc_evolution_chart",
+                "delay_spread_trend_chart",
+                "mpc_order_evolution_hist_chart",
+                "mpc_type_evolution_chart",
+            )
         )
-        grid.addWidget(self.widgets["mpc_type_evolution_chart"], 1, 1)
 
-        return group
+    def _create_channel_evolution_section(self) -> QWidget:
+        return self._chart_family(("pair_visibility_chart", "strongest_path_loss_chart"))
 
-    def _create_channel_evolution_section(self) -> QGroupBox:
-        """Create pair visibility and strongest single-path evolution charts."""
-        group = self.create_subgroup_box("Channel Evolution")
-        grid = QGridLayout(group)
-        grid.setSpacing(4)
-        grid.setContentsMargins(8, 8, 8, 8)
-
-        self.widgets["pair_visibility_chart"] = self._create_chart_widget("pair_visibility_chart")
-        grid.addWidget(self.widgets["pair_visibility_chart"], 0, 0)
-
-        self.widgets["strongest_path_loss_chart"] = self._create_chart_widget(
-            "strongest_path_loss_chart"
+    def _create_coverage_charts_section(self) -> QWidget:
+        group = QWidget()
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(0, 4, 0, 0)
+        self._coverage_graphs_status = QLabel(
+            "Coverage figures appear when a coverage map is loaded."
         )
-        grid.addWidget(self.widgets["strongest_path_loss_chart"], 0, 1)
-
+        self._coverage_graphs_status.setObjectName("pathScope")
+        self._coverage_graphs_status.setWordWrap(True)
+        layout.addWidget(self._coverage_graphs_status)
+        layout.addWidget(
+            self._chart_family(("coverage_distribution_chart", "coverage_success_chart")), 1
+        )
+        group.hide()
         return group
 
     def _create_chart_widget(self, graph_key: str) -> QWidget:
-        """Create a chart host with its graph-specific explanation."""
-        widget = QWidget()
-        widget.setMinimumHeight(140)
-        widget.setMaximumHeight(180)
-        widget.setToolTip(_GRAPH_EXPLANATIONS[graph_key])
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(2, 2, 2, 2)
-        return widget
+        from .statistics_plot import StatisticsPlotCard
 
-    @staticmethod
-    def _clear_chart_layout(layout: QVBoxLayout) -> None:
-        """Remove the current canvas or message from a dedicated chart host."""
-        while layout.count():
-            item = layout.takeAt(0)
-            child = item.widget()
-            if child is not None:
-                child.setParent(None)
-                child.deleteLater()
+        card = StatisticsPlotCard(
+            graph_key,
+            _GRAPH_EXPLANATIONS[graph_key],
+            self._format_chart_tooltip,
+            self._find_nearest_chart_point,
+        )
+        card.set_grid_visible(self._graphs_grid_visible)
+        return card
 
-    @staticmethod
-    def _add_chart_message(layout: QVBoxLayout, text: str, *, tooltip: str = "") -> None:
-        """Show a centered explanation in place of an uninformative chart."""
-        label = QLabel(text)
-        label.setObjectName("statisticsChartMessage")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        label.setStyleSheet("font-size: 9px; padding: 8px;")
-        label.setToolTip(tooltip)
-        layout.addWidget(label)
+    def _create_chart(
+        self, widget: QWidget, chart_type: str, data: Dict[Any, Any], title: str = ""
+    ) -> None:
+        """Queue scientific data on a persistent card, rendering only when visible."""
+        spec = {"chart_type": chart_type, "data": data, "title": title}
+        self._chart_specs[widget.key] = spec
+        message = None
+        if chart_type == "pair_visibility_evolution":
+            message = _constant_pair_state_message(
+                data.get("frame_indices", []), data.get("category_data", {})
+            )
+        widget.set_chart(chart_type, data, title, message)
 
     @staticmethod
     def _apply_matplotlib_theme(fig: Any, ax: "Axes") -> None:
@@ -1145,19 +1425,6 @@ class StatisticsPanel(BasePanel):
     def _apply_matplotlib_legend_theme(ax: "Axes") -> None:
         """Apply the current Qt application theme to a matplotlib legend."""
         apply_matplotlib_legend_theme(ax)
-
-    @staticmethod
-    def _global_tooltip_pos(gui_event: Any) -> Any:
-        """Return a Qt global mouse position from a Matplotlib Qt event."""
-        if gui_event is None:
-            return None
-        global_position = getattr(gui_event, "globalPosition", None)
-        if callable(global_position):
-            return global_position().toPoint()
-        global_pos = getattr(gui_event, "globalPos", None)
-        if callable(global_pos):
-            return global_pos()
-        return None
 
     def _format_chart_tooltip(
         self, x_val: float, y_val: float, chart_type: str, data: Dict[Any, Any]
@@ -1351,9 +1618,13 @@ class StatisticsPanel(BasePanel):
                 return count, float(nearest_idx)
 
         elif chart_type == "line_evolution":
-            x = data.get("x", [])
-            y = data.get("y", [])
+            x = np.asarray(data.get("x", []))
+            y = np.asarray(data.get("y", []))
             if self._has_values(x) and self._has_values(y) and len(x) == len(y):
+                finite = np.isfinite(x) & np.isfinite(y)
+                x, y = x[finite], y[finite]
+                if not x.size:
+                    return None, None
                 distances = [
                     np.sqrt((x_data - xi) ** 2 + (y_data - yi) ** 2) for xi, yi in zip(x, y)
                 ]
@@ -1446,477 +1717,412 @@ class StatisticsPanel(BasePanel):
 
         return None, None
 
-    def _connect_chart_mouse_events(
-        self,
-        canvas: "FigureCanvasQTAgg",
-        ax: "Axes",
-        chart_type: str,
-        data: Dict[Any, Any],
-        *,
-        base_tooltip: str,
-    ) -> None:
-        """Connect Qt-level hover tooltips without mutating matplotlib layout."""
-        last_text: list[str | None] = [None]
-        canvas.setToolTip(base_tooltip)
+    def _create_publication_figure(self, chart_type: str, data: Dict[Any, Any], title: str = ""):
+        """Build a headless publication figure for PNG export only."""
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.figure import Figure
 
-        def _hide_tooltip() -> None:
-            if last_text[0] is not None:
-                QToolTip.hideText()
-                last_text[0] = None
-            canvas.setToolTip(base_tooltip)
-
-        def on_mouse_move(event: Any) -> None:
-            """Handle mouse move events without redrawing the chart."""
-            if event.inaxes != ax:
-                _hide_tooltip()
-                return
-
-            x_data, y_data = self._find_nearest_chart_point(
-                event.xdata,
-                event.ydata,
-                chart_type,
-                data,
+        data = dict(data)
+        fig = Figure(figsize=(7.0, 4.2), constrained_layout=True)
+        FigureCanvasAgg(fig)
+        ax = fig.add_subplot(111)
+        self._apply_matplotlib_theme(fig, ax)
+        if chart_type == "pair_visibility_evolution":
+            message = _constant_pair_state_message(
+                data.get("frame_indices", []), data.get("category_data", {})
             )
-
-            if x_data is not None and y_data is not None:
-                text = self._format_chart_tooltip(x_data, y_data, chart_type, data)
-                canvas.setToolTip(text)
-                tooltip_pos = self._global_tooltip_pos(getattr(event, "guiEvent", None))
-                if tooltip_pos is not None:
-                    QToolTip.showText(tooltip_pos, text, canvas)
-                last_text[0] = text
-            else:
-                _hide_tooltip()
-
-        canvas.mpl_connect("motion_notify_event", on_mouse_move)
-        canvas.mpl_connect("figure_leave_event", lambda _event: _hide_tooltip())
-
-    def _create_matplotlib_chart(
-        self, widget: QWidget, chart_type: str, data: Dict[Any, Any], title: str = ""
-    ) -> None:
-        """Create a matplotlib chart and embed it in the widget."""
-        if not self._ensure_plot_dependencies():
-            return
-
-        try:
-            layout = widget.layout()
-            if layout is None:
-                layout = QVBoxLayout(widget)
-                layout.setContentsMargins(2, 2, 2, 2)
-            self._clear_chart_layout(layout)
-
-            if chart_type == "pair_visibility_evolution":
-                message = _constant_pair_state_message(
-                    data.get("frame_indices", []),
-                    data.get("category_data", {}),
+            if message is not None:
+                ax.set_axis_off()
+                ax.set_title(title)
+                ax.text(
+                    0.5, 0.5, message, ha="center", va="center", wrap=True, transform=ax.transAxes
                 )
-                if message is not None:
-                    self._add_chart_message(layout, message, tooltip=widget.toolTip())
-                    widget.update()
-                    return
+                return fig
+        if chart_type == "delay_time":
+            mesh = ax.pcolormesh(
+                data["x_edges"],
+                data["delay_edges"],
+                np.asarray(data["power_db"]).T,
+                shading="flat",
+                cmap="viridis",
+            )
+            colorbar = fig.colorbar(mesh, ax=ax)
+            colorbar.set_label("Incoherent path gain (dB)", color=current_theme().text_primary)
+            colorbar.ax.tick_params(colors=current_theme().text_primary)
+            ax.set_xlabel(data["xlabel"])
+            ax.set_ylabel("Propagation delay (ns)")
+            ax.set_title(title)
+            ax.grid(False)
+        elif chart_type == "reflection_order":
+            # Show interaction orders 0-6+ even when a bucket is empty.
+            all_orders = list(range(0, 7))  # 0 through 6
+            bucketed = _bucket_reflection_orders(data)
+            counts = [bucketed[order] for order in all_orders]
+            bar_colors = [_CHART_ORDER_COLORS[order] for order in all_orders]
 
-            fig = self.Figure(figsize=(3.5, 2.0), constrained_layout=True)
-            ax = fig.add_subplot(111)
-            self._apply_matplotlib_theme(fig, ax)
+            ax.bar(all_orders, counts, color=bar_colors)
+            ax.set_xlabel("Interaction Order")
+            ax.set_ylabel("Count")
+            ax.set_xticks(all_orders)
+            ax.set_xticklabels([str(o) if o < 6 else "6+" for o in all_orders])
+            if title:
+                ax.set_title(title, fontsize=9)
 
-            if chart_type == "reflection_order":
-                # Show interaction orders 0-6+ even when a bucket is empty.
-                all_orders = list(range(0, 7))  # 0 through 6
-                bucketed = _bucket_reflection_orders(data)
-                counts = [bucketed[order] for order in all_orders]
-                bar_colors = [_CHART_ORDER_COLORS[order] for order in all_orders]
-
-                ax.bar(all_orders, counts, color=bar_colors)
-                ax.set_xlabel("Interaction Order")
-                ax.set_ylabel("Count")
-                ax.set_xticks(all_orders)
-                ax.set_xticklabels([str(o) if o < 6 else "6+" for o in all_orders])
+        elif chart_type == "interaction_type":
+            interaction_types = sorted(
+                (int(value) for value in data),
+                key=mpc_interaction_sort_key,
+            )
+            if interaction_types:
+                counts = [data.get(value, data.get(str(value), 0)) for value in interaction_types]
+                labels = [mpc_interaction_label(value) for value in interaction_types]
+                colors = [_interaction_type_color(value) for value in interaction_types]
+                ax.barh(range(len(interaction_types)), counts, color=colors)
+                ax.set_yticks(range(len(interaction_types)))
+                ax.set_yticklabels(labels)
+                ax.set_xlabel("Count")
+                ax.set_ylabel("Initial Mechanism", fontsize=8)
                 if title:
                     ax.set_title(title, fontsize=9)
 
-            elif chart_type == "interaction_type":
-                interaction_types = sorted(
-                    (int(value) for value in data),
-                    key=mpc_interaction_sort_key,
-                )
-                if interaction_types:
-                    counts = [
-                        data.get(value, data.get(str(value), 0)) for value in interaction_types
-                    ]
-                    labels = [mpc_interaction_label(value) for value in interaction_types]
-                    colors = [_interaction_type_color(value) for value in interaction_types]
-                    ax.barh(range(len(interaction_types)), counts, color=colors)
-                    ax.set_yticks(range(len(interaction_types)))
-                    ax.set_yticklabels(labels)
-                    ax.set_xlabel("Count")
-                    ax.set_ylabel("Initial Mechanism", fontsize=8)
-                    if title:
-                        ax.set_title(title, fontsize=9)
+        elif chart_type == "line_evolution":
+            # Line plot for evolution with a fixed chart color.
+            x = data.get("x", [])
+            y = data.get("y", [])
+            if self._has_values(x) and self._has_values(y):
+                ax.plot(x, y, color=_CHART_LINE_COLOR, linewidth=1.5)
+                ax.set_xlabel("Frame")
+                ax.set_ylabel(data.get("ylabel", "Value"))
+                if title:
+                    ax.set_title(title, fontsize=9)
 
-            elif chart_type == "line_evolution":
-                # Line plot for evolution with a fixed chart color.
-                x = data.get("x", [])
-                y = data.get("y", [])
-                if self._has_values(x) and self._has_values(y):
-                    ax.plot(x, y, color=_CHART_LINE_COLOR, linewidth=1.5)
-                    ax.set_xlabel("Frame")
-                    ax.set_ylabel(data.get("ylabel", "Value"))
-                    if title:
-                        ax.set_title(title, fontsize=9)
+        elif chart_type == "mpc_order_evolution":
+            frame_indices = data.get("frame_indices", [])
+            order_data = data.get("order_data", {})
 
-            elif chart_type == "mpc_order_evolution":
-                frame_indices = data.get("frame_indices", [])
-                order_data = data.get("order_data", {})
-
-                if self._has_values(frame_indices) and order_data:
-                    active_orders = []
-                    for raw_order, raw_counts in order_data.items():
-                        counts = np.asarray(raw_counts, dtype=np.float64).reshape(-1)
-                        if counts.size != len(frame_indices) or not np.any(counts):
-                            continue
-                        active_orders.append((int(raw_order), counts))
-                    for order, counts in sorted(active_orders):
-                        color_index = min(max(order, 0), len(_CHART_ORDER_COLORS) - 1)
-                        ax.plot(
-                            frame_indices,
-                            counts,
-                            color=_CHART_ORDER_COLORS[color_index],
-                            linewidth=1.5,
-                            label=str(order) if order < 6 else "6+",
-                        )
-                    if active_orders:
-                        ax.set_xlabel("Frame")
-                        ax.set_ylabel("MPC Count")
-                        ax.set_yscale("symlog", linthresh=1.0)
-                        ax.set_ylim(bottom=0.0)
-                        ax.legend(
-                            loc="upper right",
-                            fontsize=7,
-                            framealpha=0.9,
-                            ncol=len(active_orders),
-                            handlelength=1.0,
-                            handletextpad=0.3,
-                            columnspacing=0.5,
-                        )
-                        if title:
-                            ax.set_title(title, fontsize=9)
-
-            elif chart_type == "mpc_type_evolution":
-                frame_indices = data.get("frame_indices", [])
-                type_data = data.get("type_data", {})
-
-                if self._has_values(frame_indices) and type_data:
-                    active_types = []
-                    for raw_type, raw_counts in type_data.items():
-                        counts = np.asarray(raw_counts, dtype=np.float64).reshape(-1)
-                        if counts.size != len(frame_indices) or not np.any(counts):
-                            continue
-                        active_types.append((int(raw_type), counts))
-                    for interaction_type, counts in sorted(
-                        active_types,
-                        key=lambda item: mpc_interaction_sort_key(item[0]),
-                    ):
-                        ax.plot(
-                            frame_indices,
-                            counts,
-                            color=_interaction_type_color(interaction_type),
-                            linewidth=1.5,
-                            label=mpc_interaction_label(interaction_type),
-                        )
-
+            if self._has_values(frame_indices) and order_data:
+                active_orders = []
+                for raw_order, raw_counts in order_data.items():
+                    counts = np.asarray(raw_counts, dtype=np.float64).reshape(-1)
+                    if counts.size != len(frame_indices) or not np.any(counts):
+                        continue
+                    active_orders.append((int(raw_order), counts))
+                for order, counts in sorted(active_orders):
+                    color_index = min(max(order, 0), len(_CHART_ORDER_COLORS) - 1)
+                    ax.plot(
+                        frame_indices,
+                        counts,
+                        color=_CHART_ORDER_COLORS[color_index],
+                        linewidth=1.5,
+                        label=str(order) if order < 6 else "6+",
+                    )
+                if active_orders:
                     ax.set_xlabel("Frame")
                     ax.set_ylabel("MPC Count")
-                    if active_types:
-                        ax.legend(loc="upper right", fontsize=7, framealpha=0.9)
+                    ax.set_yscale("symlog", linthresh=1.0)
+                    ax.set_ylim(bottom=0.0)
+                    ax.legend(
+                        loc="upper right",
+                        fontsize=7,
+                        framealpha=0.9,
+                        ncol=len(active_orders),
+                        handlelength=1.0,
+                        handletextpad=0.3,
+                        columnspacing=0.5,
+                    )
                     if title:
                         ax.set_title(title, fontsize=9)
 
-            elif chart_type == "pair_visibility_evolution":
-                frame_indices = data.get("frame_indices", [])
-                category_data = data.get("category_data", {})
-                if self._has_values(frame_indices) and category_data:
-                    categories = (
-                        "direct_path_present",
-                        "indirect_only",
-                        "no_path",
+        elif chart_type == "mpc_type_evolution":
+            frame_indices = data.get("frame_indices", [])
+            type_data = data.get("type_data", {})
+
+            if self._has_values(frame_indices) and type_data:
+                active_types = []
+                for raw_type, raw_counts in type_data.items():
+                    counts = np.asarray(raw_counts, dtype=np.float64).reshape(-1)
+                    if counts.size != len(frame_indices) or not np.any(counts):
+                        continue
+                    active_types.append((int(raw_type), counts))
+                for interaction_type, counts in sorted(
+                    active_types,
+                    key=lambda item: mpc_interaction_sort_key(item[0]),
+                ):
+                    ax.plot(
+                        frame_indices,
+                        counts,
+                        color=_interaction_type_color(interaction_type),
+                        linewidth=1.5,
+                        label=mpc_interaction_label(interaction_type),
                     )
-                    labels = ("Direct path present", "Indirect only", "No path")
-                    colors = ("#4CAF50", "#FF9800", "#9E9E9E")
-                    all_series = [
-                        np.asarray(category_data.get(category, []), dtype=np.float64).reshape(-1)
-                        for category in categories
-                    ]
-                    active = [
-                        (label, color, values)
-                        for label, color, values in zip(labels, colors, all_series)
-                        if values.size == len(frame_indices) and np.any(values)
-                    ]
-                    if active and all(len(values) == len(frame_indices) for values in all_series):
-                        ax.stackplot(
-                            frame_indices,
-                            *(values for _label, _color, values in active),
-                            labels=[label for label, _color, _values in active],
-                            colors=[color for _label, color, _values in active],
-                            alpha=0.9,
-                            linewidth=0.0,
+
+                ax.set_xlabel("Frame")
+                ax.set_ylabel("MPC Count")
+                if active_types:
+                    ax.legend(loc="upper right", fontsize=7, framealpha=0.9)
+                if title:
+                    ax.set_title(title, fontsize=9)
+
+        elif chart_type == "pair_visibility_evolution":
+            frame_indices = data.get("frame_indices", [])
+            category_data = data.get("category_data", {})
+            if self._has_values(frame_indices) and category_data:
+                categories = (
+                    "direct_path_present",
+                    "indirect_only",
+                    "no_path",
+                )
+                labels = ("Direct path present", "Indirect only", "No path")
+                colors = ("#4CAF50", "#FF9800", "#9E9E9E")
+                all_series = [
+                    np.asarray(category_data.get(category, []), dtype=np.float64).reshape(-1)
+                    for category in categories
+                ]
+                active = [
+                    (label, color, values)
+                    for label, color, values in zip(labels, colors, all_series)
+                    if values.size == len(frame_indices) and np.any(values)
+                ]
+                if active and all(len(values) == len(frame_indices) for values in all_series):
+                    ax.stackplot(
+                        frame_indices,
+                        *(values for _label, _color, values in active),
+                        labels=[label for label, _color, _values in active],
+                        colors=[color for _label, color, _values in active],
+                        alpha=0.9,
+                        linewidth=0.0,
+                    )
+                    ax.set_xlabel("Frame")
+                    ax.set_ylabel("Represented TX/RX Pairs")
+                    ax.legend(loc="upper right", fontsize=7, framealpha=0.9)
+                    if title:
+                        ax.set_title(title, fontsize=9)
+
+        elif chart_type == "histogram":
+            # Histogram for distribution visualization
+            values = data.get("values", [])
+            xlabel = data.get("xlabel", "Value")
+            ylabel = data.get("ylabel", "Count")
+
+            if len(values) > 0:
+                values = np.asarray(values, dtype=np.float64)
+                bins = int(data.get("bins", 30))
+                hist, bin_edges = np.histogram(values, bins=bins)
+                bin_widths = np.diff(bin_edges)
+                bin_centers = bin_edges[:-1] + bin_widths / 2.0
+                ax.bar(
+                    bin_centers,
+                    hist,
+                    width=bin_widths * 0.9,
+                    color="#2196F3",
+                    edgecolor="#1565C0",
+                    linewidth=0.4,
+                )
+                data["_hist_counts"] = hist
+                data["_hist_edges"] = bin_edges
+                ax.set_xlabel(xlabel)
+                ax.set_ylabel(ylabel)
+                if title:
+                    ax.set_title(title, fontsize=9)
+
+        elif chart_type == "coverage_histogram":
+            values = np.asarray(data.get("values", []), dtype=np.float64)
+            if values.size > 0:
+                bins: Any = int(data.get("bins", 30))
+                if data.get("color_scale") == "logarithmic":
+                    minimum = float(np.min(values))
+                    maximum = float(np.max(values))
+                    if minimum == maximum:
+                        minimum *= 0.9
+                        maximum *= 1.1
+                    bins = np.geomspace(minimum, maximum, int(data.get("bins", 30)) + 1)
+                    ax.set_xscale("log")
+                counts, bin_edges = np.histogram(values, bins=bins)
+                percentages = 100.0 * counts / values.size
+                bin_widths = np.diff(bin_edges)
+                bin_centers = bin_edges[:-1] + bin_widths / 2.0
+                ax.bar(
+                    bin_centers,
+                    percentages,
+                    width=bin_widths * 0.9,
+                    color="#2196F3",
+                    edgecolor="#1565C0",
+                    linewidth=0.4,
+                )
+                data["_hist_counts"] = counts
+                data["_hist_percentages"] = percentages
+                data["_hist_edges"] = bin_edges
+                percentile_values = data.get("percentiles", ())
+                percentile_colors = ("#8E24AA", "#FF5722", "#00897B")
+                for label, value, color in zip(
+                    ("P10", "P50", "P90"),
+                    percentile_values,
+                    percentile_colors,
+                ):
+                    if value is not None:
+                        ax.axvline(
+                            float(value),
+                            color=color,
+                            linestyle="--",
+                            linewidth=1,
+                            alpha=0.85,
+                            label=f"{label} {float(value):.3g}",
                         )
-                        ax.set_xlabel("Frame")
-                        ax.set_ylabel("Represented TX/RX Pairs")
-                        ax.legend(loc="upper right", fontsize=7, framealpha=0.9)
-                        if title:
-                            ax.set_title(title, fontsize=9)
+                ax.set_xlabel(data.get("xlabel", "Coverage value"), fontsize=8)
+                ax.set_ylabel("Share of valid area (%)", fontsize=8)
+                ax.legend(fontsize=6, loc="upper right", framealpha=0.9)
+            if title:
+                ax.set_title(title, fontsize=9)
 
-            elif chart_type == "histogram":
-                # Histogram for distribution visualization
-                values = data.get("values", [])
-                xlabel = data.get("xlabel", "Value")
-                ylabel = data.get("ylabel", "Count")
+        elif chart_type == "coverage_success_curve":
+            thresholds = np.asarray(data.get("thresholds", []), dtype=np.float64)
+            percentages = np.asarray(data.get("percentages", []), dtype=np.float64)
+            if thresholds.size and thresholds.size == percentages.size:
+                ax.plot(thresholds, percentages, linewidth=1.6, color="#2196F3")
+                if data.get("color_scale") == "logarithmic":
+                    ax.set_xscale("log")
+                data["_curve_x"] = thresholds
+                data["_curve_y"] = percentages
+                comparator = data.get("comparator", ">=")
+                ax.set_xlabel(data.get("xlabel", "Coverage threshold"), fontsize=8)
+                ax.set_ylabel(f"Area meeting value {comparator} threshold (%)", fontsize=8)
+                ax.set_ylim(0.0, 100.0)
+                ax.grid(True, alpha=0.3)
+            if title:
+                ax.set_title(title, fontsize=9)
 
-                if len(values) > 0:
-                    values = np.asarray(values, dtype=np.float64)
-                    bins = int(data.get("bins", 30))
-                    hist, bin_edges = np.histogram(values, bins=bins)
-                    bin_widths = np.diff(bin_edges)
-                    bin_centers = bin_edges[:-1] + bin_widths / 2.0
-                    ax.bar(
-                        bin_centers,
-                        hist,
-                        width=bin_widths * 0.9,
-                        color="#2196F3",
-                        edgecolor="#1565C0",
-                        linewidth=0.4,
+        elif chart_type == "coverage_serving_share":
+            labels = [str(label) for label in data.get("labels", [])]
+            percentages = np.asarray(data.get("percentages", []), dtype=np.float64)
+            if labels and len(labels) == percentages.size:
+                positions = np.arange(len(labels))
+                ax.barh(
+                    positions,
+                    percentages,
+                    color=data.get("colors", "#2196F3"),
+                )
+                ax.set_yticks(positions)
+                ax.set_yticklabels(labels, fontsize=7)
+                ax.set_xlabel("Share of total slice area (%)", fontsize=8)
+                ax.set_xlim(0.0, max(100.0, float(np.max(percentages)) * 1.05))
+                ax.invert_yaxis()
+                data["_bar_positions"] = positions
+            if title:
+                ax.set_title(title, fontsize=9)
+
+        elif chart_type == "cdf":
+            # Cumulative distribution function
+            values = np.asarray(data.get("values", []), dtype=np.float64)
+            xlabel = data.get("xlabel", "Value")
+
+            if values.size > 0:
+                sorted_vals = np.sort(values)
+                if sorted_vals.size > _MAX_CDF_POINTS:
+                    sample_idx = np.linspace(
+                        0,
+                        sorted_vals.size - 1,
+                        _MAX_CDF_POINTS,
+                        dtype=np.intp,
                     )
-                    data["_hist_counts"] = hist
-                    data["_hist_edges"] = bin_edges
-                    ax.set_xlabel(xlabel)
-                    ax.set_ylabel(ylabel)
-                    if title:
-                        ax.set_title(title, fontsize=9)
-
-            elif chart_type == "coverage_histogram":
-                values = np.asarray(data.get("values", []), dtype=np.float64)
-                if values.size > 0:
-                    bins: Any = int(data.get("bins", 30))
-                    if data.get("color_scale") == "logarithmic":
-                        minimum = float(np.min(values))
-                        maximum = float(np.max(values))
-                        if minimum == maximum:
-                            minimum *= 0.9
-                            maximum *= 1.1
-                        bins = np.geomspace(minimum, maximum, int(data.get("bins", 30)) + 1)
-                        ax.set_xscale("log")
-                    counts, bin_edges = np.histogram(values, bins=bins)
-                    percentages = 100.0 * counts / values.size
-                    bin_widths = np.diff(bin_edges)
-                    bin_centers = bin_edges[:-1] + bin_widths / 2.0
-                    ax.bar(
-                        bin_centers,
-                        percentages,
-                        width=bin_widths * 0.9,
-                        color="#2196F3",
-                        edgecolor="#1565C0",
-                        linewidth=0.4,
-                    )
-                    data["_hist_counts"] = counts
-                    data["_hist_percentages"] = percentages
-                    data["_hist_edges"] = bin_edges
-                    percentile_values = data.get("percentiles", ())
-                    percentile_colors = ("#8E24AA", "#FF5722", "#00897B")
-                    for label, value, color in zip(
-                        ("P10", "P50", "P90"),
-                        percentile_values,
-                        percentile_colors,
-                    ):
-                        if value is not None:
-                            ax.axvline(
-                                float(value),
-                                color=color,
-                                linestyle="--",
-                                linewidth=1,
-                                alpha=0.85,
-                                label=f"{label} {float(value):.3g}",
-                            )
-                    ax.set_xlabel(data.get("xlabel", "Coverage value"), fontsize=8)
-                    ax.set_ylabel("Share of valid area (%)", fontsize=8)
-                    ax.legend(fontsize=6, loc="upper right", framealpha=0.9)
+                    plot_vals = sorted_vals[sample_idx]
+                    cdf = (sample_idx + 1) / sorted_vals.size
+                else:
+                    plot_vals = sorted_vals
+                    cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals)
+                data["_cdf_x"] = plot_vals
+                data["_cdf_y"] = cdf
+                data["_cdf_total"] = int(sorted_vals.size)
+                ax.plot(plot_vals, cdf, linewidth=1.5, color="#2196F3")
+                ax.set_xlabel(xlabel, fontsize=8)
+                ax.set_ylabel("CDF", fontsize=8)
+                ax.set_ylim(0, 1.05)
+                ax.grid(True, alpha=0.3)
+                median_val = np.median(sorted_vals)
+                ax.axvline(
+                    median_val,
+                    color="#FF5722",
+                    linestyle="--",
+                    linewidth=1,
+                    alpha=0.7,
+                    label=f"Median: {median_val:.1f}",
+                )
+                ax.legend(fontsize=7, loc="lower right")
                 if title:
                     ax.set_title(title, fontsize=9)
 
-            elif chart_type == "coverage_success_curve":
-                thresholds = np.asarray(data.get("thresholds", []), dtype=np.float64)
-                percentages = np.asarray(data.get("percentages", []), dtype=np.float64)
-                if thresholds.size and thresholds.size == percentages.size:
-                    ax.plot(thresholds, percentages, linewidth=1.6, color="#2196F3")
-                    if data.get("color_scale") == "logarithmic":
-                        ax.set_xscale("log")
-                    data["_curve_x"] = thresholds
-                    data["_curve_y"] = percentages
-                    comparator = data.get("comparator", ">=")
-                    ax.set_xlabel(data.get("xlabel", "Coverage threshold"), fontsize=8)
-                    ax.set_ylabel(f"Area meeting value {comparator} threshold (%)", fontsize=8)
-                    ax.set_ylim(0.0, 100.0)
-                    ax.grid(True, alpha=0.3)
-                if title:
-                    ax.set_title(title, fontsize=9)
-
-            elif chart_type == "coverage_serving_share":
-                labels = [str(label) for label in data.get("labels", [])]
-                percentages = np.asarray(data.get("percentages", []), dtype=np.float64)
-                if labels and len(labels) == percentages.size:
-                    positions = np.arange(len(labels))
-                    ax.barh(
-                        positions,
-                        percentages,
-                        color=data.get("colors", "#2196F3"),
-                    )
-                    ax.set_yticks(positions)
-                    ax.set_yticklabels(labels, fontsize=7)
-                    ax.set_xlabel("Share of total slice area (%)", fontsize=8)
-                    ax.set_xlim(0.0, max(100.0, float(np.max(percentages)) * 1.05))
-                    ax.invert_yaxis()
-                    data["_bar_positions"] = positions
-                if title:
-                    ax.set_title(title, fontsize=9)
-
-            elif chart_type == "cdf":
-                # Cumulative distribution function
-                values = np.asarray(data.get("values", []), dtype=np.float64)
-                xlabel = data.get("xlabel", "Value")
-
-                if values.size > 0:
-                    sorted_vals = np.sort(values)
-                    if sorted_vals.size > _MAX_CDF_POINTS:
-                        sample_idx = np.linspace(
-                            0,
-                            sorted_vals.size - 1,
-                            _MAX_CDF_POINTS,
-                            dtype=np.intp,
-                        )
-                        plot_vals = sorted_vals[sample_idx]
-                        cdf = (sample_idx + 1) / sorted_vals.size
-                    else:
-                        plot_vals = sorted_vals
-                        cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals)
-                    data["_cdf_x"] = plot_vals
-                    data["_cdf_y"] = cdf
-                    data["_cdf_total"] = int(sorted_vals.size)
-                    ax.plot(plot_vals, cdf, linewidth=1.5, color="#2196F3")
-                    ax.set_xlabel(xlabel, fontsize=8)
-                    ax.set_ylabel("CDF", fontsize=8)
-                    ax.set_ylim(0, 1.05)
-                    ax.grid(True, alpha=0.3)
-                    median_val = np.median(sorted_vals)
-                    ax.axvline(
-                        median_val,
-                        color="#FF5722",
-                        linestyle="--",
-                        linewidth=1,
-                        alpha=0.7,
-                        label=f"Median: {median_val:.1f}",
-                    )
-                    ax.legend(fontsize=7, loc="lower right")
-                    if title:
-                        ax.set_title(title, fontsize=9)
-
-            elif chart_type == "polar_rose":
-                # Polar rose plot for angular distributions
-                # Replace the rectangular axes with a polar projection
-                fig.clear()
-                ax = fig.add_subplot(111, projection="polar")
-                self._apply_matplotlib_theme(fig, ax)
-                values_deg = np.asarray(data.get("values", []), dtype=np.float64)
-                n_bins = data.get("n_bins", 36)
-
-                if values_deg.size > 0:
-                    values_rad = np.deg2rad(values_deg)
-                    bin_edges = np.linspace(-np.pi, np.pi, n_bins + 1)
-                    hist, _ = np.histogram(values_rad, bins=bin_edges)
-                    data["_polar_hist_counts"] = hist
-                    data["_polar_hist_edges"] = bin_edges
-                    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-                    bin_width = bin_edges[1] - bin_edges[0]
-                    ax.bar(
-                        bin_centers,
-                        hist,
-                        width=bin_width * 0.9,
-                        color="#2196F3",
-                        alpha=0.7,
-                        edgecolor="#1565C0",
-                        linewidth=0.5,
-                    )
-                    ax.set_theta_zero_location("E")
-                    ax.set_theta_direction(1)
-                    ax.set_thetagrids(
-                        [0, 45, 90, 135, 180, 225, 270, 315],
-                        labels=["0", "45", "90", "135", "180", "-135", "-90", "-45"],
-                    )
-                    ax.tick_params(labelsize=6)
-                if title:
-                    ax.set_title(title, fontsize=9, pad=12)
-
-            elif chart_type == "angle_histogram":
-                values = np.asarray(data.get("values", []), dtype=np.float64)
-                xlabel = data.get("xlabel", "Angle (deg)")
-                xlim = data.get("xlim")
-                if values.size > 0:
-                    bins = int(data.get("bins", 30))
-                    hist_range = tuple(xlim) if xlim is not None else None
-                    hist, bin_edges = np.histogram(values, bins=bins, range=hist_range)
-                    bin_widths = np.diff(bin_edges)
-                    bin_centers = bin_edges[:-1] + bin_widths / 2.0
-                    ax.bar(
-                        bin_centers,
-                        hist,
-                        width=bin_widths * 0.9,
-                        color="#2196F3",
-                        edgecolor="#1565C0",
-                        linewidth=0.4,
-                    )
-                    data["_hist_counts"] = hist
-                    data["_hist_edges"] = bin_edges
-                    ax.set_xlabel(xlabel)
-                    ax.set_ylabel("Count")
-                    if xlim is not None:
-                        ax.set_xlim(*xlim)
-                    ax.axvline(0.0, color="#FF5722", linestyle="--", linewidth=1, alpha=0.7)
-                    if title:
-                        ax.set_title(title, fontsize=9)
-
+        elif chart_type == "polar_rose":
+            # Polar rose plot for angular distributions
+            # Replace the rectangular axes with a polar projection
+            fig.clear()
+            ax = fig.add_subplot(111, projection="polar")
             self._apply_matplotlib_theme(fig, ax)
-            self._apply_matplotlib_legend_theme(ax)
+            values_deg = np.asarray(data.get("values", []), dtype=np.float64)
+            n_bins = data.get("n_bins", 36)
 
-            # Embed in widget
-            canvas = self.FigureCanvas(fig)
+            if values_deg.size > 0:
+                values_rad = np.deg2rad(values_deg)
+                bin_edges = np.linspace(-np.pi, np.pi, n_bins + 1)
+                hist, _ = np.histogram(values_rad, bins=bin_edges)
+                data["_polar_hist_counts"] = hist
+                data["_polar_hist_edges"] = bin_edges
+                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+                bin_width = bin_edges[1] - bin_edges[0]
+                ax.bar(
+                    bin_centers,
+                    hist,
+                    width=bin_width * 0.9,
+                    color="#2196F3",
+                    alpha=0.7,
+                    edgecolor="#1565C0",
+                    linewidth=0.5,
+                )
+                ax.set_theta_zero_location("E")
+                ax.set_theta_direction(1)
+                ax.set_thetagrids(
+                    [0, 45, 90, 135, 180, 225, 270, 315],
+                    labels=["0", "45", "90", "135", "180", "-135", "-90", "-45"],
+                )
+                ax.tick_params(labelsize=6)
+            if title:
+                ax.set_title(title, fontsize=9, pad=12)
 
-            chart_metadata = {"chart_type": chart_type, "data": data, "title": title, "ax": ax}
-            canvas.chart_metadata = chart_metadata  # Attach metadata to canvas
+        elif chart_type == "angle_histogram":
+            values = np.asarray(data.get("values", []), dtype=np.float64)
+            xlabel = data.get("xlabel", "Angle (deg)")
+            xlim = data.get("xlim")
+            if values.size > 0:
+                bins = int(data.get("bins", 30))
+                hist_range = tuple(xlim) if xlim is not None else None
+                hist, bin_edges = np.histogram(values, bins=bins, range=hist_range)
+                bin_widths = np.diff(bin_edges)
+                bin_centers = bin_edges[:-1] + bin_widths / 2.0
+                ax.bar(
+                    bin_centers,
+                    hist,
+                    width=bin_widths * 0.9,
+                    color="#2196F3",
+                    edgecolor="#1565C0",
+                    linewidth=0.4,
+                )
+                data["_hist_counts"] = hist
+                data["_hist_edges"] = bin_edges
+                ax.set_xlabel(xlabel)
+                ax.set_ylabel("Count")
+                if xlim is not None:
+                    ax.set_xlim(*xlim)
+                ax.axvline(0.0, color="#FF5722", linestyle="--", linewidth=1, alpha=0.7)
+                if title:
+                    ax.set_title(title, fontsize=9)
 
-            # Connect mouse events for interactive hover tooltips
-            self._connect_chart_mouse_events(
-                canvas,
-                ax,
-                chart_type,
-                data,
-                base_tooltip=widget.toolTip(),
-            )
+        self._apply_matplotlib_theme(fig, ax)
+        self._apply_matplotlib_legend_theme(ax)
+        ax.set_axisbelow(chart_type != "delay_time")
+        if self._graphs_grid_visible:
+            ax.grid(True, alpha=0.25)
+        else:
+            ax.grid(False)
 
-            layout.addWidget(canvas)
-            canvas.draw()  # Draw the figure
-            canvas.show()  # Ensure canvas is visible
-            widget.update()  # Update the widget
-
-        except (ValueError, TypeError, RuntimeError) as e:
-            logger.error(f"Error creating matplotlib chart: {e}")
-            layout = widget.layout()
-            if layout is None:
-                layout = QVBoxLayout(widget)
-                layout.setContentsMargins(2, 2, 2, 2)
-            else:
-                self._clear_chart_layout(layout)
-            error_label = QLabel(f"Chart error: {str(e)}")
-            error_label.setStyleSheet("color: #e67e22; font-size: 9px;")
-            error_label.setToolTip(widget.toolTip())
-            layout.addWidget(error_label)
+        return fig
 
     def _on_provider_stats_progress(
         self,
@@ -1943,6 +2149,12 @@ class StatisticsPanel(BasePanel):
 
         if generation != self._provider_stats_generation:
             return
+        if stats is None:
+            self._finish_statistics_job(
+                "No cached statistics. Select Compute to scan the recorded frames."
+            )
+            return
+        self._finish_statistics_job("")
         self._apply_stats_result(
             stats,
             status_text="Using cached statistics" if from_cache else "Done",
@@ -1954,12 +2166,18 @@ class StatisticsPanel(BasePanel):
         if generation != self._provider_stats_generation:
             return
         logger.error("Scenario statistics collection failed: %s", message)
+        self._finish_statistics_job("Statistics failed. Check the source, then retry.")
+        if self._stats_error_section is not None:
+            self._stats_error_text.setPlainText(message)
+            self._stats_error_section.show()
+        if self._compute_btn is not None:
+            self._compute_btn.setText("Retry Statistics")
         if self._progress_bar is not None:
             self._progress_bar.hide()
         if self._compute_btn is not None:
             self._compute_btn.setEnabled(self._statistics_provider is not None)
         if self._compute_status is not None:
-            self._compute_status.setText("Statistics failed")
+            self._compute_status.setText("Statistics failed. Check Error details, then retry.")
             self._compute_status.setStyleSheet("color: #F44336; font-size: 10px;")
 
     def _apply_stats_result(self, stats: Dict[str, Any], *, status_text: str) -> None:
@@ -1967,9 +2185,14 @@ class StatisticsPanel(BasePanel):
         t0 = time.perf_counter()
         _log_timing("StatisticsPanel._apply_stats_result.start", status=status_text)
         self.stats = stats
+        if not stats.get("selection_scoped", False):
+            self._whole_run_stats = stats
+            if self._scope_bar is not None:
+                self._scope_bar.bind(stats, enabled=self._statistics_provider is not None)
         logger.info("Statistics ready; updating UI")
         self._update_statistics()
-        self._push_stats_to_trajectory_panel(stats)
+        if not stats.get("selection_scoped", False):
+            self._push_stats_to_trajectory_panel(stats)
         if self._progress_bar is not None:
             self._progress_bar.hide()
         if self._compute_btn is not None:
@@ -2008,6 +2231,14 @@ class StatisticsPanel(BasePanel):
             _log_timing("StatisticsPanel._update_statistics.skipped")
             return
 
+        if "total_mpcs" not in self.widgets:
+            # A detached graph view can continue receiving results after the
+            # independent summary/control root has been destroyed.
+            self._graphs_dirty = True
+            if self._graphs_visible:
+                self._render_statistics_graphs()
+            return
+
         # Hide evolution sections when there is only a single frame
         multi_frame = self.stats.get("total_frames", 0) > 1
         if self._evolution_group is not None:
@@ -2027,7 +2258,7 @@ class StatisticsPanel(BasePanel):
             self.widgets["mpc_frame_ratio"].setText(EMPTY_VALUE)
 
         overall_delay_spread = self.stats.get("overall_delay_spread")
-        if overall_delay_spread is not None:
+        if overall_delay_spread is not None and np.isfinite(overall_delay_spread):
             self.widgets["overall_delay_spread"].setText(f"{overall_delay_spread:.2f} ns")
         else:
             self.widgets["overall_delay_spread"].setText(EMPTY_VALUE)
@@ -2111,7 +2342,7 @@ class StatisticsPanel(BasePanel):
 
     def _render_coverage_graphs(self, *, force: bool = False) -> None:
         """Render figures for the already loaded coverage metric and height."""
-        if not force and not self._coverage_graphs_dirty and self._coverage_graphs_rendered:
+        if not self._coverage_graphs_dirty and self._coverage_graphs_rendered:
             return
         if not self._graphs_panel_created or self._coverage_graphs_group is None:
             self._coverage_graphs_dirty = True
@@ -2123,6 +2354,9 @@ class StatisticsPanel(BasePanel):
         coverage_data = self._coverage_data()
         if coverage_data is None:
             self._coverage_graphs_group.setVisible(False)
+            self._chart_specs.pop("coverage_distribution_chart", None)
+            self._chart_specs.pop("coverage_success_chart", None)
+            self._sync_chart_tabs()
             self._coverage_graphs_dirty = False
             self._coverage_graphs_rendered = False
             return
@@ -2163,7 +2397,8 @@ class StatisticsPanel(BasePanel):
                 ]
                 distribution_host.setVisible(True)
                 success_host.setVisible(False)
-                self._create_matplotlib_chart(
+                self._chart_specs.pop("coverage_success_chart", None)
+                self._create_chart(
                     distribution_host,
                     "coverage_serving_share",
                     {
@@ -2190,7 +2425,7 @@ class StatisticsPanel(BasePanel):
                 xlabel = f"{summary.label}{unit_suffix}"
                 distribution_host.setVisible(True)
                 success_host.setVisible(True)
-                self._create_matplotlib_chart(
+                self._create_chart(
                     distribution_host,
                     "coverage_histogram",
                     {
@@ -2205,7 +2440,7 @@ class StatisticsPanel(BasePanel):
                     },
                     f"Raw {summary.label} Distribution — {height_label}",
                 )
-                self._create_matplotlib_chart(
+                self._create_chart(
                     success_host,
                     "coverage_success_curve",
                     {
@@ -2234,6 +2469,7 @@ class StatisticsPanel(BasePanel):
 
         self._coverage_graphs_status.setText(status)
         self._coverage_graphs_group.setVisible(True)
+        self._sync_chart_tabs()
         self._coverage_graphs_dirty = False
         self._coverage_graphs_rendered = True
 
@@ -2255,6 +2491,11 @@ class StatisticsPanel(BasePanel):
             return
 
         if not self.stats:
+            self._chart_specs = {
+                key: spec for key, spec in self._chart_specs.items() if key.startswith("coverage_")
+            }
+            if self._delay_time_group is not None:
+                self._delay_time_group.hide()
             for group in (
                 self._distribution_group,
                 self._cdf_group,
@@ -2267,9 +2508,63 @@ class StatisticsPanel(BasePanel):
             self._render_coverage_graphs(force=True)
             self._graphs_dirty = False
             self._graphs_rendered = self._coverage_graphs_rendered
+            self._sync_chart_tabs()
             self._set_graphs_status("Coverage graphs updated.", transient=True)
             return
 
+        if not self._graphs_dirty and self._graphs_rendered:
+            self._render_coverage_graphs(force=force)
+            self._sync_chart_tabs()
+            return
+        self._chart_specs = {
+            key: spec for key, spec in self._chart_specs.items() if key.startswith("coverage_")
+        }
+        for key, widget in self.widgets.items():
+            if (
+                key.endswith("_chart")
+                and not key.startswith("coverage_")
+                and hasattr(widget, "clear_chart")
+            ):
+                widget.clear_chart()
+        if hasattr(self, "_graphs_scope"):
+            pair = self.stats.get("selection_pair")
+            scope = f"Tx {pair[0]} → Rx {pair[1]}" if pair is not None else "all links"
+            if self.stats.get("selection_scoped"):
+                frames = self.stats.get("frame_indices", [])
+                scope += (
+                    f" · frames {frames[0]}–{frames[-1]}" if len(frames) else " · empty interval"
+                )
+            else:
+                scope += " · whole run"
+            self._graphs_scope.setText(
+                f"{int(self.stats.get('total_frames', 0)):,} retained frames · "
+                f"{int(self.stats.get('total_mpcs', 0)):,} paths · "
+                f"{scope}, independent of playback"
+            )
+        heatmap = np.asarray(self.stats.get("delay_time_power_db", []))
+        has_heatmap = heatmap.ndim == 2 and np.any(np.isfinite(heatmap))
+        if self._delay_time_group is not None:
+            self._delay_time_group.setVisible(bool(has_heatmap))
+        if has_heatmap:
+            from ..metrics.statistics_analysis import statistics_coordinates
+
+            coordinates, axis = statistics_coordinates(
+                self.stats["frame_indices"], self.stats.get("frame_times_s", [])
+            )
+            self._create_chart(
+                self.widgets["delay_time_chart"],
+                "delay_time",
+                {
+                    "power_db": heatmap,
+                    "x_edges": self.stats["delay_time_x_edges"],
+                    "delay_edges": self.stats["delay_time_delay_edges_ns"],
+                    "observation_counts": self.stats["delay_time_observation_counts"],
+                    "coordinates": coordinates,
+                    "frame_indices": self.stats["frame_indices"],
+                    "xlabel": axis,
+                },
+                "Recorded Path Power over Time and Delay",
+            )
         if self._distribution_group is not None:
             self._distribution_group.setVisible(True)
         if self._cdf_group is not None:
@@ -2286,7 +2581,7 @@ class StatisticsPanel(BasePanel):
         reflection_order_dist = self.stats.get("reflection_order_dist", {})
         if reflection_order_dist and "reflection_order_chart" in self.widgets:
             t_chart = time.perf_counter()
-            self._create_matplotlib_chart(
+            self._create_chart(
                 self.widgets["reflection_order_chart"],
                 "reflection_order",
                 reflection_order_dist,
@@ -2307,7 +2602,7 @@ class StatisticsPanel(BasePanel):
             }
             if type_data:
                 t_chart = time.perf_counter()
-                self._create_matplotlib_chart(
+                self._create_chart(
                     self.widgets["interaction_type_chart"],
                     "interaction_type",
                     type_data,
@@ -2323,7 +2618,7 @@ class StatisticsPanel(BasePanel):
         path_loss_values = self.stats.get("path_loss_values", [])
         if len(path_loss_values) > 0 and "path_loss_histogram_chart" in self.widgets:
             t_chart = time.perf_counter()
-            self._create_matplotlib_chart(
+            self._create_chart(
                 self.widgets["path_loss_histogram_chart"],
                 "histogram",
                 {"values": path_loss_values, "xlabel": "Path Loss (dB)", "ylabel": "Count"},
@@ -2339,7 +2634,7 @@ class StatisticsPanel(BasePanel):
         delay_values = self.stats.get("delay_values", [])
         if len(delay_values) > 0 and "delay_histogram_chart" in self.widgets:
             t_chart = time.perf_counter()
-            self._create_matplotlib_chart(
+            self._create_chart(
                 self.widgets["delay_histogram_chart"],
                 "histogram",
                 {"values": delay_values, "xlabel": "Delay (ns)", "ylabel": "Count"},
@@ -2353,7 +2648,7 @@ class StatisticsPanel(BasePanel):
 
         # ── CDF charts ──────────────────────────────────────────────────
         if len(delay_values) > 0 and "delay_cdf_chart" in self.widgets:
-            self._create_matplotlib_chart(
+            self._create_chart(
                 self.widgets["delay_cdf_chart"],
                 "cdf",
                 {"values": delay_values, "xlabel": "Delay (ns)"},
@@ -2361,7 +2656,7 @@ class StatisticsPanel(BasePanel):
             )
 
         if len(path_loss_values) > 0 and "path_loss_cdf_chart" in self.widgets:
-            self._create_matplotlib_chart(
+            self._create_chart(
                 self.widgets["path_loss_cdf_chart"],
                 "cdf",
                 {"values": path_loss_values, "xlabel": "Path Loss (dB)"},
@@ -2370,7 +2665,7 @@ class StatisticsPanel(BasePanel):
 
         pair_gains = self.stats.get("pair_aggregate_path_gain_db_values", [])
         if len(pair_gains) > 0 and "pair_gain_cdf_chart" in self.widgets:
-            self._create_matplotlib_chart(
+            self._create_chart(
                 self.widgets["pair_gain_cdf_chart"],
                 "cdf",
                 {"values": pair_gains, "xlabel": "Aggregate Path Gain (dB)"},
@@ -2379,7 +2674,7 @@ class StatisticsPanel(BasePanel):
 
         pair_delay_spreads = self.stats.get("pair_rms_delay_spread_ns_values", [])
         if len(pair_delay_spreads) > 0 and "pair_delay_spread_cdf_chart" in self.widgets:
-            self._create_matplotlib_chart(
+            self._create_chart(
                 self.widgets["pair_delay_spread_cdf_chart"],
                 "cdf",
                 {"values": pair_delay_spreads, "xlabel": "RMS Delay Spread (ns)"},
@@ -2410,7 +2705,7 @@ class StatisticsPanel(BasePanel):
             angle_data = self.stats.get(data_key, [])
             if len(angle_data) > 0 and widget_key in self.widgets:
                 has_any_angle = True
-                self._create_matplotlib_chart(
+                self._create_chart(
                     self.widgets[widget_key],
                     chart_type,
                     {"values": angle_data, "n_bins": 36, **extra},
@@ -2422,11 +2717,11 @@ class StatisticsPanel(BasePanel):
 
         # ── Evolution charts ────────────────────────────────────────────
         evolution = self.stats.get("frame_indices", [])
-        if self._has_values(evolution):
+        if multi_frame and self._has_values(evolution):
             mpc_evolution = self.stats.get("mpc_evolution", [])
             if self._has_values(mpc_evolution) and "mpc_evolution_chart" in self.widgets:
                 t_chart = time.perf_counter()
-                self._create_matplotlib_chart(
+                self._create_chart(
                     self.widgets["mpc_evolution_chart"],
                     "line_evolution",
                     {"x": evolution, "y": mpc_evolution, "ylabel": "Total MPC Count"},
@@ -2445,7 +2740,7 @@ class StatisticsPanel(BasePanel):
                 and "delay_spread_trend_chart" in self.widgets
             ):
                 t_chart = time.perf_counter()
-                self._create_matplotlib_chart(
+                self._create_chart(
                     self.widgets["delay_spread_trend_chart"],
                     "line_evolution",
                     {
@@ -2464,7 +2759,7 @@ class StatisticsPanel(BasePanel):
             order_evolution_data = self.stats.get("reflection_order_evolution_per_frame", {})
             if order_evolution_data and "mpc_order_evolution_hist_chart" in self.widgets:
                 t_chart = time.perf_counter()
-                self._create_matplotlib_chart(
+                self._create_chart(
                     self.widgets["mpc_order_evolution_hist_chart"],
                     "mpc_order_evolution",
                     {"frame_indices": evolution, "order_data": order_evolution_data},
@@ -2479,7 +2774,7 @@ class StatisticsPanel(BasePanel):
             type_evolution_data = self.stats.get("mpc_type_evolution_per_frame", {})
             if type_evolution_data and "mpc_type_evolution_chart" in self.widgets:
                 t_chart = time.perf_counter()
-                self._create_matplotlib_chart(
+                self._create_chart(
                     self.widgets["mpc_type_evolution_chart"],
                     "mpc_type_evolution",
                     {"frame_indices": evolution, "type_data": type_evolution_data},
@@ -2501,7 +2796,7 @@ class StatisticsPanel(BasePanel):
                 and "pair_visibility_chart" in self.widgets
             ):
                 t_chart = time.perf_counter()
-                self._create_matplotlib_chart(
+                self._create_chart(
                     self.widgets["pair_visibility_chart"],
                     "pair_visibility_evolution",
                     {
@@ -2523,7 +2818,7 @@ class StatisticsPanel(BasePanel):
                 and "strongest_path_loss_chart" in self.widgets
             ):
                 t_chart = time.perf_counter()
-                self._create_matplotlib_chart(
+                self._create_chart(
                     self.widgets["strongest_path_loss_chart"],
                     "line_evolution",
                     {
@@ -2542,6 +2837,7 @@ class StatisticsPanel(BasePanel):
         self._render_coverage_graphs(force=force)
         self._graphs_dirty = False
         self._graphs_rendered = True
+        self._sync_chart_tabs()
         status_text, transient = self._graphs_render_status(
             has_angle_data=has_any_angle,
             multi_frame=multi_frame,

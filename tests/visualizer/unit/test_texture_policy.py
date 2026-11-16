@@ -107,8 +107,10 @@ def test_disable_env_overrides_enable_env(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_apply_texture_launch_policy_enables_and_disables(monkeypatch) -> None:
-    monkeypatch.delenv("ORCHAV_ENABLE_TEXTURES", raising=False)
-    monkeypatch.delenv("ORCHAV_DISABLE_TEXTURES", raising=False)
+    # Register originally absent keys before production code writes them directly.
+    for key in ("ORCHAV_ENABLE_TEXTURES", "ORCHAV_DISABLE_TEXTURES"):
+        monkeypatch.setenv(key, "")
+        monkeypatch.delenv(key)
 
     apply_texture_launch_policy(enable_textures=True)
 

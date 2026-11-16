@@ -46,7 +46,7 @@ def _standard_frame() -> StandardMPCFrame:
                 "name": "target-0",
                 "orientation": [0.0, 0.0, 1.57],
                 "mesh_file": "walker_000.ply",
-                "mesh_directory": "libraries/targets/nist_human_walking",
+                "mesh_directory": "libraries/targets/digital_twin_update1",
                 "mesh_index": 2,
                 "scale": 1.25,
                 "material_type": "itu_concrete",

@@ -1,0 +1,213 @@
+{
+  "scenario": "scenarios/generator/building_appearance/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "scene/scene.xml"
+  },
+  "source_files": {
+    "scenarios/generator/building_appearance/scenario.yaml": "13b539bc79b91e691338f4884f0770049d7f646042c4db32d2c8e8a9b8f0f0b8",
+    "scenarios/generator/building_appearance/scene/building_0.ply": "4525f3c997690651ebfe1997f61c8ad0471c13d287f8ab6310986b899650ec81",
+    "scenarios/generator/building_appearance/scene/building_1.ply": "c4e76fbd4a2b0412699e773c4c2594dd40b09ca4b87f850b715626ae1968f0e9",
+    "scenarios/generator/building_appearance/scene/building_3.ply": "c0956585549758119735cca43c27ed65d4e1a7cfbad6c1836986dce5850ceef9",
+    "scenarios/generator/building_appearance/scene/scene.xml": "d9363663072af4ffb30de2fb34b24761c23346fb20444491b63e86fca9d9389f"
+  },
+  "sample_indices": [
+    0
+  ],
+  "sample_times_s": [
+    0.0
+  ],
+  "steps": 1,
+  "actors": [
+    {
+      "name": "TX",
+      "role": "tx",
+      "members": [
+        "TX"
+      ],
+      "sample_positions_m": [
+        [
+          -25.0,
+          -20.0,
+          3.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -25.0,
+            -20.0,
+            3.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX",
+      "role": "rx",
+      "members": [
+        "RX"
+      ],
+      "sample_positions_m": [
+        [
+          25.0,
+          -20.0,
+          1.5
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            25.0,
+            -20.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "b5762d5170c8abf10f6c23aecfac9210cf07b7c716eab4fd6fa5db67d3c3bd5f",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Concrete",
+      "display_rgb": [
+        0.796,
+        0.796,
+        0.796
+      ]
+    }
+  ],
+  "output_sha256": "092566c68128381b3edf8235b5e0b7e67d61bcc9b3ec78389355de655bc9f118",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -27.0,
+        -21.12888048,
+        -0.72
+      ],
+      [
+        27.0,
+        9.350892479999999,
+        18.72
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "ef1158c348035b465264fffe0e89ec2f7ce041fa72adf21bba951cf058f35c7d",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/building_appearance"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

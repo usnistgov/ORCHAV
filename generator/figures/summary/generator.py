@@ -25,7 +25,7 @@ from ..motion import collect_orientation_data_from_actor_state_manager
 logger = get_logger(__name__)
 
 GENERATOR_SUMMARY_PRODUCTS = frozenset(
-    {"scene2d", "scene3d", "speed", "orientation", "angular_velocity"}
+    {"topology", "scene2d", "scene3d", "speed", "orientation", "angular_velocity"}
 )
 
 
@@ -69,6 +69,8 @@ def maybe_generate_generator_summary(
             steps=simulation_config.num_steps,
             duration=simulation_config.duration,
             motion_mode="cached",
+            mesh_update_interval_s=getattr(simulation_config, "mesh_update_interval_s", None),
+            sample_rate_hz=getattr(simulation_config, "scene_sample_rate_hz", None),
         )
         logger.info(
             f"Created ActorStateManager with {len(tx_configs)} TX, {len(rx_configs)} RX, {len(target_managers)} targets"
@@ -101,6 +103,29 @@ def maybe_generate_generator_summary(
     if out_dir:
         Path(out_dir).mkdir(parents=True, exist_ok=True)
 
+    if "topology" in requested:
+        from ..topology import load_runtime_topology, render_topology, write_receipt
+
+        try:
+            destination = Path(out_dir or scenario_context.root / "summary") / f"topology.{out_fmt}"
+            case = load_runtime_topology(
+                tx_configs,
+                rx_configs,
+                target_managers,
+                simulation_config,
+                scenario_context,
+                actor_state_manager,
+            )
+            render_topology(case, destination)
+            write_receipt(
+                case,
+                destination,
+                ["python", "-m", "generator", str(scenario_context.root)],
+            )
+            generated.extend((destination, destination.with_suffix(".json")))
+        except (ValueError, TypeError, KeyError, IndexError, RuntimeError, OSError) as exc:
+            _figure_failed("Topology", exc)
+
     scene_geometry = None
     if requested & {"scene2d", "scene3d"}:
         try:
@@ -114,11 +139,13 @@ def maybe_generate_generator_summary(
 
     # Extract visualization options from scenario config (with defaults)
     viz_config = gs.get("visualization", {}) or {}
-    scene2d_mode = viz_config.get("scene2d_mode", "rasterized")
+    scene2d_mode = viz_config.get("scene2d_mode", "mesh")
     scene2d_resolution = viz_config.get("scene2d_resolution", 0.05)
     scene2d_material_legend = viz_config.get("scene2d_material_legend", False)
+    scene2d_limits = viz_config.get("scene2d_limits")
     actor_label_mode = viz_config.get("actor_label_mode", "role")
-    scene3d_mode = viz_config.get("scene3d_mode", "floor_plan")
+    receiver_color_mode = viz_config.get("receiver_color_mode", "role")
+    scene3d_mode = viz_config.get("scene3d_mode", "mesh")
     scene3d_alpha = viz_config.get("scene3d_alpha", 0.3)
     scene3d_z_exaggeration = viz_config.get("scene3d_z_exaggeration", None)
     scene3d_camera = viz_config.get("scene3d_camera", None)
@@ -155,7 +182,10 @@ def maybe_generate_generator_summary(
                     rendering_mode=scene2d_mode,
                     resolution=scene2d_resolution,
                     show_material_legend=scene2d_material_legend,
+                    explicit_bounds=scene2d_limits,
+                    receiver_inset_names=viz_config.get("scene2d_receiver_inset", []),
                     actor_label_mode=actor_label_mode,
+                    receiver_color_mode=receiver_color_mode,
                 )
                 generated.append(Path(p))
             else:
@@ -171,7 +201,10 @@ def maybe_generate_generator_summary(
                     rendering_mode=scene2d_mode,
                     resolution=scene2d_resolution,
                     show_material_legend=scene2d_material_legend,
+                    explicit_bounds=scene2d_limits,
+                    receiver_inset_names=viz_config.get("scene2d_receiver_inset", []),
                     actor_label_mode=actor_label_mode,
+                    receiver_color_mode=receiver_color_mode,
                 )
                 generated.append(Path(p))
                 logger.info(f"Scene2D visualization generated: {p}")
@@ -209,6 +242,7 @@ def maybe_generate_generator_summary(
                     bounds_mode=scene3d_bounds,
                     explicit_bounds=scene3d_limits,
                     actor_label_mode=actor_label_mode,
+                    receiver_color_mode=receiver_color_mode,
                 )
                 generated.append(Path(p))
             else:
@@ -228,6 +262,7 @@ def maybe_generate_generator_summary(
                     bounds_mode=scene3d_bounds,
                     explicit_bounds=scene3d_limits,
                     actor_label_mode=actor_label_mode,
+                    receiver_color_mode=receiver_color_mode,
                 )
                 generated.append(Path(p))
         except (

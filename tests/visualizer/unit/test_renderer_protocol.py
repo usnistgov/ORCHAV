@@ -377,6 +377,8 @@ class TestRendererIdentity:
             value = getattr(capabilities, field.name)
             if field.name.startswith("static_mesh_batch_"):
                 assert isinstance(value, int)
+            elif field.name == "volume_rendering_unavailable_reason":
+                assert isinstance(value, str)
             else:
                 assert isinstance(value, bool), field.name
 

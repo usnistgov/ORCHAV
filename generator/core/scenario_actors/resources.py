@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from xml.etree.ElementTree import ParseError
 
 import numpy as np
 import numpy.typing as npt
@@ -200,35 +201,11 @@ def _load_network_route(
             base_dir=base_dir,
             path=f"{path}.graph_path",
         )
-    try:
-        import networkx as nx
-    except ImportError as exc:
-        raise PosePreparationError(
-            "missing_network_route_dependency",
-            path,
-            "networkx is required to prepare a cached network_route",
-        ) from exc
-    try:
-        if graph_path.suffix.lower() in (".graphml", ".xml"):
-            graph = nx.read_graphml(graph_path)
-        elif graph_path.suffix.lower() == ".json":
-            payload = json.loads(graph_path.read_text(encoding="utf-8"))
-            graph = nx.node_link_graph(payload, edges="links")
-        else:
-            raise ValueError("cached network route must be GraphML or node-link JSON")
-    except (OSError, ValueError, nx.NetworkXException) as exc:
-        raise PosePreparationError("invalid_network_graph", f"{path}.graph_path", str(exc)) from exc
-
-    _normalize_network_edge_lengths(graph, path=f"{path}.graph_path")
     travel_mode = str(value(spec, "travel_mode", default="pedestrian"))
-    graph = _filter_network_graph(graph, travel_mode)
+    graph = load_network_graph(graph_path, travel_mode=travel_mode, path=path)
+    import networkx as nx
+
     nodes = sorted(graph.nodes, key=str)
-    if len(nodes) < 2:
-        raise PosePreparationError(
-            "invalid_network_graph",
-            f"{path}.graph_path",
-            f"network graph needs at least two nodes usable by {travel_mode!r}",
-        )
 
     route_type = str(value(spec, "route", default="shortest_path"))
     seed_raw = value(spec, "seed", default=None)
@@ -251,11 +228,61 @@ def _load_network_route(
     except nx.NetworkXException as exc:
         raise PosePreparationError("network_route_not_found", path, str(exc)) from exc
     altitude = float(value(spec, "altitude_m", default=0.0))
+    return network_route_points(graph, route_nodes, altitude_m=altitude, path=f"{path}.graph_path")
+
+
+def load_network_graph(
+    graph_path: str | Path, *, travel_mode: str, path: str = "network_route"
+) -> Any:
+    """Load the same normalized, travel-mode-filtered graph for preview and generation."""
+    graph_path = Path(graph_path)
+    try:
+        import networkx as nx
+    except ImportError as exc:
+        raise PosePreparationError(
+            "missing_network_route_dependency",
+            path,
+            "networkx is required to prepare a cached network_route",
+        ) from exc
+    try:
+        if graph_path.suffix.lower() in (".graphml", ".xml"):
+            graph = nx.read_graphml(graph_path)
+        elif graph_path.suffix.lower() == ".json":
+            payload = json.loads(graph_path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("node-link JSON must contain an object")
+            graph = nx.node_link_graph(payload, edges="links")
+        else:
+            raise ValueError("cached network route must be GraphML or node-link JSON")
+    except (OSError, ValueError, KeyError, TypeError, ParseError, nx.NetworkXException) as exc:
+        raise PosePreparationError("invalid_network_graph", f"{path}.graph_path", str(exc)) from exc
+
+    _normalize_network_edge_lengths(graph, path=f"{path}.graph_path")
+    graph = _filter_network_graph(graph, travel_mode)
+    nodes = sorted(graph.nodes, key=str)
+    if len(nodes) < 2:
+        raise PosePreparationError(
+            "invalid_network_graph",
+            f"{path}.graph_path",
+            f"network graph needs at least two nodes usable by {travel_mode!r}",
+        )
+
+    return graph
+
+
+def network_route_points(
+    graph: Any,
+    route_nodes: list,
+    *,
+    altitude_m: float = 0.0,
+    path: str = "network_route.graph_path",
+) -> tuple[Position3, ...]:
+    """Expand a selected route using canonical local geometry and bridge heights."""
     return _expand_network_route(
         graph,
         route_nodes,
-        altitude_m=altitude,
-        path=f"{path}.graph_path",
+        altitude_m=altitude_m,
+        path=path,
     )
 
 

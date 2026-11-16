@@ -1,16 +1,18 @@
-"""Load optional visualizer registrations from an external package.
+"""Load bundled runtime features and optional external registrations.
 
-The public visualizer owns extension contracts, but it does not know which
-private or third-party features may be installed.  An external distribution
-can provide a top-level ``visualizer_extensions`` package with a ``register``
-callable.  The development repository ships that package separately; the
-curated public export simply omits it.
+Bundled features are part of the installed distribution. External packages can
+add separate registrations without being required to activate bundled ones.
+The curated release profile selects the bundled package list.
 """
 
 from __future__ import annotations
 
 from importlib import import_module
 
+_BUNDLED_EXTENSION_PACKAGES = (
+    "visualizer.src.sensing.runtime",
+    "visualizer.src.experiments.runtime",
+)
 _EXTENSION_PACKAGE = "visualizer_extensions"
 _loaded = False
 
@@ -21,16 +23,15 @@ def ensure_external_extensions_loaded() -> None:
     if _loaded:
         return
 
-    try:
-        package = import_module(_EXTENSION_PACKAGE)
-    except ModuleNotFoundError as exc:
-        if exc.name != _EXTENSION_PACKAGE:
-            raise
-        _loaded = True
-        return
-
-    register = getattr(package, "register", None)
-    if not callable(register):
-        raise TypeError(f"{_EXTENSION_PACKAGE}.register must be callable")
-    register()
+    for name in (*_BUNDLED_EXTENSION_PACKAGES, _EXTENSION_PACKAGE):
+        try:
+            package = import_module(name)
+        except ModuleNotFoundError as exc:
+            if exc.name != name:
+                raise
+            continue
+        register = getattr(package, "register", None)
+        if not callable(register):
+            raise TypeError(f"{name}.register must be callable")
+        register()
     _loaded = True

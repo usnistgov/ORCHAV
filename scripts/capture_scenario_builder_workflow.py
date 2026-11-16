@@ -160,6 +160,31 @@ def _copy_relocatable_scenario_evidence(
     }
 
 
+def _dispose_owned_visualizer(visualizer: OrchavVisualizer, app: QApplication) -> None:
+    """Retire this capture's workers and window without asking to save its draft."""
+    failures = []
+    for owner, method in (
+        (getattr(visualizer, "authoring_generation_controller", None), "shutdown"),
+        (getattr(visualizer, "workspace_mode_controller", None), "close"),
+    ):
+        operation = getattr(owner, method, None)
+        if callable(operation):
+            try:
+                operation()
+            except Exception as exc:
+                failures.append(f"{method}: {exc}")
+    try:
+        if not shutdown_visualizer(visualizer, persist_state=False):
+            failures.append("visualizer shutdown failed")
+    finally:
+        # This window owns only the marker-owned capture scenario. Interactive
+        # close confirmation is inappropriate after an unattended failure.
+        visualizer.deleteLater()
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    if failures:
+        raise RuntimeError("Capture cleanup failed: " + "; ".join(failures))
+
+
 class _UnexpectedModalGuard(QObject):
     """Reject and report any modal dialog raised by unattended capture."""
 
@@ -172,7 +197,7 @@ class _UnexpectedModalGuard(QObject):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() != QEvent.Type.Show or not isinstance(watched, QDialog):
             return False
-        if self._seen is not None or self._pending_dialog is not None:
+        if self._pending_dialog is not None:
             return False
         self._pending_dialog = watched
         QTimer.singleShot(0, self._capture_pending_dialog)
@@ -192,11 +217,13 @@ class _UnexpectedModalGuard(QObject):
                 value = str(accessor()).strip()
                 if value:
                     text_parts.append(value)
-        self._seen = {
+        detail = {
             "title": str(watched.windowTitle()),
             "text": "\n".join(text_parts),
         }
-        self._sink(dict(self._seen))
+        if self._seen is None:
+            self._seen = detail
+        self._sink(detail)
         reject = getattr(watched, "reject", None)
         if callable(reject):
             reject()
@@ -773,9 +800,9 @@ def _build_authoring_scenario(
     capture_dir: Path,
     capture_sink: CaptureSink,
 ) -> Any:
-    controller = visualizer.workspace_mode_controller
     if not visualizer.new_authoring_scenario():
         raise RuntimeError("Scenario Builder did not enter authoring mode")
+    controller = visualizer.workspace_mode_controller
     workspace = controller.workspace
     if workspace is None or not workspace.viewport.available:
         error = None if workspace is None else workspace.viewport.initialization_error
@@ -998,6 +1025,12 @@ def _build_authoring_scenario(
         ordinal=1,
         start=authored_waypoints[1],
     )
+    if not workspace.has_pending_inspector_edits:
+        raise AssertionError("native waypoint drag did not stage an inspector edit")
+    workspace.pending_apply_button.click()
+    _pump_events(app)
+    if workspace.has_pending_inspector_edits:
+        raise AssertionError("Apply did not commit the dragged waypoint")
     workspace.set_tool(AuthoringTool.SELECT)
     workspace.refresh_now()
     edited_rx = workspace.document.scenario.actor(rx.id)
@@ -1081,9 +1114,12 @@ def _build_authoring_scenario(
         changed_target_position,
     )
     _pump_events(app)
-    after_tx_orientation = _actor_overlay(workspace, tx.id).orientation_matrix
-    if after_tx_orientation == before_tx_orientation:
-        raise AssertionError("Transient target motion did not recompute Look At")
+    tx_overlay = _actor_overlay(workspace, tx.id)
+    after_tx_orientation = tx_overlay.pending_orientation_matrix
+    if after_tx_orientation is None or after_tx_orientation == before_tx_orientation:
+        raise AssertionError("Pending target motion did not recompute Look At")
+    if tx_overlay.orientation_matrix != before_tx_orientation:
+        raise AssertionError("Pending target motion changed the committed Look At pose")
     target_capture = _record_capture(
         _capture(
             app,
@@ -1109,6 +1145,18 @@ def _build_authoring_scenario(
         target_gizmo_id,
         changed_target_position,
     )
+    workspace.pending_apply_button.click()
+    _pump_events(app)
+    if workspace.has_pending_inspector_edits:
+        raise AssertionError("Apply did not commit the target transform")
+    workspace.refresh_now()
+    if not np.allclose(
+        _actor_overlay(workspace, tx.id).orientation_matrix,
+        after_tx_orientation,
+        rtol=0.0,
+        atol=1e-5,
+    ):
+        raise AssertionError("Apply did not commit the recomputed Look At pose")
     workspace.set_tool(AuthoringTool.SELECT)
 
     workspace._add_actor(ActorRole.RX)
@@ -1609,29 +1657,30 @@ def main() -> None:
         traceback.print_exc()
         raise
     finally:
-        if app is not None and modal_guard is not None:
-            app.removeEventFilter(modal_guard)
-        _ACTIVE_MODAL_GUARD = None
+        cleanup_error: Exception | None = None
         try:
-            if visualizer is not None:
-                shutdown_visualizer(visualizer, persist_state=False)
-                visualizer.close()
-            if app is not None:
-                _pump_events(app, 2)
+            if visualizer is not None and app is not None:
+                _dispose_owned_visualizer(visualizer, app)
+        except Exception as exc:
+            cleanup_error = exc
         finally:
-            cleanup_error: Exception | None = None
+            if app is not None and modal_guard is not None:
+                app.removeEventFilter(modal_guard)
+            _ACTIVE_MODAL_GUARD = None
             if work_root is not None and work_token is not None:
                 try:
                     _remove_owned_work_directory(work_root, work_token)
                     manifest["working_directory"]["removed"] = True
                 except Exception as exc:
                     cleanup_error = exc
-                    manifest["cleanup_error"] = {
-                        "type": type(exc).__name__,
-                        "message": str(exc),
-                    }
+            if cleanup_error is not None:
+                manifest["cleanup_error"] = {
+                    "type": type(cleanup_error).__name__,
+                    "message": str(cleanup_error),
+                }
+                manifest["passed"] = False
             _write_manifest(manifest_path, manifest)
-            if cleanup_error is not None and manifest.get("passed") is True:
+            if cleanup_error is not None and sys.exc_info()[0] is None:
                 raise cleanup_error
 
 

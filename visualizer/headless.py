@@ -248,7 +248,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--ibl-name",
         type=str,
         default="neutral_outdoor",
-        help="IBL environment name from libraries/ibl (default: neutral_outdoor).",
+        help="IBL name, installed sky ID, or local HDR path (default: neutral_outdoor; no automatic download).",
     )
     light.add_argument("--ibl-intensity", type=float, default=1.0)
 

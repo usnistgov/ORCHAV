@@ -20,6 +20,66 @@ Progressive disclosure introduces the normal workflow first, links to focused
 guides when a decision appears, and reserves exact field and API details for
 reference pages.
 
+## Accessible, Progressive Explanations
+
+Write for technically proficient readers who may be new to ORCHAV's
+specific interfaces and conventions. State the capability, its prerequisites
+and the relevant workflow directly, then define unfamiliar terms where
+necessary. Use concise, precise language without assuming a lack of general
+technical knowledge.
+
+Maintain a neutral, professional tone throughout public documentation.
+Avoid promotional hooks, rhetorical sales questions, reassurance-oriented
+phrases and emphatic claims that a task is "easy" or "simple". Use bold
+type for genuine distinctions or warnings, not to persuade the reader.
+Prefer factual descriptions such as "Directory-backed PLY sequences do not
+require a timed manifest" over conversational questions or encouragement.
+
+Keep the repository README focused on product purpose, component roles, the
+frame workflow, and a first run. Preserve the producer, shared storage/provider,
+and consumer roles, but put field lists, transport restrictions, and processing
+details in the linked guides and references. Include a qualification on the
+landing page only when omitting it would mislead the reader about that workflow.
+
+Keep overview diagrams compact and readable. Use short labels and let the
+surrounding prose explain them. Avoid repeating a field inventory or the same
+workflow in both the figure and several paragraphs. Examples links should say
+what users can adapt or accomplish, without listing every example.
+
+Keep scenario catalogs short: state what each example teaches and link to it.
+On a walkthrough page, include the complete preparation and launch sequence,
+then ordered interface steps with the control names and expected result. Links
+should deepen the explanation, not supply a missing step in the normal run.
+Put connection overrides, stress workloads, and implementation details after
+the first successful run or in the relevant reference page.
+
+## Page purpose
+
+A reader should recognize from a page's opening what it explains, when it
+is useful, and how it differs from neighboring guides or runnable examples.
+This does **not** require a literal "Goal" heading on every page. For
+specialized workflows, distinguish the general capability from optional inputs
+and application-specific examples.
+
+Make the promise of each navigation link match its destination. A link labelled
+"inspect detector decisions" should lead to the available plots, tables,
+controls, saved-evidence prerequisites and a runnable example, not only to
+an abstract algorithm description or one illustration. Put reusable processing
+capabilities in a focused guide, exact settings in a reference, and the
+steps/results of an experiment in its scenario.
+
+Before adding a page, identify its reader, the task or question it answers, and
+where the reader arrives from. Extend an existing guide when it already owns
+that task. Keep the four component landing pages as architectural introductions
+with an explained figure, then route readers to guides, examples and reference.
+
+A guide that generates or exports a figure should show a representative result
+and explain what to observe. Use an existing scenario where possible. Reference
+field tables and API contracts do not need decorative images.
+
+Historical test counts, capture-harness notes and qualification reports belong
+in maintainer evidence. They are not a substitute for current user instructions.
+
 ## Page Ownership
 
 Use one canonical owner for each subject. Other pages should give only enough
@@ -43,6 +103,11 @@ Use **Generator** for ORCHAV's primary frame producer, **Shared Data Layer** for
 the contracts, storage, transport codecs, and frame providers, and
 **Visualizer** for the primary interactive frame consumer. Use *storage* for
 HDF5 and *transport* for protobuf over gRPC.
+
+Use *multipath components (MPCs)* or *propagation paths* when discussing the
+ray-traced paths, and *complex channel samples* or *channel observations* for
+the sensing processing inputs. Name processed outputs directly, such as range
+profiles, detections, or tracks.
 
 Use *frame source* for the place or service from which frames originate. Use
 *frame provider* for the software interface that retrieves frames from one
@@ -121,7 +186,19 @@ When adding or changing navigation, use these labels consistently:
   few **Related** links needed to interpret the reference. Do not add a
   backlink to every guide that cites them.
 - Task routers use headings such as **Choose A Task** or **Related Tasks**.
+- Task-navigation tables use **Goal** as their first column heading.
   Reserve **Continue** for a genuine forward handoff.
+
+## Demo Videos
+
+Keep GitHub's inline video players as the primary way to watch the demos, with
+a bundled MP4 link below each player as a backup. Preserve the bare attachment
+URLs that GitHub renders as players. An automated request failure alone is not
+a reason to replace a player with a link or poster. Check rendered playback
+when possible and report any access limitation separately.
+
+Keep source credits near the videos and link the asset's attribution record
+for detailed provenance and modifications.
 
 ## Validation
 

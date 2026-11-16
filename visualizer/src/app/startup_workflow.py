@@ -9,10 +9,11 @@ optional scenario, and then starts GUI, benchmark, or batch-render mode.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
@@ -29,11 +30,13 @@ from ..benchmarking.harness import (
 )
 from ..benchmarking.recorder import BenchmarkRecorder
 from ..materials.texture_policy import apply_texture_launch_policy
-from ..renderers.protocol import renderer_capabilities
+from ..renderers.protocol import renderer_capabilities, volume_rendering_unavailable_reason
 from ..renderers.registry import renderer_choices
 from ..services.cache_service import CacheInvalidationScope
 from ..services.session_service import (
     WorkspaceSnapshot,
+    current_scenario_reference,
+    normalize_scenario_config,
     normalize_scenario_root,
     read_workspace_snapshot,
 )
@@ -84,6 +87,56 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="ORCHAV - Radio Propagation Analysis & Visualization Tool"
     )
+    if importlib.util.find_spec("visualizer.src.sensing") is not None:
+        parser.add_argument(
+            "--fusion-results", type=str, help="Open a saved tracking or multi-sensor result bundle"
+        )
+        parser.add_argument(
+            "--sensing-volume",
+            type=str,
+            help="Inspect saved conditional detection outcomes in the pygfx scene",
+        )
+        parser.add_argument(
+            "--sensing-frames-only",
+            action="store_true",
+            help=(
+                "Load and play only scene frames bound to saved sensing results. "
+                "Requires --scenario with local frame files; interactive mode only."
+            ),
+        )
+        parser.add_argument(
+            "--sensing-3d",
+            choices=("on", "off"),
+            default=None,
+            help=(
+                "Initially show or hide 3D sensing independently of figure loading. "
+                "Off defers 3D preparation; the GUI can enable it later."
+            ),
+        )
+        parser.add_argument(
+            "--sensing-figures",
+            choices=("on-demand", "prepare", "motion", "summary", "off"),
+            default=None,
+            help=(
+                "Load visible sensing figures on demand, prepare saved playback figures "
+                "before opening, open Motion or Run summary with 3D preparation deferred, "
+                "or disable figure loading while retaining 3D sensing. "
+                "Defaults to the saved strategy, initially on-demand. "
+                "Benchmark and frame-export runs always skip advance figure preparation."
+            ),
+        )
+        parser.add_argument(
+            "--sensing-motion",
+            choices=("all-ranges", "saved-stft"),
+            default=None,
+            help=(
+                "Initial Motion figure with --sensing-figures motion: saved RD power "
+                "summed over range, or authored saved STFT. Default: all-ranges."
+            ),
+        )
+        from ..sensing.cache_policy import add_sensing_cache_arguments
+
+        add_sensing_cache_arguments(parser)
     parser.add_argument("--scenario", type=str, help="Path to scenario folder or YAML file")
     parser.add_argument(
         "--data-mode",
@@ -101,7 +154,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--author",
         action="store_true",
-        help="Open the feature-gated pygfx Scenario Builder workspace.",
+        help="Open the pygfx Scenario Builder workspace.",
     )
     parser.add_argument(
         "--renderer",
@@ -232,9 +285,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--pygfx-mpc-line-cache-mb",
         type=int,
         default=None,
-        metavar="MB",
+        metavar="MiB",
         help=(
-            "Set the pygfx expanded MPC-line cache budget in MB. Default is 0 "
+            "Set the pygfx expanded MPC-line cache budget in MiB. Default is 0 "
             "(disabled). Useful only when the cache can hold the full replay working set."
         ),
     )
@@ -288,8 +341,19 @@ def parse_cli_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         parser.error("--data-mode and --grpc-port require --scenario")
     if args.data_mode == "files" and args.grpc_port is not None:
         parser.error("--grpc-port cannot be combined with --data-mode files")
+    if getattr(args, "sensing_frames_only", False):
+        if not args.scenario:
+            parser.error("--sensing-frames-only requires --scenario")
+        if args.author or args.benchmark > 0 or args.render_frames:
+            parser.error("--sensing-frames-only requires interactive playback")
+        if args.data_mode not in (None, "files") or args.grpc_port is not None:
+            parser.error("--sensing-frames-only requires local frame files (--data-mode files)")
+    if getattr(args, "sensing_motion", None) and args.sensing_figures != "motion":
+        parser.error("--sensing-motion requires --sensing-figures motion")
     if args.author and not scenario_builder_enabled():
-        parser.error("--author requires ORCHAV_ENABLE_SCENARIO_BUILDER=1")
+        parser.error(
+            "Scenario Builder is disabled by ORCHAV_ENABLE_SCENARIO_BUILDER. Unset it or set it to 1."
+        )
     try:
         resolved = resolve_launch_mode(args)
     except ValueError as exc:
@@ -373,7 +437,7 @@ def select_startup_workspace(
     if not session_dir.is_dir():
         return None
 
-    resolved_scenario = normalize_scenario_root(scenario_path)
+    resolved_scenario = normalize_scenario_config(scenario_path)
     if scenario_path is not None and resolved_scenario is None:
         return None
 
@@ -392,12 +456,11 @@ def select_startup_workspace(
         snapshot = read_workspace_snapshot(path)
         if snapshot is None or not snapshot.summary.is_autosave:
             continue
-        summary = snapshot.summary
         if resolved_scenario is not None and os.path.normcase(
-            str(summary.scenario_root)
+            str(snapshot.scenario_config_path)
         ) != os.path.normcase(str(resolved_scenario)):
             continue
-        if not (summary.scenario_root / "scenario.yaml").is_file():
+        if not snapshot.scenario_config_path.is_file():
             continue
         return snapshot
     return None
@@ -535,10 +598,72 @@ def restore_startup_workspace(
     viz: Any,
     selection: Optional[WorkspaceSnapshot],
     reporter: Any,
+    *,
+    texture_maps_enabled: bool | None = None,
+    sensing_scene_enabled: bool | None = None,
 ) -> Optional[Path]:
-    """Restore the workspace chosen before scenario startup without rescanning."""
+    """Resume a workspace after merging explicit interactive opening intent."""
     if selection is None or not hasattr(viz, "session_service"):
         return None
+    app_state = selection.payload.get("app_state")
+    if sensing_scene_enabled is not None and isinstance(app_state, dict):
+        # Restore renders the saved frame synchronously. Merge opening intent
+        # first so resumed overlays cannot start the deferred scene reader.
+        extensions = app_state.get("extension_state", {})
+        if isinstance(extensions, dict):
+            sensing = extensions.get("sensing", {})
+            if isinstance(sensing, dict):
+                selection = replace(
+                    selection,
+                    payload={
+                        **selection.payload,
+                        "app_state": {
+                            **app_state,
+                            "extension_state": {
+                                **extensions,
+                                "sensing": {
+                                    **sensing,
+                                    "show_detections": sensing_scene_enabled,
+                                    **(
+                                        {"show_tracking_uncertainty": False}
+                                        if not sensing_scene_enabled
+                                        else {}
+                                    ),
+                                },
+                            },
+                        },
+                    },
+                )
+    restored_state = selection.payload.get("app_state", {})
+    restored_extensions = (
+        restored_state.get("extension_state", {}) if isinstance(restored_state, dict) else {}
+    )
+    restored_sensing = (
+        restored_extensions.get("sensing", {}) if isinstance(restored_extensions, dict) else {}
+    )
+    if isinstance(restored_sensing, dict) and restored_sensing.get("show_detections"):
+        panel = getattr(getattr(viz, "ui_manager", None), "panels", {}).get("sensing")
+        prepare_scene = getattr(panel, "start_scene_preparation", None)
+        if callable(prepare_scene):
+            # Mark preparation pending before restore renders its saved frame.
+            prepare_scene()
+    rendering = selection.payload.get("rendering")
+    if texture_maps_enabled is not None and isinstance(rendering, dict):
+        appearance = rendering.get("appearance")
+        if isinstance(appearance, dict):
+            # Merge before appearance restoration so it never publishes a
+            # conflicting texture choice or rejects the explicit disable lock.
+            # Keep the original snapshot available for later manual restoration.
+            selection = replace(
+                selection,
+                payload={
+                    **selection.payload,
+                    "rendering": {
+                        **rendering,
+                        "appearance": {**appearance, "textures": texture_maps_enabled},
+                    },
+                },
+            )
     try:
         restored = viz.session_service.load_session(
             selection,
@@ -557,14 +682,8 @@ def restore_startup_workspace(
 
 def _benchmark_overrides_metadata(overrides: dict[str, Any]) -> dict[str, Any]:
     """Normalize benchmark state override values for JSON metadata output."""
-    return {
-        key: (
-            sorted(value)
-            if isinstance(value, frozenset)
-            else list(value) if isinstance(value, tuple) else value
-        )
-        for key, value in sorted(overrides.items())
-    }
+    serialized = replace(create_initial_state(), **overrides).to_dict()
+    return {key: serialized[key] for key in sorted(overrides)}
 
 
 def _viewport_metadata(viz: Any) -> dict[str, Any]:
@@ -891,7 +1010,9 @@ def _complete_cli_startup(
 ) -> None:
     """Initialize services and open CLI resources from inside the Qt loop."""
     workspace_selection = (
-        select_startup_workspace(args.scenario) if workspace_resume_enabled(args) else None
+        select_startup_workspace(args.scenario)
+        if workspace_resume_enabled(args) and not getattr(args, "fusion_results", None)
+        else None
     )
     pending_camera = workspace_selection.camera if workspace_selection is not None else None
     if pending_camera:
@@ -902,6 +1023,11 @@ def _complete_cli_startup(
     if bool(getattr(viz, "_shutdown_started", False)):
         raise RuntimeError("Visualizer startup was cancelled during shutdown")
 
+    if getattr(args, "sensing_volume", None):
+        reason = volume_rendering_unavailable_reason(viz.renderer)
+        if reason:
+            raise ValueError(reason)
+
     if args.author:
         if args.scenario:
             viz.open_for_authoring(args.scenario)
@@ -911,12 +1037,21 @@ def _complete_cli_startup(
 
     cli_driven_frame_run = args.benchmark > 0 or bool(args.render_frames)
     configure_cli_driven_frame_run(viz, reporter, cli_driven_frame_run)
+    sensing_frames_only = bool(getattr(args, "sensing_frames_only", False))
+    if sensing_frames_only:
+        # Scenario loading and workspace restoration can pump Qt events. Keep
+        # automatic preload disabled until the selective plan owns navigation.
+        previous_preload_mode = viz.use_preload_mode
+        viz.use_preload_mode = False
+        viz.cancel_startup_preload()
 
     opened_scenario = False
     scenario_to_open = (
         args.scenario
         if args.scenario
-        else (str(workspace_selection.scenario_root) if workspace_selection is not None else None)
+        else (
+            str(workspace_selection.scenario_reference) if workspace_selection is not None else None
+        )
     )
     if scenario_to_open:
         previous_cli_scenario_startup = bool(getattr(viz, "_explicit_cli_scenario_startup", False))
@@ -932,7 +1067,9 @@ def _complete_cli_startup(
                     scenario_to_open,
                     pending_camera=pending_camera,
                     autorun_initial_frame=(
-                        not cli_driven_frame_run and workspace_selection is None
+                        not cli_driven_frame_run
+                        and not sensing_frames_only
+                        and workspace_selection is None
                     ),
                     **source_overrides,
                 )
@@ -955,6 +1092,11 @@ def _complete_cli_startup(
                 and selected_root is not None
                 and os.path.normcase(str(current_root)) == os.path.normcase(str(selected_root))
             )
+            active_config = normalize_scenario_config(current_scenario_reference(viz))
+            if active_config is not None:
+                opened_scenario = opened_scenario and active_config == normalize_scenario_config(
+                    workspace_selection.scenario_config_path
+                )
             if not opened_scenario:
                 logger.error(
                     "Startup did not activate the selected workspace scenario: "
@@ -977,18 +1119,56 @@ def _complete_cli_startup(
             apply_benchmark_state_overrides(viz, benchmark_state_overrides)
 
     restored_workspace = (
-        restore_startup_workspace(viz, workspace_selection, reporter) if opened_scenario else None
+        restore_startup_workspace(
+            viz,
+            workspace_selection,
+            reporter,
+            texture_maps_enabled=(
+                True if args.enable_textures else False if args.disable_textures else None
+            ),
+            sensing_scene_enabled=getattr(
+                getattr(getattr(viz, "ui_manager", None), "panels", {}).get("sensing"),
+                "recording_3d_override",
+                None,
+            ),
+        )
+        if opened_scenario
+        else None
     )
     if (
         workspace_selection is not None
         and restored_workspace is None
         and opened_scenario
         and not cli_driven_frame_run
+        and not sensing_frames_only
     ):
         # The selected restore suppressed scenario autorun. If the snapshot
         # becomes unusable after selection, still present the scenario once.
         viz.force_update_next_frame = True
         viz.schedule_update()
+
+    if sensing_frames_only:
+        playback = getattr(viz, "sensing_playback", None)
+        if playback is None or not getattr(open_outcome, "frame_source_ready", False):
+            raise _CliScenarioOpenError(
+                "--sensing-frames-only requires a recording with saved sensing results."
+            )
+        viz.cancel_scheduled_update()
+        viz.use_preload_mode = previous_preload_mode
+        reporter.note("Indexing saved sensing bindings before frame preload")
+        playback.enable_for_startup(
+            on_error=lambda message: _fail_cli_run(viz, app, f"--sensing-frames-only: {message}")
+        )
+
+    if getattr(args, "fusion_results", None):
+        from ..sensing.fusion_window import open_fusion_window
+
+        open_fusion_window(viz, args.fusion_results)
+
+    if getattr(args, "sensing_volume", None):
+        from ..sensing.volume_window import open_sensing_volume
+
+        open_sensing_volume(viz, args.sensing_volume)
 
     if args.benchmark > 0:
         start_benchmark_mode(
@@ -1061,6 +1241,13 @@ def run_visualizer_cli(
 
     app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
     apply_application_identity(app)
+
+    try:
+        from ..sensing.startup_cache_ui import configure_sensing_figure_policy
+    except ImportError:
+        pass
+    else:
+        configure_sensing_figure_policy(args, app)
 
     viz = visualizer_cls(
         progress=reporter,

@@ -1,60 +1,55 @@
 # Shared Data Layer
 
-A [frame](../reference/glossary.md#frame) moves from a
-[producer](../reference/glossary.md#producer) to one or more
-[consumers](../reference/glossary.md#consumer) through the Shared Data Layer.
-The layer keeps that handoff consistent: the same generated frame can be
-saved, reopened in the Visualizer, inspected from the command line, or analyzed
-in Python.
-
-The layer represents each frame with the source-independent
-`StandardMPCFrame` contract, stores frame sets in HDF5, carries live or remote
-frames over protobuf/gRPC, and gives consumers a common way to retrieve them. A
-[frame provider](../reference/glossary.md#frame-provider) is the software interface
-that retrieves a requested frame from one of these routes.
+The Shared Data Layer makes a simulation recording usable across visualization,
+inspection and analysis tools. A [frame](../reference/glossary.md#frame)
+records [actor](../reference/glossary.md#actor) state and propagation paths at
+one simulation step. A
+[frame provider](../reference/glossary.md#frame-provider) retrieves that data
+for playback or analysis. The common format connects [producers](../reference/glossary.md#producer),
+such as the Generator, with [consumers](../reference/glossary.md#consumer),
+such as the Visualizer and Python analysis tools.
 
 ## Producer, Shared Data Layer, And Consumer Roles
 
-The ORCHAV Generator is the primary frame producer. External adapters and the
-included synthetic generator can produce the same contract without running the
-Generator pipeline. Once a producer creates a frame, consumers use Shared Data
-Layer interfaces rather than [Sionna RT](https://nvlabs.github.io/sionna/)
-tensors or source-specific records.
+The [Generator](../generator/README.md) converts
+[Sionna RT](https://nvlabs.github.io/sionna/rt/) results into `StandardMPCFrame`.
+External adapters and the synthetic generator can write the same frame contract.
+
+When sensing is enabled, the Generator can also save complex channel observations
+and the radar products computed from them.
 
 ```mermaid
 flowchart TB
-    subgraph Producers["Frame producers"]
-        Generator["ORCHAV Generator"]
-        External["External frame adapter"]
-        Synthetic["Synthetic frame generator"]
-    end
-
-    subgraph Shared["Shared Data Layer"]
-        Contract["StandardMPCFrame contract"]
-        Delivery["HDF5 storage or protobuf/gRPC transport"]
-        Provider["Frame provider (retrieves frames)"]
-        Contract --> Delivery --> Provider
-    end
-
-    subgraph Consumers["Frame consumers"]
-        Visualizer["ORCHAV Visualizer"]
-        Inspect["orchav-inspect"]
-        Python["Python analysis"]
-    end
-
-    Generator --> Contract
-    External --> Contract
-    Synthetic --> Contract
-    Provider --> Visualizer
-    Provider --> Inspect
-    Provider --> Python
+    Generator["Generator: Sionna RT and optional sensing"] --> Frame["StandardMPCFrame: shared frame contract"]
+    Other["External or synthetic producer"] --> Frame
+    Frame -->|"files"| Saved["Saved HDF5 frame set"]
+    Frame -.->|"live_grpc: propagation only"| Live["Live frame provider"]
+    Saved -->|"files: local read"| Local["Local frame provider"]
+    Saved -->|"remote_hdf5: propagation only"| Remote["Remote frame provider"]
+    Local --> View["Visualizer"]
+    Live --> View
+    Remote --> View
+    Local --> Inspect["orchav-inspect / Python analysis"]
+    Local -->|"retained sensing observations"| Process["Sensing postprocessor"]
+    Process --> Derived["Separate derived local frame set"]
+    Derived -->|"local playback"| Local
 ```
 
-HDF5 is the durable representation used for local playback, inspection,
-analysis, and remote serving. Protobuf is the wire representation used over
-gRPC. Both carry or reconstruct the same ORCHAV frame contract. Neither is a
-second simulation model. See the [Frame Data Reference](frame_reference.md)
-for the exact delivery routes, frame fields, HDF5 layout, and provider behavior.
+The solid `files` path supports local playback and the reprocessing loop,
+which writes a separate result recording. The `live_grpc` and `remote_hdf5`
+branches carry **propagation only**: sensing playback and reprocessing require
+saved local observations. Copy or mount the complete frame set to inspect it
+on another computer. For the implementation of each route, see
+[Technical Delivery Routes](frame_reference.md#technical-delivery-routes).
+
+## Start here
+
+Start by [inspecting the Hello World frame](../../scenarios/getting_started/hello_world/README.md#generated-files)
+to see what the Generator saves. The
+[data-mode examples](../../scenarios/visualizer/data_modes/README.md) let you
+compare local files, live generation, and remote playback. The
+[external ray-tracer example](../../examples/external_raytracer_import/README.md)
+shows how to write your own paths into frames that the same tools can read.
 
 ## Choose A Data Mode
 
@@ -84,6 +79,7 @@ for Local What-if Preview and Live Generator edit behavior.
 | Load a generated HDF5 frame from Python | [Frame Data Reference](frame_reference.md#minimal-hdf5-frame-provider-example) |
 | Calculate channel statistics from frame arrays | [Statistics Helpers](statistics.md) |
 | Understand frame fields, HDF5 storage, selected-field views, or how frames are retrieved | [Frame Data Reference](frame_reference.md) |
+| Change sensing processing on an existing acquisition | [Sensing Postprocessor](../sensing/reprocessing.md#run-processing) |
 | Import solved paths from another propagation tool | [External Ray-Tracer Import](frame_reference.md#external-ray-tracer-import) |
 | Validate `scenario.yaml` | [Scenario Validation](../reference/scenario_validation.md) |
 | Configure desktop Visualizer scene/Open3D IBL locations or network endpoint defaults | [Application Configuration](../reference/application_configuration.md) |

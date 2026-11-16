@@ -37,7 +37,7 @@ raytracing:
 ## Scenario Schema Version
 
 Every `scenario.yaml` requires `schema_version: 2`. It identifies the YAML
-format accepted by ORCHAV `0.1.0`. A missing or unsupported value fails
+format accepted by ORCHAV `0.2.0`. A missing or unsupported value fails
 validation before generation or visualization. Keep it at `2` rather than
 incrementing it when you edit a scenario.
 
@@ -54,6 +54,14 @@ what to do when a version is rejected.
   [summary figures](#generator-summary).
 - Data and display: [data modes](#data-modes) and
   [visualizer defaults](#visualizer-defaults).
+- Feature extensions: [OpenStreetMap scenes](../generator/geography/osm_scene_generation.md)
+  and [sensing settings](../sensing/parameters.md).
+
+The generated tables below cover the shared scenario schema. Feature extensions
+add settings of their own: the OSM producer accepts `scene.source: osm` and
+`scene.osm`, and ORCHAV Sensing accepts a root `sensing` block. Use the linked
+guides for those settings; the shared scene-source table does not enumerate
+extension-provided sources.
 
 The tables are generated from the validated scenario schema and show each
 field's own rules. Relationships between several fields are called out near
@@ -80,7 +88,7 @@ Root-level format, logging, and component-extension fields.
 
 | YAML key | Type / values | Default / requirement | Meaning |
 |---|---|---:|---|
-| `schema_version` | integer; `2` | required | Required format identifier for `scenario.yaml`. ORCHAV 0.1 accepts only `2`. |
+| `schema_version` | integer; `2` | required | Required format identifier for `scenario.yaml`. ORCHAV accepts only `2`. |
 | `timeline` | mapping | required | Shared endpoint-inclusive scenario timeline. |
 | `actors` | mapping | empty role lists | Optional YAML-authored transmitter, receiver, and target actors. |
 | `groups` | sequence of mapping | `[]` | Optional shared mobility groups referenced by actors. |
@@ -113,12 +121,25 @@ YAML path: `scene`.
 
 Endpoint-inclusive sampling timeline shared by every actor and group.
 
+Specify `steps` with either `duration_s` or `sample_rate_hz`. A rate-based
+timeline derives `duration_s = (steps - 1) / sample_rate_hz`: 512 samples
+at 1 kHz span 0.511 s, and a single static sample spans 0 s. Existing
+duration-only timelines keep their authored duration. If both fields are
+supplied, they must agree within relative roundoff tolerance `1e-12`;
+the rate determines the resolved duration. Conflicting clocks are rejected.
+
+The scene rate controls actor sample times, independently of sensing PRF.
+Set them equal when the experiment uses one scene sample per pulse.
+In the Scenario Builder's Timeline drawer, enable **Derive duration from
+sample rate** to edit the rate and see the calculated duration.
+
 YAML path: `timeline`.
 
 | YAML key | Type / values | Default / requirement | Meaning |
 |---|---|---:|---|
 | `timeline.steps` | integer; >= 1 | required | Number of endpoint-inclusive samples prepared for every actor and group. |
-| `timeline.duration_s` | number; >= 0.0 | required | Elapsed scenario time in seconds from the first sample at 0 s to the final sample. |
+| `timeline.sample_rate_hz` | number \| null; > 0.0 | not set | Optional scene sample rate; derives duration as (steps - 1) / rate. |
+| `timeline.duration_s` | number; >= 0.0 | derived from `sample_rate_hz`; otherwise required | Elapsed time from the first sample at 0 s to the final sample. Derived when sample_rate_hz is supplied; a redundant explicit duration must agree. |
 
 ## Actors And Groups
 
@@ -171,7 +192,7 @@ YAML path: `actors.rx[]`.
 
 ### Target actor
 
-A target with mobility, orientation, and a renderable asset.
+A target with mobility, orientation, and exactly one RF representation.
 
 YAML path: `actors.targets[]`.
 
@@ -180,7 +201,11 @@ YAML path: `actors.targets[]`.
 | `actors.targets[].name` | string | required | Globally unique actor name used by references and output metadata. |
 | `actors.targets[].mobility` | mapping | required | Mobility model that supplies this actor's positions on the shared timeline. |
 | `actors.targets[].orientation` | mapping | `{type: fixed, yaw_deg: 0.0, pitch_deg: 0.0, roll_deg: 0.0}` | Orientation model that supplies this actor's facing direction on the shared timeline. |
-| `actors.targets[].asset` | mapping | required | Renderable mesh asset definition used for this target. |
+| `actors.targets[].representation` | string; `mesh_material`, `constant_rcs`, `tr38901` | `mesh_material` | Scattering representation: material mesh, native constant RCS, or native TR 38.901. |
+| `actors.targets[].asset` | mapping \| null | not set | Scattering mesh asset required only for the mesh_material representation. |
+| `actors.targets[].geometry` | mapping \| null | not set | Sole absorbing geometry proxy required for native RCS representations. |
+| `actors.targets[].constant_rcs` | mapping \| null | not set | Constant RCS model parameters, required only for constant_rcs targets. |
+| `actors.targets[].tr38901` | mapping \| null | not set | TR 38.901 preset and stochastic flags, required only for tr38901 targets. |
 
 <a id="group"></a>
 
@@ -474,6 +499,7 @@ Selector: `type: spiral`.
 | `actors.<role>[].mobility.turns` | number; > 0.0 | required | Number of complete path cycles. |
 | `actors.<role>[].mobility.start_angle_deg` | number | `0.0` | Initial horizontal azimuth from world +X, in degrees. |
 | `actors.<role>[].mobility.clockwise` | boolean | `false` | Whether the horizontal path runs clockwise when viewed from world +Z. |
+| `actors.<role>[].mobility.interpolation` | string; `linear`, `analytic` | `linear` | `linear` traverses a piecewise-linear approximation; `analytic` evaluates the smooth helix directly at each timeline sample. |
 | `actors.<role>[].mobility.traversal` | mapping | `{type: fit_duration}` | Path timing policy: fit the path to the timeline or use constant speed. |
 
 <a id="mobility-random-sampling"></a>
@@ -766,7 +792,7 @@ Selector: `type: random`.
 
 ## Target Assets
 
-Every target actor selects one catalog, file, or directory asset.
+Mesh targets select a catalog, file, or directory asset. Native RCS targets can instead define geometry through the target representation settings.
 
 <!-- BEGIN EXAMPLE: target-asset -->
 ```yaml
@@ -776,6 +802,68 @@ asset:
   material_type: metal
 ```
 <!-- END EXAMPLE: target-asset -->
+
+<a id="target-constant-rcs"></a>
+
+### Constant RCS model
+
+One constant scattering point; sigma is a linear area, never dBsm.
+
+YAML path: `actors.targets[].constant_rcs`.
+
+| YAML key | Type / values | Default / requirement | Meaning |
+|---|---|---:|---|
+| `actors.targets[].constant_rcs.sigma_m2` | number; >= 0.0 | required | Constant bistatic radar cross-section in linear square meters, not dBsm. |
+| `actors.targets[].constant_rcs.xpr_db` | number \| null | not set | Cross-polarization ratio in dB; null selects no depolarization. |
+
+<a id="target-tr38901"></a>
+
+### TR 38.901 RCS model
+
+Native TR 38.901 preset; stochastic draws use the RCS solver seed.
+
+YAML path: `actors.targets[].tr38901`.
+
+| YAML key | Type / values | Default / requirement | Meaning |
+|---|---|---:|---|
+| `actors.targets[].tr38901.object_type` | string; `uav-small-size`, `uav-large-size`, `human`, `vehicle-single-sp`, `vehicle-multi-sp`, `agv-single-sp`, `agv-multi-sp` | required | Explicit native TR 38.901 target preset, including single- or multi-point variants. |
+| `actors.targets[].tr38901.model_type` | integer; `1`, `2` | `2` | RCS model number: small UAV requires 1, human permits 1 or 2, other presets require 2. |
+| `actors.targets[].tr38901.random_sigma_s` | boolean | `false` | Enable stochastic RCS variation using the native solver seed. |
+| `actors.targets[].tr38901.random_xpr` | boolean | `false` | Enable stochastic cross-polarization using the native solver seed. |
+| `actors.targets[].tr38901.random_phases` | boolean | `false` | Enable stochastic initial phases using the native solver seed. |
+
+<a id="target-native-box"></a>
+
+### Native absorbing box
+
+Rigid absorbing cuboid; omitted dimensions use the native model defaults.
+
+YAML path: `actors.targets[].geometry`.
+
+Selector: `type: box`.
+
+| YAML key | Type / values | Default / requirement | Meaning |
+|---|---|---:|---|
+| `actors.targets[].geometry.type` | string; `box` | `box` | Rigid absorbing cuboid geometry. |
+| `actors.targets[].geometry.length_m` | number \| null; > 0.0 | not set | Local X size in meters; omitted uses the native model default. |
+| `actors.targets[].geometry.width_m` | number \| null; > 0.0 | not set | Local Y size in meters; omitted uses the native model default. |
+| `actors.targets[].geometry.height_m` | number \| null; > 0.0 | not set | Local Z size in meters; omitted uses the native model default. |
+
+<a id="target-native-mesh"></a>
+
+### Native absorbing mesh
+
+One static PLY/OBJ proxy owned by the native target, without a radio material.
+
+YAML path: `actors.targets[].geometry`.
+
+Selector: `type: mesh`.
+
+| YAML key | Type / values | Default / requirement | Meaning |
+|---|---|---:|---|
+| `actors.targets[].geometry.type` | string; `mesh` | `mesh` | One rigid static absorbing mesh proxy. |
+| `actors.targets[].geometry.path` | string | required | Single PLY or OBJ proxy path resolved relative to the scenario. |
+| `actors.targets[].geometry.scale` | number; > 0.0 | `1.0` | Uniform scale applied to the proxy and its scattering points. |
 
 <a id="target-asset-catalog"></a>
 
@@ -848,6 +936,25 @@ raytracing:
 ```
 <!-- END EXAMPLE: raytracing -->
 
+<a id="native-rcs-solver"></a>
+
+### Native RCS solver
+
+Native target solver settings, independent of background ray budgets.
+
+YAML path: `raytracing.rcs`.
+
+| YAML key | Type / values | Default / requirement | Meaning |
+|---|---|---:|---|
+| `raytracing.rcs.channel` | string; `combined`, `target_only`, `background_only` | `combined` | Combined detector input or an explicitly target-only/background-only diagnostic. |
+| `raytracing.rcs.max_depth` | integer; >= 1 | `3` | Maximum native path depth including the sensing interaction. |
+| `raytracing.rcs.samples_per_sp` | integer; >= 1 | `100000` | Native ray samples per scattering point, independent of background samples. |
+| `raytracing.rcs.buffer_size_per_sp` | integer; >= 1 | `100000` | Native candidate-path capacity per scattering point. |
+| `raytracing.rcs.los` | boolean | `true` | Allow unobstructed target propagation legs. |
+| `raytracing.rcs.specular_reflection` | boolean | `true` | Allow specular environment interactions on native target paths. |
+| `raytracing.rcs.refraction` | boolean | `true` | Allow supported environment refraction on native target paths. |
+| `raytracing.rcs.seed` | integer; >= 0 | `42` | RCSSolver seed, including enabled direction-keyed model draws. |
+
 <a id="raytracing"></a>
 
 ### Ray tracing
@@ -859,8 +966,9 @@ YAML path: `raytracing`.
 | YAML key | Type / values | Default / requirement | Meaning |
 |---|---|---:|---|
 | `raytracing.enabled` | boolean | `false` | Enable Generator-side ray tracing. |
+| `raytracing.rcs` | mapping \| null | not set | Native RCS solver and diagnostic channel selection for RCS targets. |
 | `raytracing.view` | string \| null | `top` | Summary/camera view hint such as `top`, `side`, `front`, or `isometric`. |
-| `raytracing.export_path_metrics` | boolean | `false` | Store per-path delay, path loss, AoA, and AoD metrics in generated frames. |
+| `raytracing.export_path_metrics` | boolean | `true` | Store per-path delay, path loss, AoA, and AoD metrics in generated frames. |
 | `raytracing.quality` | mapping \| null | `low` preset | Quality preset and optional custom ray-tracing settings. |
 | `raytracing.carrier_frequency_hz` | number \| null; > 0 | `28e9` | RF carrier frequency in hertz. |
 | `raytracing.bandwidth_hz` | number \| null; > 0 | `2e9` | Channel bandwidth in hertz. |
@@ -1219,7 +1327,7 @@ Generate standalone topology and motion figures after a run.
 ```yaml
 generator_summary:
   enabled: true
-  create: [scene2d, speed]
+  create: [topology, speed]
 ```
 <!-- END EXAMPLE: generator-summary -->
 
@@ -1233,9 +1341,11 @@ YAML path: `generator_summary`.
 
 | YAML key | Type / values | Default / requirement | Meaning |
 |---|---|---:|---|
+| `generator_summary.sensing` | mapping \| null | not set | Sensing figure selection, range-Doppler views and optional saved-decision figures. |
 | `generator_summary.enabled` | boolean | `false` | Generate post-run summary figures. |
 | `generator_summary.force` | boolean | `false` | Regenerate summary figures even when the normalized scenario YAML is unchanged. |
-| `generator_summary.create` | sequence of string; `scene2d`, `scene3d`, `speed`, `orientation`, `angular_velocity` | `[]` | Summary figure groups to create. Unlisted groups are not generated. |
+| `generator_summary.create` | sequence of string; `topology`, `scene2d`, `scene3d`, `speed`, `orientation`, `angular_velocity`, `sensing` | `[]` | Summary figure groups to create. Unlisted groups are not generated. |
+| `generator_summary.inspection_figures` | sequence of string | `[]` | Optional saved-decision figures in the sensing summary; empty by default. |
 | `generator_summary.output` | mapping \| null | not set | Image format for the fixed scenario summary output. |
 | `generator_summary.visualization` | mapping \| null | not set | 2D and 3D rendering options for summary figures. |
 
@@ -1261,11 +1371,17 @@ YAML path: `generator_summary.visualization`.
 
 | YAML key | Type / values | Default / requirement | Meaning |
 |---|---|---:|---|
-| `generator_summary.visualization.scene2d_mode` | string; `rasterized`, `vector`, `auto` | `rasterized` | 2D scene summary rendering mode. |
+| `generator_summary.visualization.topology_pose_samples` | integer; `3`, `5` | `3` | Sample three or five authored poses for animated topology targets; rigid targets are unchanged. |
+| `generator_summary.visualization.topology_motion_detail` | boolean \| string; `auto` | `auto` | Show rigid-target motion details; auto selects small movements in sensing scenes. |
+| `generator_summary.visualization.topology_fixed_target_orientation` | boolean \| string; `auto` | `auto` | Show fixed target orientation arrows; auto hides them for motion-detail targets. |
+| `generator_summary.visualization.scene2d_mode` | string; `mesh`, `auto`, `vector`, `rasterized` | `mesh` | 2D scene drawing: native mesh projection by default; rasterized explicitly selects the legacy pixel floor plan. |
 | `generator_summary.visualization.scene2d_resolution` | number; > 0 | `0.05` | Rasterized 2D scene resolution in meters. |
+| `generator_summary.visualization.scene2d_limits` | sequence of number \| null; min items 4, max items 4 | not set | Display-only 2D limits [xmin, xmax, ymin, ymax] in meters; RF scene unchanged. |
 | `generator_summary.visualization.scene2d_material_legend` | boolean | `false` | Include detected scene material families in the 2D summary legend. |
 | `generator_summary.visualization.actor_label_mode` | string; `role`, `name` | `role` | Actor label mode: role labels such as TX1/RX1 or scenario names. |
-| `generator_summary.visualization.scene3d_mode` | string; `floor_plan`, `mesh`, `wireframe`, `hybrid`, `city` | `floor_plan` | 3D scene summary rendering mode. |
+| `generator_summary.visualization.receiver_color_mode` | string; `role`, `individual` | `role` | Receiver palette: shared blue by role, or individual colors and named legend entries. |
+| `generator_summary.visualization.scene2d_receiver_inset` | sequence of string | `[]` | Optional receiver names for a magnified 2D trajectory inset; empty disables it. |
+| `generator_summary.visualization.scene3d_mode` | string; `mesh`, `auto`, `wireframe`, `hybrid`, `city`, `floor_plan` | `mesh` | 3D scene drawing: native meshes by default; floor_plan explicitly selects the legacy raster texture. |
 | `generator_summary.visualization.scene3d_alpha` | number; >= 0, <= 1 | `0.3` | Scene opacity in 3D summary figures. |
 | `generator_summary.visualization.scene3d_z_exaggeration` | number \| string \| null; `auto` | not set | Visual-only Z-axis exaggeration for 3D summaries. |
 | `generator_summary.visualization.scene3d_bounds` | string; `union`, `scene`, `geometry`, `actors`, `actor`, `trajectory`, `trajectories` | `union` | Bounds source used to frame the 3D summary figure. |
@@ -1298,6 +1414,16 @@ YAML path: `view_defaults`.
 
 | YAML key | Type / values | Default / requirement | Meaning |
 |---|---|---:|---|
+| `view_defaults.sensing` | mapping \| null | not set | Initial sensing plot bounds and scene overlays; does not filter recorded results. |
+| `view_defaults.camera_pose` | mapping \| null | not set | Initial eye/lookat/up/fov; overrides the named camera view. |
+| `view_defaults.demo_tour` | mapping \| null | not set | Opt-in named camera views and timed shots for Demo; no simulation changes. |
+| `view_defaults.dusk` | mapping \| null | not set | Opt-in blue-hour presentation lights; does not enable them or alter RF data. |
+| `view_defaults.appearance_recipe` | string \| null | not set | Local appearance recipe JSON; resolved relative to the scenario. |
+| `view_defaults.playback` | mapping \| null | not set | Initial playback cadence and stride; recorded timing is unchanged. |
+| `view_defaults.label_callout` | mapping \| null | not set | Shared Plain text / Callout / Card appearance for actor and track labels. |
+| `view_defaults.show_labels` | boolean \| null | not set | Initially show transmitter and receiver labels. |
+| `view_defaults.show_target_labels` | boolean \| null | not set | Initially show authored target-name labels. |
+| `view_defaults.viewport_hud_enabled` | boolean \| null | not set | Initially show the viewport status overlay. |
 | `view_defaults.color_mode` | string \| null; `reflection_order`, `mpc_type`, `delay`, `path_loss`, `reconstruction_type` | not set | Initial MPC color mode. `reconstruction_type` requires compatible extension data. |
 | `view_defaults.selected_tx` | string \| integer \| sequence of string \| sequence of integer \| null; `all` | not set | Initial transmitter filter: `all`, one index/name, or a list of indices/names. |
 | `view_defaults.selected_rx` | string \| integer \| sequence of string \| sequence of integer \| null; `all` | not set | Initial receiver filter: `all`, one index/name, or a list of indices/names. |
@@ -1306,9 +1432,63 @@ YAML path: `view_defaults`.
 | `view_defaults.camera_dist` | number \| null | not set | Initial camera distance from the scene focus point in meters. |
 | `view_defaults.fov` | number \| null | not set | Initial camera field of view in degrees. |
 | `view_defaults.camera_view` | string \| null; `top`, `side`, `front`, `isometric`, `iso` | not set | Initial named camera orientation. |
+| `view_defaults.building_appearance` | string \| null; `original`, `procedural`, `varied` | not set | Initial illustrative building appearance. Requires textures and classified faces. |
+| `view_defaults.authored_surface_textures` | boolean \| null | not set | Show custom landmark/surface texture maps; defaults to enabled. |
+| `view_defaults.facade_theme` | string \| null; `mixed`, `american`, `european`, `asian`, `portuguese`, `paris`, `haussmann` | not set | Initial illustrative facade theme for Varied mode; does not imply geographic fidelity. |
+| `view_defaults.road_appearance` | string \| null; `original`, `marked` | not set | Initial road/path surfacing and markings. Requires textures and producer road metadata. |
 | `view_defaults.auto_generate_uvs` | boolean \| null | not set | Generate box-projection UVs for meshes without embedded UV coordinates. |
 | `view_defaults.merge_scene_meshes` | boolean \| null | not set | Merge scene meshes by material for renderer performance. Omission uses automatic behavior. |
 | `view_defaults.visual_profiles` | sequence of mapping \| null | not set | Optional renderer profiles consumed by Visualizer workflows. |
+
+<a id="view-defaults-camera-pose"></a>
+
+### Explicit camera pose
+
+Initial free camera pose, independent of recorded actor positions.
+
+YAML path: `view_defaults.camera_pose`.
+
+| YAML key | Type / values | Default / requirement | Meaning |
+|---|---|---:|---|
+| `view_defaults.camera_pose.eye` | sequence of number; min items 3, max items 3 | required | Camera position [x, y, z] in metres. |
+| `view_defaults.camera_pose.lookat` | sequence of number; min items 3, max items 3 | required | Camera focus [x, y, z] in metres. |
+| `view_defaults.camera_pose.up` | sequence of number; min items 3, max items 3 | `[0.0, 0.0, 1.0]` | Camera up direction; must not be parallel to the viewing direction. |
+| `view_defaults.camera_pose.fov` | number; > 0, < 180 | `60.0` | Camera field of view in degrees. |
+
+<a id="view-defaults-playback"></a>
+
+### Playback defaults
+
+Initial playback cadence; never changes recorded sampling or timestamps.
+
+YAML path: `view_defaults.playback`.
+
+| YAML key | Type / values | Default / requirement | Meaning |
+|---|---|---:|---|
+| `view_defaults.playback.mode` | string; `real_time`, `fixed_fps`, `maximum` | `fixed_fps` | Initial playback cadence policy; playback starts paused. |
+| `view_defaults.playback.fps` | integer; >= 1, <= 240 | `25` | Requested display updates per second in fixed_fps mode. |
+| `view_defaults.playback.stride` | integer; >= 1 | `1` | Recorded scene samples advanced per playback update. |
+
+<a id="view-defaults-sensing"></a>
+
+### Sensing display defaults
+
+Initial plot bounds and scene overlays; never part of the numerical recipe.
+
+YAML path: `view_defaults.sensing`.
+
+| YAML key | Type / values | Default / requirement | Meaning |
+|---|---|---:|---|
+| `view_defaults.sensing.range_xlim` | sequence of number \| null | not set | Initial range-axis bounds in metres. |
+| `view_defaults.sensing.velocity_ylim` | sequence of number \| null | not set | Initial radial-velocity-axis bounds in m/s. |
+| `view_defaults.sensing.show_detections` | boolean \| null | not set | Initially show saved sensing overlays in the scene. |
+| `view_defaults.sensing.scene_mode` | string \| null; `detections`, `tracks`, `evidence`, `full` | not set | Initial saved sensing scene layer selection. |
+| `view_defaults.sensing.show_track_labels` | boolean \| null | not set | Show labels for visible estimated tracks. |
+| `view_defaults.sensing.show_truth` | boolean \| null | not set | Show optional ground-truth overlays for inspection. |
+| `view_defaults.sensing.show_velocity_arrows` | boolean \| null | not set | Show available saved Cartesian track velocity arrows. |
+| `view_defaults.sensing.full_history` | boolean \| null | not set | Use the complete recorded history for visible trails. |
+| `view_defaults.sensing.history_frames` | integer \| null; >= 1 | not set | Saved-result count in trails when full_history is false. |
+| `view_defaults.sensing.pin_freshest` | boolean \| null | not set | Hold an eligible prior sensing result between recorded result epochs. |
 
 <a id="view-defaults-mpc-visibility"></a>
 

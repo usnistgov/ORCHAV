@@ -1,0 +1,14 @@
+{
+  "name": "scooter",
+  "source": "https://www.innerscene.com/tools/library/3d-parts/urban-motor-scooter-9dd945f9",
+  "download": "https://www.innerscene.com/api/library/urban-motor-scooter-9dd945f9/download",
+  "author": "Innerscene",
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "retrieved_utc": "2026-10-21",
+  "sha256": "f19aeedc31907d94039b3820551073f495ed09dadbcadcc8ce4afdcf2e022e63",
+  "original_asset": {
+    "generator": "Khronos glTF Blender I/O v5.2.40",
+    "version": "2.0"
+  }
+}

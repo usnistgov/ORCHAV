@@ -1,0 +1,57 @@
+# Recipe only: obtain geographic inputs locally; no scene data is bundled.
+schema_version: 2
+debug_level: INFO
+scene:
+  source: osm
+  id: scene.xml
+  osm:
+    bbox: [48.8675, 2.3265, 48.876, 2.3385]
+    terrain: false
+    height_enrichment: false
+    canopy_heights: false
+    vegetation_gap_fill: false
+    worldcover_water_check: false
+    barriers: true
+    vegetation: true
+    bridges: true
+    tree_rows: false
+    green_vegetation: true
+    landuse_materials: true
+    acquisition_timeout: 180.0
+    overpass_timeout: 90
+    refresh_cache: false
+data:
+  mode: files
+  files:
+    format: hdf5
+    chunk_size: 1
+timeline:
+  steps: 1
+  duration_s: 0.0
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 3.5e9
+  quality:
+    preset: low
+    custom:
+      samples_per_src: 512
+      max_num_paths_per_src: 1000
+      max_depth: 1
+      diffuse_reflection: false
+      seed: 42
+actors:
+  tx:
+    - name: PreviewTX
+      mobility:
+        type: stationary
+        position_m: [0.0, 0.0, 25.0]
+  rx:
+    - name: PreviewRX
+      mobility:
+        type: stationary
+        position_m: [60.0, 20.0, 1.5]
+generator_summary:
+  enabled: true
+  create: [topology]
+  output:
+    format: png

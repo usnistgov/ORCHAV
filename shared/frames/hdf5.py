@@ -88,7 +88,7 @@ class HDF5FormatHandler(FormatHandler):
         return None if reader is None else reader.manifest.frame_set_id
 
     def close(self) -> None:
-        """Close every lazily opened HDF5 chunk handle."""
+        """Retire chunk handles; accepted reads release theirs on completion."""
         if self._packed_reader is not None:
             self._packed_reader.close()
 
@@ -101,10 +101,21 @@ class HDF5FormatHandler(FormatHandler):
         reader = self._packed_reader
         return [] if reader is None else reader.frame_ids
 
+    @property
+    def frame_ids_snapshot(self) -> tuple[int, ...] | None:
+        """Reuse the manifest inventory until the reader is refreshed."""
+        reader = self._packed_reader
+        return None if reader is None else reader.manifest.frame_ids
+
     def has_frame(self, step: int) -> bool:
         """Answer frame membership from manifest metadata only."""
         reader = self._packed_reader
         return reader is not None and reader.has_frame(step)
+
+    def frame_source_path(self, step: int) -> Path | None:
+        """Return the authoritative chunk containing a recorded frame."""
+        reader = self._packed_reader
+        return None if reader is None else reader.frame_source_path(step)
 
     def load_frame(self, step: int) -> StandardMPCFrame:
         """Load one complete canonical frame directly from HDF5."""

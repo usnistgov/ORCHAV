@@ -12,10 +12,14 @@ import argparse
 import json
 import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, NamedTuple, Sequence
+from typing import TYPE_CHECKING, Any, NamedTuple, Sequence
 
+if TYPE_CHECKING:
+    from generator.core.pipeline.progress import ProgressInfo
+
+from shared.scenarios.paths import find_asset_project_root
 from shared.source_identity import (
     EXPECTED_SOURCE_IDENTITY_ENV,
     SourceIdentity,
@@ -27,6 +31,7 @@ _SCRIPT_DIRS = [
     ("Getting Started", "scenarios/getting_started"),
     ("Generator Examples", "scenarios/generator"),
     ("Visualizer Examples", "scenarios/visualizer"),
+    ("Sensing Examples", "scenarios/sensing"),
     ("Paper Reproductions", "scenarios/papers"),
 ]
 # The CLI catalog is curated user navigation, not a raw filesystem listing.
@@ -46,8 +51,8 @@ class ScenarioEntry(NamedTuple):
 
 
 def _project_root() -> Path:
-    """Return the repository root used for scenario discovery."""
-    return Path(__file__).resolve().parent.parent
+    """Discover scenarios in the working checkout or the source checkout."""
+    return find_asset_project_root(Path(__file__).resolve().parent)
 
 
 def _display_path(path: str | Path) -> str:
@@ -177,11 +182,13 @@ def _run_from_yaml(
     grpc_port: int | None = None,
     grpc_bind_host: str | None = None,
     _authoring_snapshot_yaml: Path | None = None,
+    on_step_complete: "Callable[[ProgressInfo], None] | None" = None,
 ) -> Any:
     """Run a canonical scenario, optionally from a trusted Builder snapshot.
 
     The private snapshot supplies configuration bytes only. ``scenario_path``
     remains authoritative for path resolution and fixed output publication.
+    Scripted campaigns may supply a callback to replace the built-in text bar.
     """
     source_identity = _verified_source_identity()
 
@@ -199,10 +206,14 @@ def _run_from_yaml(
     # inside scenario files resolve the same way as they do in scripted runs.
     find_project_root(scenario_root)
 
+    from generator.core.pipeline.progress import JsonlProgressReporter, stderr_status
+
+    if progress_format == "text" and on_step_complete is None:
+        stderr_status(f"Preparing scenario: {scenario_root}")
+
     # Import the heavy generator facade only for execution.  Listing scenarios
     # and printing --help should not initialize Sionna/Mitsuba.
     from generator import build_simulation_config, perform_pipeline
-    from generator.core.pipeline.progress import JsonlProgressReporter
 
     scenario = (
         load_scenario_configuration(scenario_root, yaml_path=snapshot_yaml)
@@ -238,6 +249,12 @@ def _run_from_yaml(
         )
         reporter.run_started()
 
+    def step_completed(info):
+        if reporter is not None:
+            reporter.step_completed(info)
+        if on_step_complete is not None:
+            on_step_complete(info)
+
     try:
         result = perform_pipeline(
             simulation_config=sim_config,
@@ -245,8 +262,10 @@ def _run_from_yaml(
             geometry_only=geometry_only,
             grpc_port=grpc_port,
             grpc_bind_host=grpc_bind_host,
-            on_step_complete=(reporter.step_completed if reporter is not None else None),
-            show_progress=reporter is None,
+            on_step_complete=(
+                step_completed if reporter is not None or on_step_complete is not None else None
+            ),
+            show_progress=reporter is None and on_step_complete is None,
         )
         if reporter is not None:
             rt_enabled = bool((getattr(scenario, "raytracing", {}) or {}).get("enabled", False))

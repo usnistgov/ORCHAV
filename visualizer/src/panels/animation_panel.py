@@ -66,6 +66,11 @@ class AnimationControlsPanel(BasePanel):
         layout.setSpacing(6)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addLayout(self._create_step_slider_row())
+        context = QLabel()
+        context.setWordWrap(True)
+        context.hide()
+        self.widgets["recorded_frame_context"] = context
+        layout.addWidget(context)
         layout.addLayout(self._create_animation_buttons_row())
         layout.addLayout(self._create_speed_controls_row())
         return group
@@ -73,6 +78,8 @@ class AnimationControlsPanel(BasePanel):
     def set_online_mode(self, is_online: bool) -> None:
         """Record whether frame navigation should request live gRPC frames."""
         self.is_online_mode = is_online
+        if is_online:
+            self.set_recorded_frame_context([])
         logger.info("Animation panel: live gRPC mode = %s", is_online)
 
     def is_in_online_mode(self) -> bool:
@@ -91,6 +98,17 @@ class AnimationControlsPanel(BasePanel):
         if not hasattr(self.parent, "frame_source") or not self.parent.frame_source:
             return False
         try:
+            from ..io.packed_frame_payload import visualizer_frame_provider
+
+            provider = visualizer_frame_provider(self.parent)
+            count = getattr(getattr(provider, "info", None), "total_frames", None)
+            if (
+                isinstance(count, int)
+                and not isinstance(count, bool)
+                and count >= 0
+                and frame_idx >= count
+            ):
+                return False
             available_frames = self.parent.frame_source.list_frames()
             if frame_idx in available_frames:
                 return True
@@ -115,7 +133,7 @@ class AnimationControlsPanel(BasePanel):
         row.setSpacing(8)
         row.setContentsMargins(4, 0, 4, 0)
 
-        step_label = QLabel("Step:")
+        step_label = QLabel("Frame:")
         step_label.setStyleSheet("font-weight: bold; min-width: 40px;")
         row.addWidget(step_label)
 
@@ -128,8 +146,11 @@ class AnimationControlsPanel(BasePanel):
         self.widgets["step_label"] = QLabel("1")
         self.widgets["step_label"].setStyleSheet("font-weight: bold; min-width: 40px;")
         row.addWidget(self.widgets["step_label"])
+        # The editable frame number already shows the same value.
+        self.widgets["step_label"].hide()
 
         self.widgets["frame_input"] = QSpinBox()
+        self.widgets["frame_input"].setKeyboardTracking(False)
         self.widgets["frame_input"].setMinimum(1)
         self.widgets["frame_input"].setMaximum(self.total_steps)
         self.widgets["frame_input"].setValue(1)
@@ -309,6 +330,8 @@ class AnimationControlsPanel(BasePanel):
     def set_scene_only_mode(self, enabled: bool) -> None:
         """Disable animation controls when no frame data is available."""
         self._scene_only_mode = bool(enabled)
+        if enabled:
+            self.set_recorded_frame_context([])
         interactive_widgets = [
             "step_slider",
             "frame_input",
@@ -342,3 +365,20 @@ class AnimationControlsPanel(BasePanel):
             self.widgets["frame_input"].setMaximum(self.total_steps)
         if "total_steps_label" in self.widgets:
             self.widgets["total_steps_label"].setText(f"/ {self.total_steps}")
+
+    def set_recorded_frame_context(self, frame_ids: list[int]) -> None:
+        """Explain sparse playback without changing source IDs or scene time."""
+        label = self.widgets.get("recorded_frame_context")
+        if label is None:
+            return
+        sparse = bool(frame_ids) and frame_ids != list(range(len(frame_ids)))
+        label.setVisible(sparse)
+        if sparse:
+            label.setText(
+                f"{len(frame_ids)} saved frames · source IDs {min(frame_ids)}–{max(frame_ids)}"
+            )
+            label.setToolTip(
+                "Playback visits only saved frames. Source IDs are zero-based acquisition "
+                "indices; processing may save one result per multi-pulse window. "
+                "Hover over the slider for the current source ID."
+            )

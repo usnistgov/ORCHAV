@@ -1,0 +1,83 @@
+# Optional visual lighting assets. No download occurs until explicitly requested.
+# The yaw and intensity recipes are visual presets, not geographic solar models.
+version: 1
+environments:
+- id: sky_overcast
+  label: Overcast
+  source: overcast_soil_puresky
+  url: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/overcast_soil_puresky_2k.hdr
+  source_page: https://polyhaven.com/a/overcast_soil_puresky
+  authors:
+  - Jarod Guest (sky edits)
+  - Sergej Majboroda (original)
+  license: CC0-1.0
+  size: 4568000
+  sha256: 5414e1ac0c35e451d28595b2a2cba05e2ca301fdeb755b0a469408443093dafc
+  radiance_scale: 0.5009836033423144
+  yaw_degrees: 0
+  lighting:
+    ambient: 0.03
+    key: 1.4
+    fill: 0.15
+    ibl: 18000
+    key_azimuth: 31
+    key_elevation: -42
+- id: sky_sunny
+  label: Sunny
+  source: kloofendal_43d_clear_puresky
+  url: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/kloofendal_43d_clear_puresky_2k.hdr
+  source_page: https://polyhaven.com/a/kloofendal_43d_clear_puresky
+  authors:
+  - Greg Zaal
+  license: CC0-1.0
+  size: 4624289
+  sha256: 462a3cc63bfcd9fe0299137a0f33f4ade84e237f4cb6115fe46f5ab400693fe6
+  radiance_scale: 0.5257295597932159
+  yaw_degrees: 174.90234375
+  lighting:
+    ambient: 0.03
+    key: 2.3
+    fill: 0.15
+    ibl: 6000
+    key_azimuth: 31.061453412671256
+    key_elevation: -42.92367374004823
+- id: sky_cloudy
+  label: Partly cloudy
+  source: kloofendal_48d_partly_cloudy_puresky
+  url: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/kloofendal_48d_partly_cloudy_puresky_2k.hdr
+  source_page: https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky
+  authors:
+  - Greg Zaal (original)
+  - Jarod Guest (sky edits)
+  license: CC0-1.0
+  size: 5451493
+  sha256: 5244534e9cf5b606f2ff513aa00ddb161b0a4826ffd88a0d3bd03ac29247d198
+  radiance_scale: 0.6564351152361844
+  yaw_degrees: 176.66015625
+  lighting:
+    ambient: 0.03
+    key: 2.0
+    fill: 0.1
+    ibl: 9000
+    key_azimuth: 30.91337940267246
+    key_elevation: -47.88034946592174
+- id: sky_sunset
+  label: Sunset
+  source: qwantani_sunset_puresky
+  url: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/qwantani_sunset_puresky_2k.hdr
+  source_page: https://polyhaven.com/a/qwantani_sunset_puresky
+  authors:
+  - Greg Zaal (photography)
+  - Jarod Guest (processing)
+  license: CC0-1.0
+  size: 4171959
+  sha256: d66e08231e9c09ca40c6d035214ae8efb638782745c82addbb2a063fa32cabef
+  radiance_scale: 0.40444343680251593
+  yaw_degrees: 174.90234375
+  lighting:
+    ambient: 0.03
+    key: 1.8
+    fill: 0.1
+    ibl: 18000
+    key_azimuth: 30.9343899318265
+    key_elevation: -6.079752397831482

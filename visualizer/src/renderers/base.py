@@ -22,6 +22,7 @@ from .protocol import MpcPathSelectionCallback, RendererCapabilities
 if TYPE_CHECKING:
     from ...visualizer import OrchavVisualizer
     from ..pipeline.core import FrameRenderPacket
+    from ..services.viewport_hud_service import AnalysisLegend
     from .mpc_path_inspection import MpcPathInspectionSnapshot
 
 
@@ -41,6 +42,24 @@ class RendererBase(ABC):
         self._present_attempts: int = 0
         self._present_successes: int = 0
         self._idle_loop_active: bool = False
+
+    def set_analysis_legend(self, legend: AnalysisLegend | None) -> None:
+        """No-op for backends without a viewport HUD."""
+
+    def set_hud_overlay(
+        self,
+        overlay_id: str,
+        *,
+        html: str,
+        visible: bool,
+        role: str,
+        corner: str,
+        priority: int,
+    ) -> None:
+        """No-op for backends without named viewport overlays."""
+
+    def clear_hud_overlay(self, overlay_id: str) -> None:
+        """No-op for backends without named viewport overlays."""
 
     @property
     @abstractmethod
@@ -65,7 +84,7 @@ class RendererBase(ABC):
         *,
         host_parent: Any = None,
     ) -> Any:
-        """Initialize the Open3D visualizer window.
+        """Initialize the renderer window or embedded canvas.
 
         Args:
             window_name: Title for the visualizer window.
@@ -160,8 +179,8 @@ class RendererBase(ABC):
     def set_edge_line_width(self, width: float) -> bool:
         """Set line width for scene edge (wireframe) lines.
 
-        Only the Open3D renderer supports per-geometry line widths. The default
-        implementation is a no-op that returns False.
+        Backends with independent edge styling override this default, which
+        returns False when the setting is unsupported.
 
         Args:
             width: Line width in pixels for scene edge lines.
@@ -171,11 +190,69 @@ class RendererBase(ABC):
         """
         return False
 
+    def set_target_silhouette(self, object_id: str | None) -> bool:
+        """Optionally emphasize a selected actor without changing its material."""
+        return False
+
+    def configure_dusk(self, recipe: dict | None) -> bool:
+        """Register scenario lighting when the backend supports it."""
+        return False
+
+    def set_dusk_enabled(self, enabled: bool) -> bool:
+        return False
+
+    def get_dusk_state(self) -> dict:
+        return {"available": False, "enabled": False}
+
+    def set_dusk_progress(self, progress: float, *, request_redraw: bool = True) -> bool:
+        """Optionally blend an authored daylight and dusk appearance."""
+        return False
+
+    def set_section_contours(self, enabled: bool, *, width: float = 2.0) -> bool:
+        return False
+
+    def get_section_contour_state(self) -> dict:
+        return {"enabled": False, "width": 2.0, "mesh_count": 0}
+
+    def get_axes_visible(self) -> bool:
+        return False
+
+    def set_ground_grid_divisions(self, divisions: int) -> bool:
+        return False
+
+    def get_ground_grid_divisions(self) -> int:
+        return 20
+
+    def set_environment_dimensions_visible(self, visible: bool) -> bool:
+        return False
+
+    def set_environment_dimensions_style(self, style: str) -> bool:
+        return False
+
+    def get_environment_dimensions_state(self) -> dict:
+        return {"enabled": False, "style": "size_labels", "extent_m": None, "bounds": None}
+
+    def set_map_attribution(self, text: str) -> bool:
+        """Backends without an attribution overlay cannot display an OSM map."""
+        return not text
+
+    def configure_compass(self, north_direction_xy=None, *, label="", reason="") -> bool:
+        return False
+
+    def get_compass_state(self) -> dict:
+        return {"available": False, "enabled": False, "label": "", "reason": "Unsupported renderer"}
+
+    def set_compass_visible(self, visible: bool) -> bool:
+        return False
+
+    def get_compass_visible(self) -> bool:
+        return False
+
     def set_trajectory_line_width(self, width: float) -> bool:
         """Set line width for trajectory lines.
 
-        Only the Open3D renderer supports per-geometry line widths. The default
-        implementation is a no-op that returns False.
+        Backends with independent trajectory styling override this default,
+        which returns False when the setting is unsupported.
 
         Args:
             width: Line width in pixels for trajectory lines.
@@ -482,7 +559,7 @@ class RendererBase(ABC):
     def set_fly_mode(self, enabled: bool) -> bool:
         """Enable or disable fly camera mode.
 
-        Only the Open3D renderer supports this. Other renderers return False.
+        Backends without fly-camera support return False.
 
         Args:
             enabled: True to enable fly mode, False to restore default orbit mode.

@@ -1,0 +1,1074 @@
+{
+  "scenario": "scenarios/visualizer/multi_device_trajectory/scenario.yaml",
+  "scene_source": {
+    "source": "sionna",
+    "id": "etoile"
+  },
+  "source_files": {
+    "sionna_rt/scenes/etoile/etoile.xml": "c747f65549f0810c71e7cebc925199e3fdd595b3d777eca7fb22e07ef95c0a1f",
+    "sionna_rt/scenes/etoile/meshes/Ambassade_de_Brunei-itu_marble.ply": "d3da391cbe28c3a4d76a064ead27586cc4cac362696ef69e59a6d7f090dd3084",
+    "sionna_rt/scenes/etoile/meshes/Ambassade_de_Brunei-itu_metal.ply": "ef9074bc341b9a973968df566faf8b6692d331fe353f1b7445477be06513fcd6",
+    "sionna_rt/scenes/etoile/meshes/Ambassade_du_Kazakhstan-itu_marble.ply": "8e356e9fb2ac7c8db32c036a3eda94669383fd4400e5ac7c118eb368058d3772",
+    "sionna_rt/scenes/etoile/meshes/Ambassade_du_Kazakhstan-itu_metal.ply": "2ae92eda095e9b4484cad76a2defcd7a68b2328635731162881dc54d6ad5b0c0",
+    "sionna_rt/scenes/etoile/meshes/Arc_de_Triomphe-itu_concrete.ply": "92611bc092b5f84691d803937a4e03f3048a7f75f056a7fe5ec19e190c52505e",
+    "sionna_rt/scenes/etoile/meshes/Arc_de_Triomphe-itu_marble.ply": "d32783960a354c1c335baec379a525bb99c07bc0819758d81509b405606b2661",
+    "sionna_rt/scenes/etoile/meshes/Arc_de_Triomphe-itu_metal.ply": "65bf4fd1db09cb58afa54f71e6fc3a47495e282488ae647a9f82966d75b8f032",
+    "sionna_rt/scenes/etoile/meshes/Arc_de_Triomphe-itu_wood.ply": "8ce385cb0d4981e52528e9e927d54a322f06fbbf912128fd2e68e69a0c40318c",
+    "sionna_rt/scenes/etoile/meshes/HSBC-itu_marble.ply": "0f70fc1fb4c587a0fcbbd98c58721102bb6bf1ff83b1b9254af8a953565c4600",
+    "sionna_rt/scenes/etoile/meshes/HSBC-itu_metal.ply": "2df9eed3f8faab63b938073b2c207bff376787488fb05988d33ba6c6c98cbf7f",
+    "sionna_rt/scenes/etoile/meshes/H_tel_Belfast-itu_marble.ply": "cb5b35f0b32b4153ff8dba830b43af435a31ffa485467463aefb75229c901570",
+    "sionna_rt/scenes/etoile/meshes/H_tel_Belfast-itu_metal.ply": "031fbac6916533d8b98dca26598396feebd1354e4cd65b28937d3394eb4cd52a",
+    "sionna_rt/scenes/etoile/meshes/H_tel_Napol_on-itu_marble.ply": "4618b55bf2cc81f8176551286b98080acb455ee21ba9c625e3b4b88765676a68",
+    "sionna_rt/scenes/etoile/meshes/H_tel_Napol_on-itu_metal.ply": "b0890358d89865ff7da5612de1e745ceea8a3d7826c9c901f75e2653d67a392a",
+    "sionna_rt/scenes/etoile/meshes/H_tel_Potocki-itu_marble.ply": "5a80aab4c69c09d54f999e2a179727aa6676ff68c1945bdeef67ca4d3a0f4377",
+    "sionna_rt/scenes/etoile/meshes/H_tel_Potocki-itu_metal.ply": "fce7023cab666b41a8e158a01ea03f7a3fe7c263b2f40a63ade0f1ac2d990d9b",
+    "sionna_rt/scenes/etoile/meshes/H_tel_Vernet-itu_marble.ply": "3d372fadb48898cee77402e7fe5264b9cb6d26c236114c4bf17434732b8d59f6",
+    "sionna_rt/scenes/etoile/meshes/H_tel_Vernet-itu_metal.ply": "b8c3eaaa834fbf519160cebd100884e5fec93b6ee8bee1dc0d3286f7e55a1277",
+    "sionna_rt/scenes/etoile/meshes/Maison_du_Danemark-itu_marble.ply": "282ca332002a8ccd7f34760585133c24c5dbb99ec9acb7f18e3763b0c85d032d",
+    "sionna_rt/scenes/etoile/meshes/Maison_du_Danemark-itu_metal.ply": "c1f8ae76d0cd8373ef5e395a41685c6dd49cfaeb8cbe07fd20512b618405b796",
+    "sionna_rt/scenes/etoile/meshes/Plane.ply": "e894b2fbb0649f074d2a836771189c7b54109204fb65d53a4dadbb3dfcf18863",
+    "sionna_rt/scenes/etoile/meshes/Saint-Joseph_s_Church__mission_anglophone_-itu_marble.ply": "8ae71c2c5801103adbcf34e96deb9952abe1fb18ebfa684742a9c572207af353",
+    "sionna_rt/scenes/etoile/meshes/Saint-Joseph_s_Church__mission_anglophone_-itu_metal.ply": "d50c8ea496701c015b50db5aa2c3316962b45b8ce91ecd42f2f7fed884cafb39",
+    "sionna_rt/scenes/etoile/meshes/Splendid__toile-itu_marble.ply": "a97aa2cb34afd6315156a8b8d57c57117ca6bd030f0260481ceb5c0fdde2d385",
+    "sionna_rt/scenes/etoile/meshes/Splendid__toile-itu_metal.ply": "c5febdcde6b4ed15a56b3a2e2a34e0caa72ec991fae09c6543552cf0bcd1d530",
+    "sionna_rt/scenes/etoile/meshes/Unicredito_SPA-itu_marble.ply": "ff82cdb19083c3985e280a1e9e5bc236f40fdc6126eca7e45817f908b46a1109",
+    "sionna_rt/scenes/etoile/meshes/Unicredito_SPA-itu_metal.ply": "4c7138cbb4c874e4891eeb8c575d52f525ce36b2144e43ad02335cf71d25c7a5",
+    "sionna_rt/scenes/etoile/meshes/_glise_Protestante_Danoise-itu_marble.ply": "e8744ace861a41d77392ca99747183792ac554468ec9becebbf93f791898b56b",
+    "sionna_rt/scenes/etoile/meshes/_glise_Protestante_Danoise-itu_metal.ply": "30528fb8031cc0d983379f45fe8a3d5ab4c451eecc2147e0fcb431e56d263002",
+    "sionna_rt/scenes/etoile/meshes/element-itu_marble.ply": "086a50b25bf49bbb5fb59c48d5bc11a5c4e7b5504bc2c2bd0d37f3fc0ebd7ae0",
+    "sionna_rt/scenes/etoile/meshes/element-itu_metal.ply": "36a25298b449f75e052b26c7d5a8b648989392fa315cbf3a24d28cb2699bd73f",
+    "sionna_rt/scenes/etoile/meshes/element_001-itu_marble.ply": "4e0c7a0a7fd200dd4a161ba6ed8b6c476a3e202a188288e7a3eb26c007b2f525",
+    "sionna_rt/scenes/etoile/meshes/element_001-itu_metal.ply": "6b286b6275b102344dc55f86623a3dd812d8c4afc685106d76ac799fbe49fbe9",
+    "sionna_rt/scenes/etoile/meshes/element_002-itu_marble.ply": "e8d16360a0108f414c2b99201de5fcdea5487d4bbaaf5835973d0bf90a2dbda9",
+    "sionna_rt/scenes/etoile/meshes/element_002-itu_metal.ply": "a60b5b5e4a3f750806e0902b201dae9037f886c7e50ac8d77a4462133b1b0b11",
+    "sionna_rt/scenes/etoile/meshes/element_003-itu_marble.ply": "c627fc608dc2392b1e1b5576fe50cebbc06534ef008b9ce61daf59720a72d13a",
+    "sionna_rt/scenes/etoile/meshes/element_003-itu_metal.ply": "a13984628a5500701b28df485ff58772fc67345f554e6d15af01dc7df18b97f6",
+    "sionna_rt/scenes/etoile/meshes/element_004-itu_marble.ply": "8094d014f885badc3d22c71df7f705d3ef0a3bd25c8250568150df297e313118",
+    "sionna_rt/scenes/etoile/meshes/element_004-itu_metal.ply": "254c51072c51ff6d6c5e6274d4985a18b33fa6f7e4b3cc054b1d621915f24141",
+    "sionna_rt/scenes/etoile/meshes/element_005-itu_marble.ply": "82042111125c8f68f4d29c696aa1e83bfbe9d6ea56008302f506f9a3a2c9c51e",
+    "sionna_rt/scenes/etoile/meshes/element_005-itu_metal.ply": "3972fe989d4bd2ed6dbd9e9ef4ff44fa32efffb051be4369541153c974ef630e",
+    "sionna_rt/scenes/etoile/meshes/element_006-itu_marble.ply": "a3935ca1f56861c4a4245b6f3262ceddbae91296399e6580633ab91b6cc4cc73",
+    "sionna_rt/scenes/etoile/meshes/element_006-itu_metal.ply": "ff2aaf1c03a6d105c5eb5d143ee18e418fbe7f778edef8f7487d60a484174e88",
+    "sionna_rt/scenes/etoile/meshes/element_007-itu_marble.ply": "7ab88f5269801511af05f32a14ccdc9d06def3fac6ce165662f4e885dfc3556b",
+    "sionna_rt/scenes/etoile/meshes/element_007-itu_metal.ply": "97ca311e7e720d99fc5a5528ba0ba8d6b4940953abdaa4fa6f267c749305346c",
+    "sionna_rt/scenes/etoile/meshes/element_008-itu_marble.ply": "a45913852b89910a51f69b92ac7111b032e5f6e516e5ce1fdb7a3defd6646f47",
+    "sionna_rt/scenes/etoile/meshes/element_008-itu_metal.ply": "53d8ac17fa8ec91e5090f266c4e026395d8226ea40b92d456a61e0189580058c",
+    "sionna_rt/scenes/etoile/meshes/element_009-itu_marble.ply": "f97ffe7831c7372ce978f48c849b05e8feee8dc2fe77654e4804ea68241b4ca1",
+    "sionna_rt/scenes/etoile/meshes/element_009-itu_metal.ply": "dac3dd799c79683e84641e3351b9f36a3c672c8c5a9bd1a48cdaae49b049e3e1",
+    "sionna_rt/scenes/etoile/meshes/element_010-itu_marble.ply": "707982d47e61d71af8a896ee583a23630cfb3e19825307bd843bf8d754b61eba",
+    "sionna_rt/scenes/etoile/meshes/element_010-itu_metal.ply": "6572daab6e4a1610cb19ccaf52c4c4782512d92f9fb17aa005bb5157a1d91897",
+    "sionna_rt/scenes/etoile/meshes/element_011-itu_marble.ply": "61c4198d5dbd6c1cbf87ec12980126a60402434f954474c13ae82495d3b1bafe",
+    "sionna_rt/scenes/etoile/meshes/element_011-itu_metal.ply": "e9a4459c59098c62cf84e546d85f44b5fad9264e3a8d0f9c39fd1fc9bb421f6f",
+    "sionna_rt/scenes/etoile/meshes/element_012-itu_marble.ply": "364aa69428d8fbb2cec9425e32ff9a63f5e2de1714123676a9176a87039fca35",
+    "sionna_rt/scenes/etoile/meshes/element_012-itu_metal.ply": "458e2558909d7b15ca748ac98b3f10f39dca6b2d6b87274cbfdff28261e8a56d",
+    "sionna_rt/scenes/etoile/meshes/element_013-itu_marble.ply": "fd137f8e5af204ec87249004dd0fd4fcbff069236c2ad517f0bc164cd33f18d3",
+    "sionna_rt/scenes/etoile/meshes/element_013-itu_metal.ply": "9def647a90d71910625c2d7f17a094a937a316c617c847c223c7e14de911cc61",
+    "sionna_rt/scenes/etoile/meshes/element_014-itu_marble.ply": "b1753632c91feb4288f6b8ad64ce9e86008e865a09ed4ba46c7fd4522a80adc1",
+    "sionna_rt/scenes/etoile/meshes/element_014-itu_metal.ply": "51bb30d0aa5bf674ad924ec454ddad04d36cf36a5fc2147b266ac64481e66246",
+    "sionna_rt/scenes/etoile/meshes/element_015-itu_marble.ply": "46092aff5e6a6650c9f1e7d7116d12732b8928336a50c9c367a8ed96277ea4b1",
+    "sionna_rt/scenes/etoile/meshes/element_015-itu_metal.ply": "04843b291409dab655d1c50afa4d8a130705ad26a05cc79d0ec550fe4a2de8d6",
+    "sionna_rt/scenes/etoile/meshes/element_016-itu_marble.ply": "3791791c326ca543903bfe35eb6073e71b82fa62c97e3d373052cc0550c40abc",
+    "sionna_rt/scenes/etoile/meshes/element_016-itu_metal.ply": "af570968ef34c60f2cc6e3c0254b70bfa12533b4b736c2d0839a09f6bfe6f3d1",
+    "sionna_rt/scenes/etoile/meshes/element_017-itu_marble.ply": "462e873cb4d41accc0187da7d73e4410e6d6ba29af658cf6b7fbe61dfd5a2a7e",
+    "sionna_rt/scenes/etoile/meshes/element_017-itu_metal.ply": "59ed58999d51031f7dda66f885c78859053ee03c1261eb7aa33882e8c7bcbe6a",
+    "sionna_rt/scenes/etoile/meshes/element_018-itu_marble.ply": "7a940209f6c84679e02e30797064536b37bae13c5afafa86720a926116ffd464",
+    "sionna_rt/scenes/etoile/meshes/element_018-itu_metal.ply": "3437563794ae6056eec4bbb993efe9162a098735a1bae9e95486b53f0c3e0dc5",
+    "sionna_rt/scenes/etoile/meshes/element_019-itu_marble.ply": "7349709932fff7a73029a23dc8b8f29919d0c6e2e5799cbb3c174c9723f8fede",
+    "sionna_rt/scenes/etoile/meshes/element_019-itu_metal.ply": "31ee43b6b2ce5f651c861bf9bebaee78645989684ae950a671a135b73890ec90",
+    "sionna_rt/scenes/etoile/meshes/element_020-itu_marble.ply": "93ec0cfedcd6e4fd67a76eceeb59b43de4b97b14e35e3d345554406838ad085c",
+    "sionna_rt/scenes/etoile/meshes/element_020-itu_metal.ply": "7cc13e28b2d4e4fdc2eb6707e94a194c8c8559212d020e604807ab05cdba5a63",
+    "sionna_rt/scenes/etoile/meshes/element_021-itu_marble.ply": "bdc5c21c3c13c7c9cacf93c7c02aa08f880a6a7b31e4bb537754770d89120934",
+    "sionna_rt/scenes/etoile/meshes/element_021-itu_metal.ply": "6f69294ef837889ea377712db41089c940c525b45fa2794a13e44bd7b0036e8b",
+    "sionna_rt/scenes/etoile/meshes/element_022-itu_marble.ply": "54b9f5ebbffec68498a82e6724c68cc193b64fba5a8d131348f648e95e9c013a",
+    "sionna_rt/scenes/etoile/meshes/element_022-itu_metal.ply": "a37c497964fad47bbd055c880d2f612411222f2fe84633f023f17f6e3a224c8c",
+    "sionna_rt/scenes/etoile/meshes/element_023-itu_marble.ply": "f536f120c3fc0d37763ab0f0724362adbb1a72b6f57ae0c9fffe5f9b76aa4c2a",
+    "sionna_rt/scenes/etoile/meshes/element_023-itu_metal.ply": "c7ac110217483caf938166d7d12d32b69c270132acc7b72ef5630e88c88100c4",
+    "sionna_rt/scenes/etoile/meshes/element_024-itu_marble.ply": "616828ac6b3d84b493083daaf78081ade74318325b5371c224bfb9b8557ec600",
+    "sionna_rt/scenes/etoile/meshes/element_024-itu_metal.ply": "53eab0f2a098e067e061a54d27c739d2a509af119abf9c29b89f2a415e7cfae5",
+    "sionna_rt/scenes/etoile/meshes/element_025-itu_marble.ply": "2220a382c52c2ee2dd34ffb2cac55c4a74eba137161948b1c5cbe92952f8c215",
+    "sionna_rt/scenes/etoile/meshes/element_025-itu_metal.ply": "675cb019aa3eef1dbe49e901819bd6a99a86ba98a8d01337646923d1251a7a25",
+    "sionna_rt/scenes/etoile/meshes/element_026-itu_marble.ply": "89cde471fb56d99984d16ff648830c0bb596949bef3963aa608a8eef26a3b13b",
+    "sionna_rt/scenes/etoile/meshes/element_026-itu_metal.ply": "eb067ff3f3da37986d65bbee2c0cae99ed36fd875dd0b63fe763ffae7feb5a5b",
+    "sionna_rt/scenes/etoile/meshes/element_027-itu_marble.ply": "8d78e7c636bd6f84b13e7597547c113b479c7c94088396ed23414c64dde98189",
+    "sionna_rt/scenes/etoile/meshes/element_027-itu_metal.ply": "4e51e860a7b764b11749994390ea867fc4e1ca0fdec78640d7f972779799e898",
+    "sionna_rt/scenes/etoile/meshes/element_028-itu_marble.ply": "d38b3bc6bf08f70a17cf7c9c778976384546279ebe349e3791918e0682fe2db4",
+    "sionna_rt/scenes/etoile/meshes/element_028-itu_metal.ply": "ade5a4822515399144131b097810a52b88b9bc54765285ea4a6b49de0a9f9824",
+    "sionna_rt/scenes/etoile/meshes/element_029-itu_marble.ply": "22283faac0875d5cce2e1cce118b2bc5e97d022c1cf10f2d590fef399cf909b6",
+    "sionna_rt/scenes/etoile/meshes/element_029-itu_metal.ply": "1ebf1c5756c859998b307ce46659c0fa50622ef72493f235b13764932d62c708",
+    "sionna_rt/scenes/etoile/meshes/element_030-itu_marble.ply": "96fadef670d63ea4d2991f1e3f715ffe1893f20f8401950a18c3bab7e145bb5f",
+    "sionna_rt/scenes/etoile/meshes/element_030-itu_metal.ply": "f803d30d13443327f456f23b3c8a6c16651ea844a7cebe99f6e3bb06e4f43623",
+    "sionna_rt/scenes/etoile/meshes/element_031-itu_marble.ply": "5e9386ac89c2298b19430e31016415dec97f6eb42167b8a6b112957ae0f7c637",
+    "sionna_rt/scenes/etoile/meshes/element_031-itu_metal.ply": "fea427637b0200351697d6e4de637946dafd9be0d6f0d6525d5cba929ea0f286",
+    "sionna_rt/scenes/etoile/meshes/element_032-itu_marble.ply": "cc3e6989474dc3c330826453260fea307ff0b9d58e3295ace80bf7c958b0adfd",
+    "sionna_rt/scenes/etoile/meshes/element_032-itu_metal.ply": "022489dfb6cb33e339501fd357a6e115219c82f6e25f0ff5fdac50c2bf66d4be",
+    "sionna_rt/scenes/etoile/meshes/element_033-itu_marble.ply": "e210085c7729dc8003b4a30cb48898f9f9e15c48db4f909ed08bdda84ba764dd",
+    "sionna_rt/scenes/etoile/meshes/element_033-itu_metal.ply": "a07e76bef281a8cdfad388fff4b647d6faf88dffc0799d1e56cdd68287ae6d8a",
+    "sionna_rt/scenes/etoile/meshes/element_034-itu_marble.ply": "20c9d3c9bda58b50b6d837d28b99031f55b0023c5a0e1ee7316b4a45b7145b4c",
+    "sionna_rt/scenes/etoile/meshes/element_034-itu_metal.ply": "9e2c7f75f31f9113c8341f315f41a7aabd668f01a091e6777237ad43669b34a8",
+    "sionna_rt/scenes/etoile/meshes/element_035-itu_marble.ply": "410ef1a1dfe23675e5cb7baaaa6a274fd90d9dc9c5ecebf0876f1cbde81f19f4",
+    "sionna_rt/scenes/etoile/meshes/element_035-itu_metal.ply": "7244aa50e7d9bc40b2a790359dbf24a370351015352438e9f87b7e795a0e8b44",
+    "sionna_rt/scenes/etoile/meshes/element_036-itu_concrete.ply": "77c50aff651970eafd99379f6ffd7e6928e3de32cceb0b03228fd714a7ad12cc",
+    "sionna_rt/scenes/etoile/meshes/element_036-itu_marble.ply": "7d6f07ff1f43755a6f22a5c82b88971ca6cdb8d36cb2e1d324832b733b169bd9",
+    "sionna_rt/scenes/etoile/meshes/element_036-itu_metal.ply": "8f263fe31fa3a117ba26a9dc396779fc00e149b320358af85e7da5aff288d6af",
+    "sionna_rt/scenes/etoile/meshes/element_037-itu_marble.ply": "d0e0e09f5f0aa02a2cfad049eee5ed53df00b7c1fd0b721b72d8941036c6c689",
+    "sionna_rt/scenes/etoile/meshes/element_037-itu_metal.ply": "cf3a3b3967b7de5f6f2fbd5d258e8043f398a32a27722fa42bcffd67d4ff52fa",
+    "sionna_rt/scenes/etoile/meshes/element_038-itu_marble.ply": "d4d6392a3cbd61f489040de1d1368e10c4cd16ca23c639da5037fefb9565a0c1",
+    "sionna_rt/scenes/etoile/meshes/element_038-itu_metal.ply": "f889db5fa357b7a6ea72abb5595fa8e4891331fbaffc6e22c8a32dfa454b5684",
+    "sionna_rt/scenes/etoile/meshes/element_039-itu_marble.ply": "19fe37ea1be954011cb208bf03acdb9f744a87a93f029d33f74e7d378fd0808d",
+    "sionna_rt/scenes/etoile/meshes/element_039-itu_metal.ply": "6d29f4c5ef53ec0b9ab1cef2b8de7ce79a694ee34193d291a486e05fa88786ae",
+    "sionna_rt/scenes/etoile/meshes/element_040-itu_marble.ply": "42edf77a189ff92176eba7fecd1a91481a64a05c9e24e10e069d3763af0b17e6",
+    "sionna_rt/scenes/etoile/meshes/element_040-itu_metal.ply": "89a5e0bece4de0e59ad256227da5139871d9341ca7c7d706ba12df66b3a73a96",
+    "sionna_rt/scenes/etoile/meshes/element_041-itu_marble.ply": "353ae7fd3b6b7c43bc1a1b0d5a168d12af0d50f8b5dd29906c8eb294ca876216",
+    "sionna_rt/scenes/etoile/meshes/element_041-itu_metal.ply": "2ed01431dfd4006f101c17da76c68b0916d1c040862268b1feb98099aa9731e1",
+    "sionna_rt/scenes/etoile/meshes/element_042-itu_marble.ply": "56feefc020254c2139579a7504ecddc58d3dfc08086eed1d831e4c039230c1fb",
+    "sionna_rt/scenes/etoile/meshes/element_042-itu_metal.ply": "81bfdc6107e83af4e03f8bc52c046e8e382093b525c6b7403c1f4db706c7c32b",
+    "sionna_rt/scenes/etoile/meshes/element_043-itu_marble.ply": "36b2971e7c20d83d88b24aeb1b1b9766a139f5518b1d200b9ec0a5a27f94dab8",
+    "sionna_rt/scenes/etoile/meshes/element_043-itu_metal.ply": "7fb1dbc4a3e0cc91fde16979e46f9d40ddcb044dfac12e64badb966b40e5fd38",
+    "sionna_rt/scenes/etoile/meshes/element_044-itu_marble.ply": "9ba486f3d202d023fe1e54871273f23a431916e09144072a2ac5517bf1ab65c2",
+    "sionna_rt/scenes/etoile/meshes/element_044-itu_metal.ply": "b76637570d63d86230529c53919fe35098d1571aceb8f4af7aac0df1fa4ca2ec",
+    "sionna_rt/scenes/etoile/meshes/element_045-itu_marble.ply": "a385e546c59ab8f513eed47727c669f872992facf8eb487720f6c8649fb55883",
+    "sionna_rt/scenes/etoile/meshes/element_045-itu_metal.ply": "860968a57ba08dd9bc260dafec0b711cff5ae97a35ef1df9baa86603197557d8",
+    "sionna_rt/scenes/etoile/meshes/element_046-itu_marble.ply": "b5eb9c8b117d6e154e46169f9561f2075d359e1c0fd18af4beceec63066af495",
+    "sionna_rt/scenes/etoile/meshes/element_046-itu_metal.ply": "847a468771ab324d770bb7d824273742316902312dd59219b1f5cdb62b0b025e",
+    "sionna_rt/scenes/etoile/meshes/element_047-itu_marble.ply": "e98f4b59e94912d4d115159c8a171bdac33c80cb1e5cbd3d68fef678f69a2dea",
+    "sionna_rt/scenes/etoile/meshes/element_047-itu_metal.ply": "9c83fcf4af328bd95daa7dc8efafff255174362abb06cb4b2ce10b639e0923ea",
+    "sionna_rt/scenes/etoile/meshes/element_048-itu_marble.ply": "39e240415f730d6b3c2098c90e39e8086034936a8da53bab8c3433eec0020412",
+    "sionna_rt/scenes/etoile/meshes/element_048-itu_metal.ply": "11c813c2a2a51d2d66d4b47e68c82a1227eb4a19c9a054d08f54ae82207ae958",
+    "sionna_rt/scenes/etoile/meshes/element_049-itu_marble.ply": "b2238da393c2c3c2b33aa21ec3a7d03d13adbd35d9fb88358daf7d77f1d5678c",
+    "sionna_rt/scenes/etoile/meshes/element_049-itu_metal.ply": "c5f996d928d5119536f13de19996833dd8bafe8ff6f292f7d94a6ef949a17ea7",
+    "sionna_rt/scenes/etoile/meshes/element_050-itu_marble.ply": "5ef40316e383950ed1a94f775384d8edd7d75a8a7113b1b702369ffe5cdc143d",
+    "sionna_rt/scenes/etoile/meshes/element_050-itu_metal.ply": "eee62b9a9e1ebf14228060a6711b9f7ddf7ce141adeedd37a7bac48cce6d3f1c",
+    "sionna_rt/scenes/etoile/meshes/element_051-itu_marble.ply": "e919e933f0ce8279909e78831ef8da61d261f15c1f31baaf889bb24a62d0b5c7",
+    "sionna_rt/scenes/etoile/meshes/element_051-itu_metal.ply": "0e44ecf3422a03748cf75df6675e137241ab040167458acb5ffb65d5bff5fab7",
+    "sionna_rt/scenes/etoile/meshes/element_052-itu_marble.ply": "563ecdf89b2368711f4af238db6b4912e4dcf216c177b50c6fb4053a4eb88666",
+    "sionna_rt/scenes/etoile/meshes/element_052-itu_metal.ply": "507c25f531354d3a7e1a36bee7746f75c853606ac0031b6530879f65f4b88baa",
+    "sionna_rt/scenes/etoile/meshes/element_053-itu_marble.ply": "cbe7cfa8a4830f3d98122f2381410046296308c40fb110bb0c2e4601f7970d66",
+    "sionna_rt/scenes/etoile/meshes/element_053-itu_metal.ply": "a5f2dc584e9f08de3c8f56f03be093a2458d9be4e053bfdaa93f55f5baad188b",
+    "sionna_rt/scenes/etoile/meshes/element_054-itu_marble.ply": "ee2c57ff4340b0a44d3d388a67ea570bd283c177332878e94b3e8130e0b1caf8",
+    "sionna_rt/scenes/etoile/meshes/element_054-itu_metal.ply": "34f19a53966d37c408617a3a98bde8f0c6a1b718752dc509412e1553c7d98aee",
+    "sionna_rt/scenes/etoile/meshes/element_055-itu_marble.ply": "c3459c09d75cb280c6227d946d2484b2ca6c733cd8aa8acb7f96662c9d2e1b94",
+    "sionna_rt/scenes/etoile/meshes/element_055-itu_metal.ply": "7834bf2f38d9fd8e92314fee4daaf91fba310ec9c626d5e7e6fc2b5485e47ef9",
+    "sionna_rt/scenes/etoile/meshes/element_056-itu_marble.ply": "d8a5252c2c28846f790fbcd16b22ce498f470f6cb2e1d943c162c3b6a94d5391",
+    "sionna_rt/scenes/etoile/meshes/element_056-itu_metal.ply": "090acd5d63811afbd2d373bf518ecfa1ef6f2b6759c2a571eea1d531cb2f9903",
+    "sionna_rt/scenes/etoile/meshes/element_057-itu_marble.ply": "56bb6f33cfe05eff74b99a6123cd6d7490c5cd43cfc958ecd14e4e18851f3b65",
+    "sionna_rt/scenes/etoile/meshes/element_057-itu_metal.ply": "b606992c40c64864f362bc8d4a2bc999e4921153827aada1c5d1617813ef66d7",
+    "sionna_rt/scenes/etoile/meshes/element_058-itu_marble.ply": "4a89c29fbffd5864405f150a7d75135ef0cd23414f32589425b541a9a8fe0cd4",
+    "sionna_rt/scenes/etoile/meshes/element_058-itu_metal.ply": "dda2dcee6247ddc971daa88bc24ff8150b1dbac15a31684cca18dfc053a7a45a",
+    "sionna_rt/scenes/etoile/meshes/element_059-itu_marble.ply": "f2ef4424b03a4e9a6b74133cb75ea8325332037759a5486e7bab854153e69e1a",
+    "sionna_rt/scenes/etoile/meshes/element_059-itu_metal.ply": "10f3c7091f2b5e1548d1645e899e341da919dd05d34ea9e16488bcb04138c750",
+    "sionna_rt/scenes/etoile/meshes/element_060-itu_marble.ply": "29ccb6ea891b69d0d172c3b472e414a6a733fad7b1dac059ea41cf99e27ba1b3",
+    "sionna_rt/scenes/etoile/meshes/element_060-itu_metal.ply": "92073ce51b9a68a93c5e5e5aea39588716daafb7db43b1d52918ab72474a8b36",
+    "sionna_rt/scenes/etoile/meshes/element_061-itu_marble.ply": "bf129150b2c5ccebce92dba7f7f68316263b6c1062dc0bfc19f7b12dc836b376",
+    "sionna_rt/scenes/etoile/meshes/element_061-itu_metal.ply": "a47ca86eb8fb145038435cc804a7dfa6385a6de1affd8ff6fb7037b4711ae446",
+    "sionna_rt/scenes/etoile/meshes/element_062-itu_marble.ply": "aed5acdbd370155c0d694d3c2815af32a843272a6bb6ecd0aa1fc8b386732160",
+    "sionna_rt/scenes/etoile/meshes/element_062-itu_metal.ply": "b9f71d48e54a0f5497ff9f7abeb20ac12ef3db27d49f701f5878228967d41c1a",
+    "sionna_rt/scenes/etoile/meshes/element_063-itu_marble.ply": "6fba8e4cbfa02ebac8513dff1de3859fec084ed44cd5d2f7efde1610f3afeaa7",
+    "sionna_rt/scenes/etoile/meshes/element_063-itu_metal.ply": "ce1d31de371f7242635db8044083e36cfd7f33fc4818985cdeac39ed4bb2cfe7",
+    "sionna_rt/scenes/etoile/meshes/element_064-itu_marble.ply": "073cbb7679276eae80a6d6c07ae1122fc899a99a0c38b43ed4793f0015911cbc",
+    "sionna_rt/scenes/etoile/meshes/element_064-itu_metal.ply": "5aaa38d146369f99bfd45a99fda7ededb17234dd982d3f0330c8d3d10575fc4f",
+    "sionna_rt/scenes/etoile/meshes/element_065-itu_marble.ply": "cf30a79ff91fb1d706de261283b82b1c9b00e04fade526db0ec851ad4cfe92fa",
+    "sionna_rt/scenes/etoile/meshes/element_065-itu_metal.ply": "4605ce29be726af52fa1ab3bbc6d46c9e3a435c09a61a754bb73ba4c6204ab4c",
+    "sionna_rt/scenes/etoile/meshes/element_066-itu_marble.ply": "acbb7f46992db50034a03ff68ef498c39f728a0d44d2a0b65f306929b49d358a",
+    "sionna_rt/scenes/etoile/meshes/element_066-itu_metal.ply": "835578426bd383a8a6521ac07c60d9c9b477ffef0e8c41fe7e734b845a356e45",
+    "sionna_rt/scenes/etoile/meshes/element_067-itu_marble.ply": "4b76031ca95c8ae0ae2bd29f87bf4fe03a380c168bf06fb17daa1b51a7586e47",
+    "sionna_rt/scenes/etoile/meshes/element_067-itu_metal.ply": "7706a7313d6b542e5c45def883062e33824bdd717f00b16db8a0920f919b0fb8",
+    "sionna_rt/scenes/etoile/meshes/element_068-itu_marble.ply": "931b0aa34beca926430733f53b167c7d85f6ef4ce3435e739a71049268998bee",
+    "sionna_rt/scenes/etoile/meshes/element_068-itu_metal.ply": "04e7e1bb7f42f047494d27053d739eb640ac922958b0d2de8def2cd453c04799",
+    "sionna_rt/scenes/etoile/meshes/element_069-itu_marble.ply": "32b77569d82ea9f4f99603f4a702d0dce182e109546276596c1eba0a49cb6236",
+    "sionna_rt/scenes/etoile/meshes/element_069-itu_metal.ply": "d6781cbc500715d728ff6cb94463e7cb646446eb539565e204b904f99720d37d",
+    "sionna_rt/scenes/etoile/meshes/element_070-itu_marble.ply": "e365b52b062ff1adfec5433a20e385eeb6f60f20735733fbcac38ffae752342b",
+    "sionna_rt/scenes/etoile/meshes/element_070-itu_metal.ply": "27a1e3403debc7f48b29e1783563895a874d8c467f8998c18ef25a40688cb0b7",
+    "sionna_rt/scenes/etoile/meshes/element_071-itu_marble.ply": "7b15ae0e0a8402b3f00eee035da827366993ca655c604557c12a8f90ff8a77d6",
+    "sionna_rt/scenes/etoile/meshes/element_071-itu_metal.ply": "5e0d64bc8eccc659dcdb1ded2fde173f62b64896b78f6cdd19af28624615a66a",
+    "sionna_rt/scenes/etoile/meshes/element_072-itu_marble.ply": "1157130197c0974c69d12e696d93ba88acef25299fb9ebe4da82806f3089b936",
+    "sionna_rt/scenes/etoile/meshes/element_072-itu_metal.ply": "90d339724d0eac25fec6ad359f3eb4b99ec002f95849449cac87b5740a2eec3f",
+    "sionna_rt/scenes/etoile/meshes/element_073-itu_marble.ply": "663da72097f22abe5f201fe2d68d21880304e52023eb628618510120bd19f7d2",
+    "sionna_rt/scenes/etoile/meshes/element_073-itu_metal.ply": "cd58d2ecf4b7205219a42e33642d582c40ac7daacb81e615a1049fb468f432d0",
+    "sionna_rt/scenes/etoile/meshes/element_074-itu_marble.ply": "87ec40265e0259eb5efbcc3a33638e972028db682fd0f6cd10b9be314a8fb18e",
+    "sionna_rt/scenes/etoile/meshes/element_074-itu_metal.ply": "2680c7ecf92c340d5a89f30566f92d406ead2e02d1a1600584dd5e0aedfcfb2e",
+    "sionna_rt/scenes/etoile/meshes/element_075-itu_marble.ply": "50a6131c69c4db90521da89f8140d0d6105832b05d9fe6c1d6df878cb81c1aa7",
+    "sionna_rt/scenes/etoile/meshes/element_075-itu_metal.ply": "ac6737369f98562fe3f98ba2b9b1976673bc2662aa48f73c57dd3c2c9d6c74dd",
+    "sionna_rt/scenes/etoile/meshes/element_076-itu_marble.ply": "72e87301e2cf1a915186bba203f1ee94ec9063723cc9da0cceacfb9790ca036f",
+    "sionna_rt/scenes/etoile/meshes/element_076-itu_metal.ply": "81a1075d5487cfcdf449928d92b2a31eda84373eabb1b9e9f42a22a327541238",
+    "sionna_rt/scenes/etoile/meshes/element_077-itu_marble.ply": "593de62fd5561e26f215595e0257dc7a9fe64f79742a8219a28c8b11c04881cd",
+    "sionna_rt/scenes/etoile/meshes/element_077-itu_metal.ply": "3ed36942e7240965758a65a85e00182cb2c447583446e02d2dc911604f0faa8b",
+    "sionna_rt/scenes/etoile/meshes/element_078-itu_marble.ply": "611c7ff31c53c9f0d3a5ffec2e7418339f67a8c048416c7272fe8c895ca385b0",
+    "sionna_rt/scenes/etoile/meshes/element_078-itu_metal.ply": "8f8fca06dd9631712f17ff1e35d9845b16a4e78d2f6fa3a255cef38834363afd",
+    "sionna_rt/scenes/etoile/meshes/element_079-itu_marble.ply": "4f6fce45586307df0fa3a11e94b6eabd0e8e92dcb1cd77df79854bd0a32b8989",
+    "sionna_rt/scenes/etoile/meshes/element_079-itu_metal.ply": "9cb1b3efc47fa8979f6b1e32f75a229079f888ebbf6f9bb343e6d793da8de3ca",
+    "sionna_rt/scenes/etoile/meshes/element_080-itu_marble.ply": "43b306680dd1b35165d97241d924166620f24ca79972deadd50b7a384169c04a",
+    "sionna_rt/scenes/etoile/meshes/element_080-itu_metal.ply": "2ecaab25a8f19176a362def2fdd790f7d5a2a7312a2ccc1957d618900f3d661d",
+    "sionna_rt/scenes/etoile/meshes/element_081-itu_concrete.ply": "7fa6e47bce74a84ace0bbe1f025f8301178220a42e538554ed2a223da86fed77",
+    "sionna_rt/scenes/etoile/meshes/element_081-itu_marble.ply": "a09da014748f8562b66e49fd616062b57fd95c66e789edb44c28f5652ea8962b",
+    "sionna_rt/scenes/etoile/meshes/element_081-itu_metal.ply": "b40b425e4da2a20ec3ffb7b39c101903feddc0185c0e4039773055ddcaa9dc43",
+    "sionna_rt/scenes/etoile/meshes/element_082-itu_marble.ply": "b13034d927fc6c830a937e83dd5eb0041a0d7d85d89cda1308f452bac6c86666",
+    "sionna_rt/scenes/etoile/meshes/element_082-itu_metal.ply": "85312fa20971639fd7fa4646ff594b9cc2a20c1f864069017e420457613548ec",
+    "sionna_rt/scenes/etoile/meshes/element_083-itu_marble.ply": "688c469016359c888e83f26e8a5d7bcd1248a93079506eaecf5d4aabbbcbfcc8",
+    "sionna_rt/scenes/etoile/meshes/element_083-itu_metal.ply": "9ef04c5b714ed0b9348249abf9e1922e3fcbeb85a3cf9b967266bfe0ec59c670",
+    "sionna_rt/scenes/etoile/meshes/element_084-itu_marble.ply": "62d42bc2b4e09974c0c8ce920ce0b60250c8916d72764f50a98484bab854bc48",
+    "sionna_rt/scenes/etoile/meshes/element_084-itu_metal.ply": "4eea158fe3d039ab6330415027a803ec275d881827ce42584c6e17c0bf4b9549",
+    "sionna_rt/scenes/etoile/meshes/element_085-itu_marble.ply": "a020fe5fea553c15fa7a1ad39bfe780bc5b328cecb072ecce83d044ac2250315",
+    "sionna_rt/scenes/etoile/meshes/element_085-itu_metal.ply": "e6f9c019292ae565f9020ef9d6b52f54c0cb82f15262677dd148c45ba98118c9",
+    "sionna_rt/scenes/etoile/meshes/element_086-itu_marble.ply": "f0a28dcf1864b2a9da78fdd69736e50cbf1eb95694db9aac6f9ab693fa55a88d",
+    "sionna_rt/scenes/etoile/meshes/element_086-itu_metal.ply": "ada694a4a8539b9523d560554c180a7b020a80606639fee0f45b0e3fb8fbcf87",
+    "sionna_rt/scenes/etoile/meshes/element_087-itu_marble.ply": "89873b5cf84fda3dc04fdae070821d07aefd09903f599f124e479e4328e2bbef",
+    "sionna_rt/scenes/etoile/meshes/element_087-itu_metal.ply": "dfe87047599a1b6d4ec2638b1506b2d9a4a8049a7866f8c632528aa1eeee78a6",
+    "sionna_rt/scenes/etoile/meshes/element_088-itu_marble.ply": "eeb259c5b86ac074a9f7f0a3cdc917525709d1f17a445170e43e41c34df55653",
+    "sionna_rt/scenes/etoile/meshes/element_088-itu_metal.ply": "36e53b447e6b46e3fee9eaaf00caf379d98c42a0ff2bbe733e9358d594052aae",
+    "sionna_rt/scenes/etoile/meshes/element_089-itu_marble.ply": "8998ed00d8f38c8d05cc7a85870bd77bef30034e7f9d3a52d22a2da263115d08",
+    "sionna_rt/scenes/etoile/meshes/element_089-itu_metal.ply": "57ba903b666fbb35d5df1fb0bc52bea433004d43f278ad79fd428dacddfc7339",
+    "sionna_rt/scenes/etoile/meshes/element_090-itu_marble.ply": "949a0849faa8cee9149e3fc5632d2f409619d6f8e03074cf427ff85d5a967a5e",
+    "sionna_rt/scenes/etoile/meshes/element_090-itu_metal.ply": "4c45d25cebaa2b34a884764c193af1b19f6bd30350605706488e937d2dd50f31",
+    "sionna_rt/scenes/etoile/meshes/element_091-itu_marble.ply": "0cf03eb3d75499ddeb19e53abef9bbe252a6dde25764d4acf0cb67732da4e4db",
+    "sionna_rt/scenes/etoile/meshes/element_091-itu_metal.ply": "0c3224e7c612ada7f419b80dbea6b430a6a3a0d71e722a3e9962665e39cb2f78",
+    "sionna_rt/scenes/etoile/meshes/element_092-itu_marble.ply": "885ce5f63b9141be35a04b04af029dc7f641aa2d66e790003aaa47ed4a83ca92",
+    "sionna_rt/scenes/etoile/meshes/element_092-itu_metal.ply": "540fabb8b697b13b7f3aa406d99682b9ac5b3f0aff25b93b6dc6911c9f4ae4b3",
+    "sionna_rt/scenes/etoile/meshes/element_093-itu_marble.ply": "033be41b1e3bd55b5bd6bc9f7b71870ef6d32307d8bf7ff2b73f2ee3fe99c070",
+    "sionna_rt/scenes/etoile/meshes/element_093-itu_metal.ply": "345043084a0a2a283d8b9c603de7facdbff908be8b527de86935c678bd74e453",
+    "sionna_rt/scenes/etoile/meshes/element_094-itu_marble.ply": "9960e58e862430edb42f242f00167d6329d908932be926be1600939641c186dd",
+    "sionna_rt/scenes/etoile/meshes/element_094-itu_metal.ply": "8ec284f8e7ce7d936670144a627179176baf59004ed3a6959791a8d61aa8f6f6",
+    "sionna_rt/scenes/etoile/meshes/element_095-itu_marble.ply": "f4d784ed26ba8356449971165d6b23c2d812209c200ee12d80ed98a1d709e96d",
+    "sionna_rt/scenes/etoile/meshes/element_095-itu_metal.ply": "78dbe71ea2d932c24a86f8e9ce9bc70ba80f508dd053a5bb1ce3b67e0f58c6d0",
+    "sionna_rt/scenes/etoile/meshes/element_096-itu_marble.ply": "e0e2fc067a721517488ebb117ecb8ec6ddaedb1b1aa76d6b498eee31ba5eba10",
+    "sionna_rt/scenes/etoile/meshes/element_096-itu_metal.ply": "7865af2da6292253a5dac7dd96eae689dfe97b521e0a4f72f922e0984a635152",
+    "sionna_rt/scenes/etoile/meshes/element_097-itu_marble.ply": "ccbe7deb39412b4e40215d74b78fe07c6bb8277c16a92dc4878d7c0632f91bdb",
+    "sionna_rt/scenes/etoile/meshes/element_097-itu_metal.ply": "a4cfa80812920a57989ab848f7b6cfd870f6b985eeb94737942043b5e41be326",
+    "sionna_rt/scenes/etoile/meshes/element_098-itu_marble.ply": "2dfa029eec2ea8b9c66fed2fdffdbaa152b48cc676277cfaacf31dfd795f5ec6",
+    "sionna_rt/scenes/etoile/meshes/element_098-itu_metal.ply": "6f2dfabeecdc9fa718d372a879fa9f758b507d74b3abef17fa5b95823b050a6a",
+    "sionna_rt/scenes/etoile/meshes/element_099-itu_marble.ply": "80355cbafa02143a98376cf416a40d5dbe9a8424d42f4748fdca2ae154abe7a2",
+    "sionna_rt/scenes/etoile/meshes/element_099-itu_metal.ply": "2b38228652c3755cfe2902d40d545f63efe22ebba9b2a9a7dea88ece1a408767",
+    "sionna_rt/scenes/etoile/meshes/element_100-itu_marble.ply": "09253401d2ef13e5278878097c308d10f81ae6bd2507aadaa21642c24596488e",
+    "sionna_rt/scenes/etoile/meshes/element_100-itu_metal.ply": "ccae1ad86a2173338d3541c7eb2f9c3a1e8f8c5fbd07a7deb1b6de84852d5e81",
+    "sionna_rt/scenes/etoile/meshes/element_101-itu_marble.ply": "3952a37d8a825a534b2462571ff9a2f607318bfdcae6af4d2fc13fd5c126c3e3",
+    "sionna_rt/scenes/etoile/meshes/element_101-itu_metal.ply": "409358338dfd5d1b94f595563a6aaa9244a3475527618ddc8ac2bdc5b3d2444e",
+    "sionna_rt/scenes/etoile/meshes/element_102-itu_marble.ply": "86f738e4e39734eb535cb848334066b3588cff3a0c8adfb82fb8b01d4a25e279",
+    "sionna_rt/scenes/etoile/meshes/element_102-itu_metal.ply": "049ca6bf63f2e10f1c25af0b78d8327c4b5fe552d68cf396fa76e071470881d2",
+    "sionna_rt/scenes/etoile/meshes/element_103-itu_marble.ply": "fb60f5382c8084f4eb92056b5cf524e4506af7b967799be7ba015c30fe058264",
+    "sionna_rt/scenes/etoile/meshes/element_103-itu_metal.ply": "df42b8c06d99c700987b89876169bc84b11e38099c98455e38c10c41f56a6628",
+    "sionna_rt/scenes/etoile/meshes/element_104-itu_marble.ply": "97a4a83d2de474813c098a4208e025f9e39fbe89ffdde6708a291a2a1b66553f",
+    "sionna_rt/scenes/etoile/meshes/element_104-itu_metal.ply": "e3e201bc1fad85a6eea6625a4d8d1f0914420ed6a6674c8d0d065f5861bec854",
+    "sionna_rt/scenes/etoile/meshes/element_105-itu_marble.ply": "8543413d5b4183b8c4244c7f58954113bc04675a743c181ff5570657d3987216",
+    "sionna_rt/scenes/etoile/meshes/element_105-itu_metal.ply": "608e966ea8d722750c971492628fe3dd658bda11ab6639219a762f3c65d10e0b",
+    "sionna_rt/scenes/etoile/meshes/element_106-itu_marble.ply": "b5e678c2ee130c57c17925d0fd499df650d7dbab468faaf9d845348ced62205b",
+    "sionna_rt/scenes/etoile/meshes/element_106-itu_metal.ply": "499f0ad2d2a8c199018c775ab7785944a5eb440424cde486071bee3eec0f6ab2",
+    "sionna_rt/scenes/etoile/meshes/element_107-itu_marble.ply": "fa78dabceb3673cf7c254cdb3e70b4899fc91c1daf6bfc0763d5c5facd682185",
+    "sionna_rt/scenes/etoile/meshes/element_107-itu_metal.ply": "a8e3551f44ba09ee059d8611e6e1211ccfe22bf0f66a827cd3bb272266aceea6",
+    "sionna_rt/scenes/etoile/meshes/element_108-itu_marble.ply": "85f5bd31d812e25c7529d2ec34bf0426340bac1413c7e6da9e9503de40fa5526",
+    "sionna_rt/scenes/etoile/meshes/element_108-itu_metal.ply": "c557e52087a2737382a0c5da448d63ab7fefed12d2b967e070f126a8511265a9",
+    "sionna_rt/scenes/etoile/meshes/element_109-itu_marble.ply": "44196d8619067716cd01a53bf23c5f4a0a0d65c924f01a84762fc157561e0a57",
+    "sionna_rt/scenes/etoile/meshes/element_109-itu_metal.ply": "fb97ff83bc7ef34670b1044e358f7bc9564ab459b1e509f469741d030f48bb9c",
+    "sionna_rt/scenes/etoile/meshes/element_110-itu_marble.ply": "b048ffd33e179e0916884ae5a49a8d7b867d9af9441367bed75ec8f6173ee37d",
+    "sionna_rt/scenes/etoile/meshes/element_110-itu_metal.ply": "da327a982cce8e55ab955a8005471e684a177bb2a30fb6e707810d8807149b20",
+    "sionna_rt/scenes/etoile/meshes/element_111-itu_marble.ply": "0d6e356743f0a91e98da30b0217bba02c81ef27427ec776ee5148816f7b0a194",
+    "sionna_rt/scenes/etoile/meshes/element_111-itu_metal.ply": "a37633730fd81674ce1ede0eb3b54584cee2ee4cddc5eeb27133d4ee744b74b0",
+    "sionna_rt/scenes/etoile/meshes/element_112-itu_marble.ply": "c0a686a825b375552cc52845485017afe3e153951215d2875e81ea7c043ddbd2",
+    "sionna_rt/scenes/etoile/meshes/element_112-itu_metal.ply": "0ad96d6c0cebb85f2ab044aee8639e528c3341ad707e21b9eb539fbc85734924",
+    "sionna_rt/scenes/etoile/meshes/element_113-itu_marble.ply": "1d0847dd0b3217f49426ed46fea086ccd1efcb1e52040dce5812ced9a2911b50",
+    "sionna_rt/scenes/etoile/meshes/element_113-itu_metal.ply": "83660f3281b06670f70a5c1aa32d353cdbc6069561b6c7e6c70a6afd7c1fbdac",
+    "sionna_rt/scenes/etoile/meshes/element_114-itu_marble.ply": "9d9886dc5159efe7e0398977417ef08d2fe808f0c852470300911774a2ce69a4",
+    "sionna_rt/scenes/etoile/meshes/element_114-itu_metal.ply": "d9eb7297e156eb3f8bc476c1c61865a055daed25d5b336c4f40f4d4d2fe6291f",
+    "sionna_rt/scenes/etoile/meshes/element_115-itu_marble.ply": "beba0e02d06cd3dcad985507558940f19f97f4fa359ce2e16a1968369117d7fe",
+    "sionna_rt/scenes/etoile/meshes/element_115-itu_metal.ply": "c75c91e80051067a15f09a875d5be10f1d1d9f5e3013745f52e2174e7dafc513",
+    "sionna_rt/scenes/etoile/meshes/element_116-itu_marble.ply": "62f0e22152fe5299166fccc9eb13e994171238d65651cdc3766cc12320fdfee5",
+    "sionna_rt/scenes/etoile/meshes/element_116-itu_metal.ply": "a29a4382aa85dcfa3c7dfc7da79150e3b42f21704ada392f57f858fcbb2c95c5",
+    "sionna_rt/scenes/etoile/meshes/element_117-itu_marble.ply": "b22a963daa2211de41b962a51a818166cab0daec7d9e6c2d406ccefd37f34212",
+    "sionna_rt/scenes/etoile/meshes/element_117-itu_metal.ply": "658305c79deb064132f3f35d61441fc96f2e1a958bccf6af0ec926e54c285cb6",
+    "sionna_rt/scenes/etoile/meshes/element_118-itu_marble.ply": "4129928ed312d1a7c35fabbdab04b64963f3cc814a4bc92cb70bce572f5d26d9",
+    "sionna_rt/scenes/etoile/meshes/element_118-itu_metal.ply": "d2bf94cbd9134ed2a9414e177a4cc7e9e556d89963c48889a34fc611109bb181",
+    "sionna_rt/scenes/etoile/meshes/element_119-itu_marble.ply": "7b06012772b02cbaac249bb7b98df97a82b833599b8bc94036e7b84de06df4e8",
+    "sionna_rt/scenes/etoile/meshes/element_119-itu_metal.ply": "cd1867fa641ffa387e2f151c97fa2bc7621b1121608e4e8c85fe44488a54a06e",
+    "sionna_rt/scenes/etoile/meshes/element_120-itu_marble.ply": "89c21afbaf7c2e13d3a2dd7a8bce4795fb3fdeadb6f29ae78a3f3d948a27eb8c",
+    "sionna_rt/scenes/etoile/meshes/element_120-itu_metal.ply": "85dc50518bfaf3d2708b26d03562fc5bafde31c7ba98ab71b0a205fc2dd49b94",
+    "sionna_rt/scenes/etoile/meshes/element_121-itu_marble.ply": "09779dfa8c6f3bdfe90f8e437c43f591e519f60a4a29ea41d84670a36f2fd0fb",
+    "sionna_rt/scenes/etoile/meshes/element_121-itu_metal.ply": "8b87333ac4b09dc613606543f95453d3561e0ec669355f04884e0b496a8d805f",
+    "sionna_rt/scenes/etoile/meshes/element_122-itu_marble.ply": "ffe4050688be2d95566e77bcf64499addcab1c50e80b3a695a61b9f9f59a0d0a",
+    "sionna_rt/scenes/etoile/meshes/element_122-itu_metal.ply": "2c38e0d6894c83f9380577966b27017287e86e775c8f2eab78751be2abf280ad",
+    "sionna_rt/scenes/etoile/meshes/element_123-itu_marble.ply": "1b9accf6fe4958ca5614d79ea828d48b15878af7fcc0815f91d7c8023b6f8c04",
+    "sionna_rt/scenes/etoile/meshes/element_123-itu_metal.ply": "c8274c01512cdf9d996ed09f0ad8bd8a36f091660065ef6aaebd0810f4768a81",
+    "sionna_rt/scenes/etoile/meshes/element_124-itu_marble.ply": "baf8616f811eab2fe38a6e5fd710dae6b4f45b42cd240413ee3bad686a86e992",
+    "sionna_rt/scenes/etoile/meshes/element_124-itu_metal.ply": "940fc042634947513880cc0b823edfbcc77891f879221fcbf1690ae7461e2668",
+    "sionna_rt/scenes/etoile/meshes/element_125-itu_marble.ply": "9e660eecfc13af5f508d4cf32ceb357a8b3d0a96e0c4d5cd9a556f6e1585e63b",
+    "sionna_rt/scenes/etoile/meshes/element_125-itu_metal.ply": "89f99ce3c8e979a0908510f2a23779dd274f68ab75c702aff58ca0553648bcac",
+    "sionna_rt/scenes/etoile/meshes/element_126-itu_marble.ply": "a9ecd603931071a6d6a2f7d4b26df0d41982835775284eefa6689b40565e8ba5",
+    "sionna_rt/scenes/etoile/meshes/element_126-itu_metal.ply": "7161907478c0e590f4ff943027b7344be5b826222fde06cae9760a33ca1dbc89",
+    "sionna_rt/scenes/etoile/meshes/element_128-itu_marble.ply": "286915e82114563bf1fa9e5370fd1d60f31c914c9eb686182765884df6720bff",
+    "sionna_rt/scenes/etoile/meshes/element_128-itu_metal.ply": "2c3043f60934d34ac32dd6f2d57b514e788f82ed6bc9b40cc5abe194946a0be5",
+    "sionna_rt/scenes/etoile/meshes/element_129-itu_marble.ply": "388936713f15f5848d6125c967b263970d436dd8791cec19b5d2e43d8f4f5f1c",
+    "sionna_rt/scenes/etoile/meshes/element_129-itu_metal.ply": "7caf4832153ffc1f6b82f0d5fa0ebbc284d8d3ed0f0a0eb14ae41c557335a824",
+    "sionna_rt/scenes/etoile/meshes/element_130-itu_marble.ply": "44cbc13f7a1c06b400132dc16a5353318861e0859b49f9bd32b8b03827d0726b",
+    "sionna_rt/scenes/etoile/meshes/element_130-itu_metal.ply": "3187834d294d43087050b331a165989972effd2944d69764f426abbb2a49276a",
+    "sionna_rt/scenes/etoile/meshes/element_131-itu_marble.ply": "1f0836f4b68c1d75aaaf05cc5047ce5c1e23c04196d6e4ba20cd976420a11ff9",
+    "sionna_rt/scenes/etoile/meshes/element_131-itu_metal.ply": "bfdd64d629940602a9cbe07977d9bb82f2303efb9a194b9a6f9546b41620e307",
+    "sionna_rt/scenes/etoile/meshes/element_132-itu_marble.ply": "c988e7fa0bbde71af44e6a9285bae347b920751ce4cf455876850a89aa26a6a4",
+    "sionna_rt/scenes/etoile/meshes/element_132-itu_metal.ply": "0f737d7b178b9e9b49960b814c9602fcb1450ec6d555e21fe3701ea42936ba91",
+    "sionna_rt/scenes/etoile/meshes/element_133-itu_marble.ply": "6aa49445b8ffdd12b75832176d01a8c4705952f0c566bac05dca1e5a36d1d906",
+    "sionna_rt/scenes/etoile/meshes/element_133-itu_metal.ply": "1af0312771ef9b843ebb2a1e2a08c261390520856d99f7814c0f36063c2c516f",
+    "sionna_rt/scenes/etoile/meshes/element_134-itu_marble.ply": "c193a68e0ad8db41d321d788a00c110b78890e90847b330e381dcf96bd58189d",
+    "sionna_rt/scenes/etoile/meshes/element_134-itu_metal.ply": "648201d815c153695ab24d4ca364bcc079a27b670da37e97fae9e8a4785a13e3",
+    "sionna_rt/scenes/etoile/meshes/element_135-itu_marble.ply": "3ce0c4eb2c859d1e1ea6b52189149510045c2f655ad31fdf9af1b4097eeb4e69",
+    "sionna_rt/scenes/etoile/meshes/element_135-itu_metal.ply": "4f8f8e0d66987cef8c7e7790a75c3ff94defd8837c25536c2a251cc0cb913f70",
+    "sionna_rt/scenes/etoile/meshes/element_136-itu_marble.ply": "13e3edc83dc44f660a83c8b28b500e70feced2a19f5dcabfac15206e6f83846e",
+    "sionna_rt/scenes/etoile/meshes/element_136-itu_metal.ply": "228a333914764ab17e417c687011ff33653181c09fdbea2671b3c57471b3c124",
+    "sionna_rt/scenes/etoile/meshes/element_137-itu_marble.ply": "c344c921008fabfd5d20b0cedc8b040a63c509d87f2f0da5cb6aa6f7151108cf",
+    "sionna_rt/scenes/etoile/meshes/element_137-itu_metal.ply": "b3cc583a8a4484d89dec2d7312a7ef502420fe617f177cf131be07cdf6ef8214",
+    "sionna_rt/scenes/etoile/meshes/element_138-itu_marble.ply": "33ed57985b56e159e9a4c7650634e3b631ddaeb7b24c9f0eaef47abea9452337",
+    "sionna_rt/scenes/etoile/meshes/element_138-itu_metal.ply": "35ae59a0bd146be5b8b1450749cc90328ae8e238e63f933b5cc2aa89118a3102",
+    "sionna_rt/scenes/etoile/meshes/element_139-itu_marble.ply": "6533b9038c7ddf647b3e66a344cbdc4b1f57655307f6e7121680fe9f10470ec7",
+    "sionna_rt/scenes/etoile/meshes/element_139-itu_metal.ply": "4a96703039a130f3e061b5efd98c91185aa48db3817c2e3b411c33919e9e675d",
+    "sionna_rt/scenes/etoile/meshes/element_140-itu_marble.ply": "13fe696afa765f410895510a49fedf1e9c28baba33dd720d28c711fb63a744aa",
+    "sionna_rt/scenes/etoile/meshes/element_140-itu_metal.ply": "429bd3e27b69777c73b0749c0ef421e86746833690ffdba5f6f382e6c60e0299",
+    "sionna_rt/scenes/etoile/meshes/element_141-itu_marble.ply": "47ebe3c8a559656551055c2013c78eac860c06aeb50280793f5217a5ec0c7615",
+    "sionna_rt/scenes/etoile/meshes/element_141-itu_metal.ply": "d8847d07671a65f20bb2d32c7c7a04409311550c638196682a2a7eb030b0c01b",
+    "sionna_rt/scenes/etoile/meshes/element_142-itu_marble.ply": "b9cbbfe10a6004ea9e9f30dd6703f41645a7dd2d1399b87ce48db9d6f15cd40a",
+    "sionna_rt/scenes/etoile/meshes/element_142-itu_metal.ply": "01ff666dc3dd0ac134122cd21cbd5fcfb7328a3fc77ee04f55d72e7f76a6a7ff",
+    "sionna_rt/scenes/etoile/meshes/element_143-itu_marble.ply": "75b635c48379fa45f46fa4b28bb663413caebbb65eb3504b3e230da9fcb6fdcc",
+    "sionna_rt/scenes/etoile/meshes/element_143-itu_metal.ply": "81673d1a075c42f8c849f1e8f2630544e35fb6130991de0f5c39abb1745e0429",
+    "sionna_rt/scenes/etoile/meshes/element_144-itu_marble.ply": "28a81dfc42e88632a2c7b3e4ebd9d9c73e9af14bcf340613b38d30e14098255e",
+    "sionna_rt/scenes/etoile/meshes/element_144-itu_metal.ply": "b9f00f4ffcde9c5959d59609725ab533c9d30eee69098eda45f702e1f8da5e00",
+    "sionna_rt/scenes/etoile/meshes/element_145-itu_marble.ply": "eb4bd708c34800b36ee6176f768e486341eab3cc4707a8d024600baddce5ec26",
+    "sionna_rt/scenes/etoile/meshes/element_145-itu_metal.ply": "997737f132df9fdecb1384167696a059b8b662ea453dcd2c5aaaac8de7aadc23",
+    "sionna_rt/scenes/etoile/meshes/element_146-itu_marble.ply": "179da183065c1eaf8508eae850043f9092826647bfd23133e0e378c2f6fb0199",
+    "sionna_rt/scenes/etoile/meshes/element_146-itu_metal.ply": "ea24d528cc473d5d758538dcc605c3bdb96a2c3cec61c0982d73c8a34c012bf7",
+    "sionna_rt/scenes/etoile/meshes/element_147-itu_marble.ply": "d1aa1b8f144b6f97727a8f378ce52aa557ef63d47d78bd8f94071eb4b48c3c26",
+    "sionna_rt/scenes/etoile/meshes/element_147-itu_metal.ply": "3553d82d6b7c82c4f5c7279fca8529e7f5d07fbca4e5f4279b1972c6daa70b7d",
+    "sionna_rt/scenes/etoile/meshes/element_148-itu_marble.ply": "3d5f765214dde31d7003f17c466066a080e9c5ed5130fa8c516e453eed595e00",
+    "sionna_rt/scenes/etoile/meshes/element_148-itu_metal.ply": "83628df6620542b172c86c88a00661d8bcf91c1c1d5c8ae5cb14948e6871b483",
+    "sionna_rt/scenes/etoile/meshes/element_149-itu_marble.ply": "367a8cb2cfb7cf679f2282ec12a9e9acf4fbb2f8410b94a7db517ab2ce0908fc",
+    "sionna_rt/scenes/etoile/meshes/element_149-itu_metal.ply": "c226d0d984df1d52ce8560acbeb390f9cc9cff2e7a4d862ccb28ab0671666b84",
+    "sionna_rt/scenes/etoile/meshes/element_150-itu_marble.ply": "958f7c1724fabcb2029561e6d8be7b828bc73f68ee6ea2162433f36eb262e57a",
+    "sionna_rt/scenes/etoile/meshes/element_150-itu_metal.ply": "4ed7297c8e48282f34fc09887dccdab23bf7abc9f0c1f839713605de6a419b76",
+    "sionna_rt/scenes/etoile/meshes/element_151-itu_marble.ply": "f8a151d891b03b19cf2be99956d89a6da72a1cc101d983d91283279c9446a58b",
+    "sionna_rt/scenes/etoile/meshes/element_151-itu_metal.ply": "3478dafa0b62b73289c59cf0e1ccb95d289505765a1be30613216e8863c4e952",
+    "sionna_rt/scenes/etoile/meshes/element_152-itu_marble.ply": "16b779e4c91e15e131ecb4d9ac665f389ddcb15e3d7e229dd7fec18994c11abc",
+    "sionna_rt/scenes/etoile/meshes/element_152-itu_metal.ply": "378aac21f63875c3564688060f690dea97bd059a0833abbe5bfbb2c334f6475d",
+    "sionna_rt/scenes/etoile/meshes/element_153-itu_marble.ply": "6bfa282106156bf45c1ba9dd259cb00a4d59f71dc5ae60bfe1ab7f1849683820",
+    "sionna_rt/scenes/etoile/meshes/element_153-itu_metal.ply": "51c6c6b21d6a9bc348fb010db2a03b0739778e25427552b3dafc09295c1e5eff",
+    "sionna_rt/scenes/etoile/meshes/element_154-itu_marble.ply": "ed94c4750856e73f6bb153ceee4241a1d87d01974dbc5ffad960f0b38259139c",
+    "sionna_rt/scenes/etoile/meshes/element_154-itu_metal.ply": "7528915c16e22997df4ad4994224842f4cb4a675dc6102b1963e9572bbe05c65",
+    "sionna_rt/scenes/etoile/meshes/element_155-itu_marble.ply": "c15161aad54ef6958a1269c834f7a683ecd52f1c8eaa57e57088208e2cbe09b5",
+    "sionna_rt/scenes/etoile/meshes/element_155-itu_metal.ply": "588ab722519cc7587997ba92cae407795103d58faa2c8be547bb80fbf0df7221",
+    "sionna_rt/scenes/etoile/meshes/element_156-itu_marble.ply": "494e993638a6aef3c6edbaf38d9d2deb8d4d793f6cf8799ef36fb72efc340cfd",
+    "sionna_rt/scenes/etoile/meshes/element_156-itu_metal.ply": "bff26db4651be928c095f5553c89de4e030a47b33697b1c5eb9601f191a9ccce",
+    "sionna_rt/scenes/etoile/meshes/element_157-itu_marble.ply": "3082fac55b486c8ce16a365bc8e5e70d051de3ccead1eb998c04104d88bd6047",
+    "sionna_rt/scenes/etoile/meshes/element_157-itu_metal.ply": "41bec47872114543ed663d1e04e0f8120fcb44a2aaf67ad0101ab3e642b01ac8",
+    "sionna_rt/scenes/etoile/meshes/element_158-itu_marble.ply": "d8a5f610e335d61f758709a208fda97832e202817ac146f65130b2a0300fd3ea",
+    "sionna_rt/scenes/etoile/meshes/element_158-itu_metal.ply": "edca700a097d16b9f89e1c45aa74a3ce1090f879b43485bdab2b7ff8866466b5",
+    "sionna_rt/scenes/etoile/meshes/element_159-itu_marble.ply": "76f3a344ac738e6655c2ed00c8baba0f59a08e2c664be4153cd4f6e2116786a6",
+    "sionna_rt/scenes/etoile/meshes/element_159-itu_metal.ply": "21a1342af71290b50e25651fbbe37ef563b93d9796bb83235cb9f67860b74db3",
+    "sionna_rt/scenes/etoile/meshes/element_160-itu_marble.ply": "820f51aaa86103f529424e4f16f6653d649c246d487046a68ef59fe0420290ff",
+    "sionna_rt/scenes/etoile/meshes/element_160-itu_metal.ply": "09b25cd50eed44f3bad679f1e784e988d99ba1a28eed6cc19be676e7bf7ef977",
+    "sionna_rt/scenes/etoile/meshes/element_161-itu_marble.ply": "98f1fbb0d227944ea94f5b01706c667010a138cce817306b1d334a817f889888",
+    "sionna_rt/scenes/etoile/meshes/element_161-itu_metal.ply": "b643fa4fd677ea1a1f48bf6d65c4fac8db27564effd2ac5a0f019d4051cdcbf7",
+    "sionna_rt/scenes/etoile/meshes/element_162-itu_marble.ply": "1a4e4767ff2fc999f934ebc014fe02c2a26f3d123f53f74d0e779c2d9ceb2992",
+    "sionna_rt/scenes/etoile/meshes/element_162-itu_metal.ply": "167471f5dea7b5d478752699162a96fa3127ee727c40b5182c5f7ee4073af08c",
+    "sionna_rt/scenes/etoile/meshes/element_163-itu_marble.ply": "0ca03a395fd79fb86226e888ca5dbb68a5e6f59d5c8d88bfc692b15e63bf403d",
+    "sionna_rt/scenes/etoile/meshes/element_163-itu_metal.ply": "72a884505f009b00045dc083e6993706c7bf40d498ff9f1c30fe61cb7fb0ac17",
+    "sionna_rt/scenes/etoile/meshes/element_164-itu_marble.ply": "ebd59d5bddaab8299f8e4a4a94c78ed908f141d234a0401c60f58a2bdd087817",
+    "sionna_rt/scenes/etoile/meshes/element_164-itu_metal.ply": "d162600da4610705d95e9d4faaf264c03a614e7d74cb035c85361790ebe4b3ea",
+    "sionna_rt/scenes/etoile/meshes/element_165-itu_marble.ply": "b5096b42c783abc00af5dbd8bb23ce7c13a6257720e45446fa75d9c600e4054a",
+    "sionna_rt/scenes/etoile/meshes/element_165-itu_metal.ply": "36a730af4fd05d7200e75e3deed8454249113b62ade26ccb15ef426d80b1f24f",
+    "sionna_rt/scenes/etoile/meshes/element_166-itu_marble.ply": "e4aefab82f32a1a79327f5300dad719d15771877c95dd5bd7af534335520d324",
+    "sionna_rt/scenes/etoile/meshes/element_166-itu_metal.ply": "238ac2fb877479d3c7371c4ddf4951119c3817c4783f4eb336044aafd639898e",
+    "sionna_rt/scenes/etoile/meshes/element_167-itu_marble.ply": "6203b291f537fd4cd5fdf9706680141f5ea4494a8eccd319ec837e53e87cff6a",
+    "sionna_rt/scenes/etoile/meshes/element_167-itu_metal.ply": "8bc256422bc67cef3f6ccc87c14d3eada363496b099d84eabb669ceda42701c2",
+    "sionna_rt/scenes/etoile/meshes/element_168-itu_marble.ply": "cd9154d72b4172c9fcb414f4e033cfdf51d85fc48986222419b8f85be5e72dbd",
+    "sionna_rt/scenes/etoile/meshes/element_168-itu_metal.ply": "6aa8b2ae14630953e6526c8f429f8bd0b43ed630ad07d98f147950f3142e2aec",
+    "sionna_rt/scenes/etoile/meshes/element_169-itu_marble.ply": "bfb26bb5c3294fc05bc7e7c9099e4a98ce30ac6b08b1bccf330f7c47f8f930a3",
+    "sionna_rt/scenes/etoile/meshes/element_169-itu_metal.ply": "d362d1bac509a436e83fe667f15d3a655138c3c86de003c50c6444b34b1e55e8",
+    "sionna_rt/scenes/etoile/meshes/element_170-itu_marble.ply": "86f0b14db61817b8581d2cca9cd3c1368b5986186549f784f72b37d9b84741a4",
+    "sionna_rt/scenes/etoile/meshes/element_170-itu_metal.ply": "72b25f16f6916eae479cf7ed129c04ce7fab6095d3411d3147ec57ebe89d2091",
+    "sionna_rt/scenes/etoile/meshes/element_171-itu_marble.ply": "5cd3220bba9ca378f38ea3d592cadc313803e87c695f7054e89369454ad772dd",
+    "sionna_rt/scenes/etoile/meshes/element_171-itu_metal.ply": "eeed1514c861533ac6634851feb58487b86817ec06cefb2b7a9f4995e77d9d77",
+    "sionna_rt/scenes/etoile/meshes/element_172-itu_marble.ply": "d59f6ef1e827e60d5e478bd3a8da66f82dbd14fd743a1f7f03474f2df6c89962",
+    "sionna_rt/scenes/etoile/meshes/element_172-itu_metal.ply": "db3b8b6b3da410d0abe9905d08fc128cd62090608646bd18cd882b33869f38cc",
+    "sionna_rt/scenes/etoile/meshes/element_173-itu_marble.ply": "4d5f280593c6b23f7ed44c7627c03f5e41da5a7800ae9e67492f88b7aca26f7d",
+    "sionna_rt/scenes/etoile/meshes/element_173-itu_metal.ply": "2cb3c49d69fb5abe7f65828a7d5fda1ea634e97d9e6d70e85b19bbe2db96fcfc",
+    "sionna_rt/scenes/etoile/meshes/element_174-itu_marble.ply": "e36781dca4092a735562b3b8a069d11a588827bd693747e7ed3aeec4a891a034",
+    "sionna_rt/scenes/etoile/meshes/element_174-itu_metal.ply": "fa894e7cec095fb341164baa8504cf7531f121c5b46d0f1cf9a28e38ee5c6f9e",
+    "sionna_rt/scenes/etoile/meshes/element_175-itu_marble.ply": "db6a0de7e6a84ff2ce8a0277822da29ef6e753cf99b15aac90209352aa6ab1e8",
+    "sionna_rt/scenes/etoile/meshes/element_175-itu_metal.ply": "40eb5cc1dc1176bbf11a8854137b5826de692b3d7f34db0f08a4f66d8c7c8b80",
+    "sionna_rt/scenes/etoile/meshes/element_176-itu_marble.ply": "de710c3fc73eee6ff1fe31b09870cd898353ec5cc917748dc07576e644e260ee",
+    "sionna_rt/scenes/etoile/meshes/element_176-itu_metal.ply": "835740da25bb72dc7e67dd723187b841b7eb66e11bc28d24bbfc50c8885a8367",
+    "sionna_rt/scenes/etoile/meshes/element_177-itu_marble.ply": "3c505f25392d81507256c79bd286a4f8efa20fe651d08a8d8f9c28f85720e01f",
+    "sionna_rt/scenes/etoile/meshes/element_177-itu_metal.ply": "6458a2ac2d01edeed3628f17971850b9f183aef1b22c32ed2eea094e8a9f8cf3",
+    "sionna_rt/scenes/etoile/meshes/element_178-itu_marble.ply": "fb1d51a1163029fe8d370792ab3a82e7c02a438a88637b5e50f7085acee0b22f",
+    "sionna_rt/scenes/etoile/meshes/element_178-itu_metal.ply": "baf357c8763bbfa6ece97e732659641c783d108925d5aabefb905e7a7bd3e168",
+    "sionna_rt/scenes/etoile/meshes/element_179-itu_marble.ply": "4da44b1eb94715cd22ed35c159ec6302d89a34cd75adcdcc68d3d099c218bf1d",
+    "sionna_rt/scenes/etoile/meshes/element_179-itu_metal.ply": "4ef7b4b73ea323f986d7384f27287a424fa7e25badafb03f281176aabf9bca7c",
+    "sionna_rt/scenes/etoile/meshes/element_180-itu_marble.ply": "c70c470a30ca50b877a988b796725a0a90b0a1879cf0ea3f66fe3d7e35cad0d4",
+    "sionna_rt/scenes/etoile/meshes/element_180-itu_metal.ply": "6b6510d645f2e010dfd36557c3454614197d1266210799d360609ae8df40230b",
+    "sionna_rt/scenes/etoile/meshes/element_181-itu_marble.ply": "4a43fe1fa1a48b2fd54f363a31645df5b64103289539f81260123ef7800050aa",
+    "sionna_rt/scenes/etoile/meshes/element_181-itu_metal.ply": "1850e054d4f523425c68f91bf47964adc4f710a4578808edd15fb981b9032824",
+    "sionna_rt/scenes/etoile/meshes/element_182-itu_marble.ply": "c514472c732eeef4627d496f7f7a98fe0b250bd6910f64ab82a184cf53e0291b",
+    "sionna_rt/scenes/etoile/meshes/element_182-itu_metal.ply": "05bb7edf7257e031365c3d84d32976a1beb3aaeaa408ab5f32a972eea0511bae",
+    "sionna_rt/scenes/etoile/meshes/element_183-itu_marble.ply": "c64c1844908b10b318354bb0a742f07dffb456fe7296333bf43a5f965f8f1163",
+    "sionna_rt/scenes/etoile/meshes/element_183-itu_metal.ply": "fb6c5499fa3ae4c757e7a3e1e8296eb3825065b39b96b088fea652c80275f064",
+    "sionna_rt/scenes/etoile/meshes/element_184-itu_marble.ply": "ae1a0e46d4b0af6263e85bc7b2738b5b4c37f621d52aa0f2aaa5fa47bf64c4bc",
+    "sionna_rt/scenes/etoile/meshes/element_184-itu_metal.ply": "84e2bf0cb061b0c8b1376557c44959acc5a5d537b238cb858d972fa38ceeec6a",
+    "sionna_rt/scenes/etoile/meshes/element_185-itu_marble.ply": "12195c8a3a6126702b4f402052f4665332e9f2d92d5cb80172ec38dc641aed42",
+    "sionna_rt/scenes/etoile/meshes/element_185-itu_metal.ply": "d44af7682ac31da8ddce657e0a97e69e3cb52e248cb008274fe2b4e0807709df",
+    "sionna_rt/scenes/etoile/meshes/element_186-itu_marble.ply": "937fe9961109b0ac2391d6a4be11f0594c4634f9342dc13c30a0ed22e801ee02",
+    "sionna_rt/scenes/etoile/meshes/element_186-itu_metal.ply": "3245635c5c64c44e2ac654de6bf2f45db673e97a68e0e215ea4d3091af952b72",
+    "sionna_rt/scenes/etoile/meshes/element_187-itu_marble.ply": "14b3809a340a8ac31ca9fca1b17dc543f493669e0e460991be5478cabf00621a",
+    "sionna_rt/scenes/etoile/meshes/element_187-itu_metal.ply": "a3c313d97f6ca18881a9d7379678a2552f2344fe783dac200c4c99852bac592e",
+    "sionna_rt/scenes/etoile/meshes/element_188-itu_marble.ply": "ceedd6c2f99b673ff76161c2a3af6123bd401ebb15498903783f4e45fd5156d0",
+    "sionna_rt/scenes/etoile/meshes/element_188-itu_metal.ply": "d94d069c093edab29cb509a88f8d32d91c8c1e0698f5206b186040d3c5118002",
+    "sionna_rt/scenes/etoile/meshes/element_189-itu_marble.ply": "9448997d0be931f567e73a890bbbb1b3d1b5408f84968a387c4919056ea72441",
+    "sionna_rt/scenes/etoile/meshes/element_189-itu_metal.ply": "ea321e6adae2fd242668c0e9b4fa56e2eb8873ed4de9db670633f8e341d184aa",
+    "sionna_rt/scenes/etoile/meshes/element_190-itu_marble.ply": "07e5dd069ca6aa36dc4ad5c54ec989f9c9da01286234d9a6c00d4b0502ed9b5e",
+    "sionna_rt/scenes/etoile/meshes/element_190-itu_metal.ply": "3a3e7e54f0698f47f08d55b01f1b47dceb5ffa63288a4def784b49da517c77ec",
+    "sionna_rt/scenes/etoile/meshes/element_191-itu_marble.ply": "9326d738cfe18306e47c4ef607e3ccd4b12a92c230b47247c45ea3b2567fc452",
+    "sionna_rt/scenes/etoile/meshes/element_191-itu_metal.ply": "51fbddea75a16b879dd45a4a35bdc869f643c6792927d5ecdc09ddf935f8d923",
+    "sionna_rt/scenes/etoile/meshes/element_192-itu_marble.ply": "ce828ecd15ec417cf0ae8a205158564994542ee2b23732264e8d4e8e4ea5f960",
+    "sionna_rt/scenes/etoile/meshes/element_192-itu_metal.ply": "5503d702d6561eb2054b537d4d2985496c21e4b714108c75d35f9c42943330b1",
+    "sionna_rt/scenes/etoile/meshes/element_193-itu_marble.ply": "dc96b1658327cb3585b623de14c523eae29e30cca1c410d6902cbecb23137670",
+    "sionna_rt/scenes/etoile/meshes/element_193-itu_metal.ply": "85ecf8b39efc5c77f2f895b3e1340695d7680f8b30c0e45ff8f3ddd8e4ae440b",
+    "sionna_rt/scenes/etoile/meshes/element_194-itu_marble.ply": "2e370354d1f59b343de9a5e4ab4e67400980031fb010de74b40baa56fe25b235",
+    "sionna_rt/scenes/etoile/meshes/element_194-itu_metal.ply": "8f4c04b1b5fafd6c774f499af4f22b4cabdb8ba3f253efbe544be401a1406f6b",
+    "sionna_rt/scenes/etoile/meshes/element_195-itu_marble.ply": "29985baa3cd40955cacc2c76881a8d10baddad4bc2190d64a16d3c6c8f2f8625",
+    "sionna_rt/scenes/etoile/meshes/element_195-itu_metal.ply": "2583debd19d846099af24a24e7ea795d0172d71f70492420dbcfed6b53f4ebb2",
+    "sionna_rt/scenes/etoile/meshes/element_196-itu_marble.ply": "23709c5eaeef6e7a2e614f2ec3e56fa2c764f05886d7c05d618cdcb082748245",
+    "sionna_rt/scenes/etoile/meshes/element_196-itu_metal.ply": "e76b4309e28e506ed2f23ef94e4e72156f6cf66ff8400d329244792df20ceffe",
+    "sionna_rt/scenes/etoile/meshes/element_197-itu_marble.ply": "0982754ec92ece4942ab626f8e1616f82f486b3e222d72d7dff596772e590dfc",
+    "sionna_rt/scenes/etoile/meshes/element_197-itu_metal.ply": "4a5701354d85219a33176e952b4e2f8552031282289a1bcad0cf950fa66c20ed",
+    "sionna_rt/scenes/etoile/meshes/element_198-itu_marble.ply": "5cf24eae315bdb9529fa42af57e7c95d3cdcbabc16f145da190e42928e3a13f5",
+    "sionna_rt/scenes/etoile/meshes/element_198-itu_metal.ply": "21fb074f684c8b458738b1fd39fdb65d6ff15004595e3e34633ad525a9a36aaa",
+    "sionna_rt/scenes/etoile/meshes/element_199-itu_marble.ply": "baa9210ce8e2d8c37790e3db86493cace560b8955d41f9b19c76e3ae1b9a7123",
+    "sionna_rt/scenes/etoile/meshes/element_199-itu_metal.ply": "5e1b6ebee1944401317cbcc7118c19d975f9101e3b35f32ad91dd9eda92675ea",
+    "sionna_rt/scenes/etoile/meshes/element_200-itu_marble.ply": "9f0f0dc222e45869bbd77c178411bc985d20953558e3e85674489458425c5650",
+    "sionna_rt/scenes/etoile/meshes/element_200-itu_metal.ply": "54d2650464a6fa3f7e4d40982e09decb7b3c53c6d522324656818f5f9f2c93ac",
+    "sionna_rt/scenes/etoile/meshes/element_201-itu_marble.ply": "15e0dfe6a53f7b0b342de8f0a8216e76e82b1ce46d0cde07d36080b4f522fc38",
+    "sionna_rt/scenes/etoile/meshes/element_201-itu_metal.ply": "3de6c81175be48b63e8834f5d9e60d29db7c50dd436048427ae9424edd2b3056",
+    "sionna_rt/scenes/etoile/meshes/element_202-itu_marble.ply": "159cc8be66898201905ccc7b3d5104c2fccfbd97fc9296591248777ec2e86058",
+    "sionna_rt/scenes/etoile/meshes/element_202-itu_metal.ply": "284fe2d907aeece461b8d8adb5c2df5f226ecfa8aea2d6b5abf3b82a028f83a3",
+    "sionna_rt/scenes/etoile/meshes/element_203-itu_marble.ply": "3adadf2b8226d612a3f8f700d14c9ee3a50fa767bbab61c6392e6da4aa71165b",
+    "sionna_rt/scenes/etoile/meshes/element_203-itu_metal.ply": "cf7642b5c9d7f5e6b714c18584decd922e311d591fda898fe9cc2898562c702c",
+    "sionna_rt/scenes/etoile/meshes/element_204-itu_marble.ply": "2a9af384a2326bb7e12f647d912bbc781c271846f0813413577b59e56ae935df",
+    "sionna_rt/scenes/etoile/meshes/element_204-itu_metal.ply": "02ce3fd4d4134e190fe22713c96f78f58cb7ff2094a6ee2f321e14fa38ba0246",
+    "sionna_rt/scenes/etoile/meshes/element_205-itu_marble.ply": "6cff3254c3327203e39ab1f7a7f3f20fb34daaa38386242dfd464196be5ef408",
+    "sionna_rt/scenes/etoile/meshes/element_205-itu_metal.ply": "04b15f4f2eaca2f7ff2768657b0a64a48a4e44153879baebd6c7d74469aca3d4",
+    "sionna_rt/scenes/etoile/meshes/element_206-itu_marble.ply": "4ecd3d9834986b49637c68b16e355bc5217254bf188fd4113ccabbcad3c0b838",
+    "sionna_rt/scenes/etoile/meshes/element_206-itu_metal.ply": "4da08756033c691f7f62243af297868f0812452de0b3f126e81fe48410e6df5d",
+    "sionna_rt/scenes/etoile/meshes/element_207-itu_marble.ply": "9c6f56beb8ceba6f4302edfcf77ea73895f8eebb5a5c774d5e43e91708ade429",
+    "sionna_rt/scenes/etoile/meshes/element_207-itu_metal.ply": "22e8e106e186faf1faa6f8220bb7af4872a658ae0a77581c9fa8e856b72f9e7a",
+    "sionna_rt/scenes/etoile/meshes/element_208-itu_marble.ply": "1a1efac2e936251001aa9c8a31efeb8a2ad301f38175295ef2adcb294fea643e",
+    "sionna_rt/scenes/etoile/meshes/element_208-itu_metal.ply": "2a02c9775b2bc0313644c7fa610a8d00b1d2b45af4c61e148d6f4a43e601e206",
+    "sionna_rt/scenes/etoile/meshes/element_209-itu_marble.ply": "c51603f6d6a50d7994cb7f5c795433cb04848d847f34e6f10c234b25d672529d",
+    "sionna_rt/scenes/etoile/meshes/element_209-itu_metal.ply": "afee8a7a1f2db64e648668df413ae750ed0bb99b7fd72b32a5dfbf01344e9ef7",
+    "sionna_rt/scenes/etoile/meshes/element_210-itu_marble.ply": "d7e20856bf82c056561225190f19bda19c0a29c31c692a01bbfb9b9ad7473ceb",
+    "sionna_rt/scenes/etoile/meshes/element_210-itu_metal.ply": "a1bc87f3d6922bdf705c4a9f0bd8ea65bfe32972b35ed632e681410ea9c6ddf9",
+    "sionna_rt/scenes/etoile/meshes/element_211-itu_marble.ply": "99c0630ba5326cb18f36e8d3f0604ae8e9adb0c50b5a2d17d048ce8b88e944b3",
+    "sionna_rt/scenes/etoile/meshes/element_211-itu_metal.ply": "bd5cbcaed5fb3cef9e2670ee188099e8b8c7675227d4fa05be7f5bd6ffadc089",
+    "sionna_rt/scenes/etoile/meshes/element_212-itu_marble.ply": "c0077dfd11525b063fadb66f90533c99dd6db22f9115fc751b016648eb04deed",
+    "sionna_rt/scenes/etoile/meshes/element_212-itu_metal.ply": "5863c6a76a871e48c6cee56b4d8fa9d0cafe2dcba893e76c61e61b54e6f89c60",
+    "sionna_rt/scenes/etoile/meshes/element_213-itu_marble.ply": "358ce58c574ac6ab0bb5bbab3f3a86583475deb4ae294fc200fb15defc94c647",
+    "sionna_rt/scenes/etoile/meshes/element_213-itu_metal.ply": "2b90208578cef4f10f1f2d9c9cd2f1a628b499f95066d24510265863035032e6",
+    "sionna_rt/scenes/etoile/meshes/element_214-itu_marble.ply": "11feeb718034927d239af6807f8eb397ab58dadd2bbfcca899c0bdbdb19d023b",
+    "sionna_rt/scenes/etoile/meshes/element_214-itu_metal.ply": "a6fd9d6159b73b417b7c710ecb74aadbaa380af60e71abdca3cd56bee9f03868",
+    "sionna_rt/scenes/etoile/meshes/element_215-itu_marble.ply": "45de7267a2f57f474daf5f1f98b3b9fe5c9db1a0d177fdf43aa8ef20c8336d48",
+    "sionna_rt/scenes/etoile/meshes/element_215-itu_metal.ply": "2361a9ff9d3ab4f7a9551ab930b325fed8e56c90369d73f31eca818db7752fa8",
+    "sionna_rt/scenes/etoile/meshes/element_216-itu_marble.ply": "3a7ca235d29539866e5523a2675c49b23c8ee690da328cbf9581685a174b8e88",
+    "sionna_rt/scenes/etoile/meshes/element_216-itu_metal.ply": "5d1811afb7a6eba4ae1164d3858bce2817ae3c8b0f9f14c8e7fa795ffab37a22",
+    "sionna_rt/scenes/etoile/meshes/element_217-itu_marble.ply": "0ac4c41841449f99183ee13498815507306cf4a2ab72f88d3098643be30a9718",
+    "sionna_rt/scenes/etoile/meshes/element_217-itu_metal.ply": "9f4e63b2c248cbae4f40bc316a2043e709b51b2672a5ca0adc7ddcad2372d6da",
+    "sionna_rt/scenes/etoile/meshes/element_218-itu_marble.ply": "03615b5d499696b85914c461216a784ea98b695fa989d8d09647e2bcdad1a999",
+    "sionna_rt/scenes/etoile/meshes/element_218-itu_metal.ply": "216cde537e9fb430dd25ba17f6f2cb0001ef058cf9cee55f75d4ff7caba0ba2b",
+    "sionna_rt/scenes/etoile/meshes/element_219-itu_marble.ply": "c6f54eb9e69c867f848cf618f85f0e03965d40ab8003cdf571d88ef7850c14f9",
+    "sionna_rt/scenes/etoile/meshes/element_219-itu_metal.ply": "07ccd88dbc8733c6321ee0aad6e736c20f9338584731b925336e6b80a09272aa",
+    "sionna_rt/scenes/etoile/meshes/element_220-itu_marble.ply": "3791e2ce31e54e28cfc83dcc205ad24bac7e665cd039edb09fe76ea1f8e334d5",
+    "sionna_rt/scenes/etoile/meshes/element_220-itu_metal.ply": "8c266c78f94d7453dcd9488859cc5db9fafeabc7f0e7c7101d459266519226e6",
+    "sionna_rt/scenes/etoile/meshes/element_221-itu_marble.ply": "845766a0fc5c8b800e453bfdd31681147e6ccde71751fad3daafe10debc99ef1",
+    "sionna_rt/scenes/etoile/meshes/element_221-itu_metal.ply": "987b24aca1e46f595b0c61d4a758d7f22894de2e9e17873c41bc2d07ae738383",
+    "sionna_rt/scenes/etoile/meshes/element_222-itu_marble.ply": "d06449639c6127e45e9f2d6cb95b9283476d544ceabe796aaeb73466ccc58b80",
+    "sionna_rt/scenes/etoile/meshes/element_222-itu_metal.ply": "0966a0124cc343bb858720e19b636cbcafd1f77f5e7a31ffd5024a07a3d3c6aa",
+    "sionna_rt/scenes/etoile/meshes/element_223-itu_marble.ply": "4a46c49698f061b49a20431c5bb5d2ee888caa6cb946527fec983962fe4b0073",
+    "sionna_rt/scenes/etoile/meshes/element_223-itu_metal.ply": "e7f2e1216d077af9fc9a8e84efc1af7156666fa6e25dc948d3884f60e75a4ad0",
+    "sionna_rt/scenes/etoile/meshes/element_224-itu_marble.ply": "d81676cb97a860918ed3aa0dcd91e8a8813dccd4c35d1f48c05fed47fcf32fe5",
+    "sionna_rt/scenes/etoile/meshes/element_224-itu_metal.ply": "2b9a7d7c0c14326be46d8b1d2778f781380826bab539cbdec9e8bd432c3874e5",
+    "sionna_rt/scenes/etoile/meshes/element_225-itu_marble.ply": "f8de7316ddd305cc1fbbe63f2d49a2c012694783d3a4aa455ef879a2754a8dd5",
+    "sionna_rt/scenes/etoile/meshes/element_225-itu_metal.ply": "a67ff4d6d4eaf95a99aa49dfe107a5071c92dc537ee390fe652f988b6bd11aec",
+    "sionna_rt/scenes/etoile/meshes/element_226-itu_marble.ply": "bfedfe1b38c3524d8f1c3fe3354b8fd5fe505b682744ea95e0293cbf8585807b",
+    "sionna_rt/scenes/etoile/meshes/element_226-itu_metal.ply": "3d300f8a2a2a6ba25cfeae99d2b327ebf92aced2697ee309a9713f35ef50e9f3",
+    "sionna_rt/scenes/etoile/meshes/element_227-itu_marble.ply": "412c66b6565a1b5cf59b7d95750d1bf547c4e2fb7501cadc6baa903ecba84cd2",
+    "sionna_rt/scenes/etoile/meshes/element_227-itu_metal.ply": "9a5f21f02f84a9778a450e93e86bd4b85abcd4a7cc18ef96328b9c6ee4cb81a1",
+    "sionna_rt/scenes/etoile/meshes/element_229-itu_marble.ply": "94241983379594d883af740dd24d0ed874e77b2124cdd39f44166e6dfc8fa970",
+    "sionna_rt/scenes/etoile/meshes/element_229-itu_metal.ply": "47117933560821cdc76abc73897a635b044bf295ebe81f7a934f3ae70ec3c560",
+    "sionna_rt/scenes/etoile/meshes/element_230-itu_marble.ply": "9652e71aedf51cb5d89991fa98501b5f2411ebec1babf810051f746c9e18169f",
+    "sionna_rt/scenes/etoile/meshes/element_230-itu_metal.ply": "1c1e178b119fdd6828791d759067d939478efdb8bdae072ea7e6a193ef3c6369",
+    "sionna_rt/scenes/etoile/meshes/element_231-itu_marble.ply": "33717b35deb1d97350bae524282d64e917c00156a4f8c416d0d995eef1145a49",
+    "sionna_rt/scenes/etoile/meshes/element_231-itu_metal.ply": "38605d354e9cfa4aaa58f7d0d551351847a8ef92f8a0cfa48a73c341b5453ca1",
+    "sionna_rt/scenes/etoile/meshes/element_232-itu_marble.ply": "48f0523201a36c2ebf5d378f4c397a162dd5010f6172ee52b1493c5a4996ee0a",
+    "sionna_rt/scenes/etoile/meshes/element_232-itu_metal.ply": "91259fd5ad50a81ef9735b1f9bb2125cfe4c83904e1e22f4fc82200befc22e85",
+    "sionna_rt/scenes/etoile/meshes/element_233-itu_marble.ply": "b1bd777db1fa5fed8baaf24bb2a24d31db71e814d333f337b36154bb07ac0f56",
+    "sionna_rt/scenes/etoile/meshes/element_233-itu_metal.ply": "987232eef821a2082e3a16105f191da4a9a00cc0303a872ffb05610273dae2ac",
+    "sionna_rt/scenes/etoile/meshes/element_235-itu_marble.ply": "9a670f0454b88b186a549fef0f99cd8a050c2ce2b8d562fb05a45196f9cf8a6b",
+    "sionna_rt/scenes/etoile/meshes/element_235-itu_metal.ply": "ec2d7020dd076b25c52dfb75986dcbeb2f887d5a61431862161818b2b20285bf",
+    "sionna_rt/scenes/etoile/meshes/element_236-itu_marble.ply": "1e71c5a4098778c7ef4fdff8bcbbc480e92bb5ca5fe11ee5721f44d3851170c7",
+    "sionna_rt/scenes/etoile/meshes/element_236-itu_metal.ply": "cdc181ba3f886508b4eaf79d95d1936279b82da56d472a802b048bda8823c6c1",
+    "sionna_rt/scenes/etoile/meshes/element_237-itu_marble.ply": "087985696fe189b73f2e6469512ab4c6c26c888f7fe38e40a69186a5627f5494",
+    "sionna_rt/scenes/etoile/meshes/element_237-itu_metal.ply": "2cfc4bd7af4318423b169d32f521fdf982c45a9192fc1eaa95554aeb6e6d55a7",
+    "sionna_rt/scenes/etoile/meshes/element_238-itu_marble.ply": "c2f537193095bc92340b833f38e8b0ca4f52b87a0f105a3aeae8eeb197968ac9",
+    "sionna_rt/scenes/etoile/meshes/element_238-itu_metal.ply": "6baa6f69b1e80afab2b2998e69f3fe7aaebb8f55a7cad0f95444f14cef564a92",
+    "sionna_rt/scenes/etoile/meshes/element_239-itu_marble.ply": "5c2d59a09dfbf32f7c0dcba97b77b311c0d71d26c577f8637c834f9d0a1507f1",
+    "sionna_rt/scenes/etoile/meshes/element_239-itu_metal.ply": "2e2b4aaf66cb8b615cfc76871cd1b96ad60245e0feeff4365c6df6a3edd61aa3",
+    "sionna_rt/scenes/etoile/meshes/element_240-itu_marble.ply": "8c2630456c872bfb6d07fd1fa23cbdbd4f99176eb1782bc39e6702fd0554bbac",
+    "sionna_rt/scenes/etoile/meshes/element_240-itu_metal.ply": "a96048901e0eab2243f4e82bec4c08f9b6ca9b62345f3356db6a077800f3c892",
+    "sionna_rt/scenes/etoile/meshes/element_241-itu_marble.ply": "c36f6d01d696e68f79692934702c4ed97289573c2f327d7e3be58d40eb490bf4",
+    "sionna_rt/scenes/etoile/meshes/element_241-itu_metal.ply": "54d768b015e628d7a05b7d97edae4a0f9ec1e89be559b53d59d041ad8b316422",
+    "sionna_rt/scenes/etoile/meshes/element_242-itu_marble.ply": "c2a5ddbc0e0b817913f757be116a5793bd42d9e2f7b8c79b875bcb37199ff488",
+    "sionna_rt/scenes/etoile/meshes/element_242-itu_metal.ply": "98a7b4200c4272c221b82850a622cb093d37b516df082398b6ad5ce28d60918e",
+    "sionna_rt/scenes/etoile/meshes/element_243-itu_marble.ply": "ba56e8acdff4944a2327e1b90a12c209e0824896dfc201dfdc906951d079a756",
+    "sionna_rt/scenes/etoile/meshes/element_243-itu_metal.ply": "d439c36fedfa66424d0388e790fda6ae3b6d1c2c6a8780a9cc1aa60ab0a8cf8c",
+    "sionna_rt/scenes/etoile/meshes/element_244-itu_marble.ply": "75841df6440cc345f74a8306e41b212b38d75258e4467df1d2f24cd4f1984b81",
+    "sionna_rt/scenes/etoile/meshes/element_244-itu_metal.ply": "b62bfa429883e2f6781dfe160f359ec346cea53479b621a558de3b6484278926",
+    "sionna_rt/scenes/etoile/meshes/element_245-itu_marble.ply": "b5920fafe9e06f0a77b9881f77a636c4449414a0d245676450101203dd5f50a7",
+    "sionna_rt/scenes/etoile/meshes/element_245-itu_metal.ply": "877b5d10cfe323ef99203f54f81daec1a63cbf80aa9d0592b2804665c6a9f2aa",
+    "sionna_rt/scenes/etoile/meshes/element_246-itu_marble.ply": "2caba358bbe8d5171e190f338afccea0dc7ef9f76819b35bcedb26dbbcdf0005",
+    "sionna_rt/scenes/etoile/meshes/element_246-itu_metal.ply": "4bb8833a3ec21bd74efc3d1767bd0328023b8bdfdd0ebec48f32c0206a0d2bdf",
+    "sionna_rt/scenes/etoile/meshes/element_247-itu_marble.ply": "a5727ceca87abe6197ed551ad75bf46a65b640394252f55825816f9d12215438",
+    "sionna_rt/scenes/etoile/meshes/element_247-itu_metal.ply": "7ab0336863b398b9225be9e6a4fa0a7ce93b8a61b0e8fb8676532d78bb35aa5e",
+    "sionna_rt/scenes/etoile/meshes/element_248-itu_marble.ply": "ecb48bf8e032ab6d594929b419e2bff3f56dbdee78e8cd12325ea4f71a9914c3",
+    "sionna_rt/scenes/etoile/meshes/element_248-itu_metal.ply": "dc6e04729d6a4e658c4784f0f68193f55bed36c21cf3eed4ac6d2f26056cade2",
+    "sionna_rt/scenes/etoile/meshes/element_249-itu_marble.ply": "c3c29ab8eb1f8a7720d6c28f83060c78ba4d7817b395bf34d7c31303022592fe",
+    "sionna_rt/scenes/etoile/meshes/element_249-itu_metal.ply": "ab338107d57f062d895e09ad0364db8e6ca27e568b90e2476aa45243dd00e74f",
+    "sionna_rt/scenes/etoile/meshes/element_250-itu_marble.ply": "7f5e6b788126aadd5543f4f918c86f4a573e29a3ae131336afb56b78a7635957",
+    "sionna_rt/scenes/etoile/meshes/element_250-itu_metal.ply": "09992635abfed91c82b518f4bbf8383836d2b74cec71e80a3f71ee9699c298ff",
+    "sionna_rt/scenes/etoile/meshes/element_251-itu_marble.ply": "83a15062dd39731d5d50533eb60753bee21d1053d5b3a2712da32065b6c7184f",
+    "sionna_rt/scenes/etoile/meshes/element_251-itu_metal.ply": "968c9cf30a6b68f41556fa1f548641d452519f0e72de1ce44c49176812fd4f7b",
+    "sionna_rt/scenes/etoile/meshes/element_252-itu_marble.ply": "12705ae63bdc5b93ec50cc86ec4ca75777b94383727cdcd436f8dcc4c5195036",
+    "sionna_rt/scenes/etoile/meshes/element_252-itu_metal.ply": "387c7f255595cfa150006a5cd5a60bbab6f0f591eb81991667aeca1a8dbccb77",
+    "sionna_rt/scenes/etoile/meshes/element_253-itu_marble.ply": "07ba69ea9515ebf6e7e63e6c2668b87c4d7ece54c244c6303712ddae749f40cf",
+    "sionna_rt/scenes/etoile/meshes/element_253-itu_metal.ply": "94bb1507306ac41ab73f9c483e8f7b72cd159beeee98e0070b33d187f66ec64d",
+    "sionna_rt/scenes/etoile/meshes/element_254-itu_marble.ply": "37a52abbbd8c772f2d36b4ed7306b8594fad84eeca2f70d86ab200ddb1c983f6",
+    "sionna_rt/scenes/etoile/meshes/element_254-itu_metal.ply": "59a9e4fb552dd7e3fe72e5e92d1aed44d85ccc856c5edfe3382e2ff574ca2a44",
+    "sionna_rt/scenes/etoile/meshes/element_255-itu_marble.ply": "149ce2056b684c226b0a1d844cb50a1da24d7ea98cecd1d3e40f3ae83f09367b",
+    "sionna_rt/scenes/etoile/meshes/element_255-itu_metal.ply": "3eadd1ef12efaf9946ed3f6cfadbbe86e740278af44726ba46b1978da1546e6b",
+    "sionna_rt/scenes/etoile/meshes/element_256-itu_marble.ply": "c76870d0844194a43cf86cf4859bc4785cd8ee9d76a173136b2d08b5fb15fc15",
+    "sionna_rt/scenes/etoile/meshes/element_256-itu_metal.ply": "1578ef05c5a0d63dcf8b4a6b6b3d96abb3881d66da8ec91cf80195605a366562",
+    "sionna_rt/scenes/etoile/meshes/element_257-itu_marble.ply": "c23ed6e59c78dd68dcf222ceb0ff76459503dec9202c8d7069e2db6dafc5ae47",
+    "sionna_rt/scenes/etoile/meshes/element_257-itu_metal.ply": "4fdcdcf2e3946b2be1ee83a7ffef13cc6f6be9ee4dd47bcf6c4cbb58e3194bed",
+    "sionna_rt/scenes/etoile/meshes/element_258-itu_marble.ply": "ce0344e2c8217d58f0a57145dbf57644a1b1febf0de035e50a446820ca7918ec",
+    "sionna_rt/scenes/etoile/meshes/element_258-itu_metal.ply": "5871b2ab2abc40c15ff58e466c1e6f2eb184e5c519df21f7fd61dbb1145e36dc",
+    "sionna_rt/scenes/etoile/meshes/element_259-itu_marble.ply": "50571b5ed011b4873db0afca60b568f581c0e4a237e3a6d72062b7f6d8d66637",
+    "sionna_rt/scenes/etoile/meshes/element_259-itu_metal.ply": "411f8c92d228e3facccff918209a3d2ca380ff057d40d7e1def41fd6ad04357b",
+    "sionna_rt/scenes/etoile/meshes/element_260-itu_marble.ply": "d675d78221b29a18d7ed66fa49c6246c32bc44a99a92aebb2d8c4a5859df4831",
+    "sionna_rt/scenes/etoile/meshes/element_260-itu_metal.ply": "6c65d1e01b5da1f3896d4069b4870f1522e3dd761c27238440a6364343ebebd1",
+    "sionna_rt/scenes/etoile/meshes/element_261-itu_marble.ply": "8925c30800efc04238bd0aa770530f6f4ed98b66cabb7bb8ccce6ee2499b9b43",
+    "sionna_rt/scenes/etoile/meshes/element_261-itu_metal.ply": "9cb2f0c7e5cfe5a58dcdcc7cef969988aceb96eb269cf5eb6911d1908bf7faef",
+    "sionna_rt/scenes/etoile/meshes/element_262-itu_marble.ply": "140f613cb75294ad94c944553836340ab9d96634ec4648b2ea2cf47350177dea",
+    "sionna_rt/scenes/etoile/meshes/element_262-itu_metal.ply": "9f8fcac25d7a2c757d2471117d955c6ed7e989f55fe7a403ea50b372dc45cdc8",
+    "sionna_rt/scenes/etoile/meshes/element_263-itu_marble.ply": "ed0152e4fe3a5f4f6afa9c222e148ab5a3087e9bbc4921b184954f120a44b055",
+    "sionna_rt/scenes/etoile/meshes/element_263-itu_metal.ply": "419a04a6d88b059a5d5a20c94a9439ecc44bb3159418bf6682b4d3b25b4e9a42",
+    "sionna_rt/scenes/etoile/meshes/element_264-itu_marble.ply": "5018062921da12086ba8bcb6c3ec326fee7207d70a78efe9f44a4d78cf589790",
+    "sionna_rt/scenes/etoile/meshes/element_264-itu_metal.ply": "3d127dd6e3dba5d3517bb374a45cd738495656f100fa3821e954ec342c6a74c4",
+    "sionna_rt/scenes/etoile/meshes/element_265-itu_marble.ply": "a0dffddcac6573ab12363d52e96c0fb8ebba45338b543ffc969ac28bb2907b19",
+    "sionna_rt/scenes/etoile/meshes/element_265-itu_metal.ply": "f3491049b42278d234145678ddfecff9360e0b4c325491263e3204399cec84d6",
+    "sionna_rt/scenes/etoile/meshes/element_266-itu_marble.ply": "c02243bd89081b16507168695231dbf96b170575b5de0c1f0397734b4e1ca1f3",
+    "sionna_rt/scenes/etoile/meshes/element_266-itu_metal.ply": "0eaebbf16257acf51f9a30c83bf288cd5f907105136e3f90143de651122a0ac3",
+    "sionna_rt/scenes/etoile/meshes/element_267-itu_marble.ply": "e89409a5a4dedc2f02dcdb08a6d724d1bc4f7fc0ef340bb9698086a16eed5004",
+    "sionna_rt/scenes/etoile/meshes/element_267-itu_metal.ply": "a03726a632556e7f54c95d91ded2e05ca918a7d84a49948f4941e238a88f2ec9",
+    "sionna_rt/scenes/etoile/meshes/element_268-itu_marble.ply": "39ab9d2536b51901c5da8f91374e42dd6ed87c0fe9d1801db2f4ecaccdb22d24",
+    "sionna_rt/scenes/etoile/meshes/element_268-itu_metal.ply": "128c310238755b23a73c05030f9759802f42292c27c592e2536b1059dcb30094",
+    "sionna_rt/scenes/etoile/meshes/element_269-itu_marble.ply": "d5fb0f355142bf3e64dd64bfb80c08956b7cc28a986ea0f38d3c3a8925ca8732",
+    "sionna_rt/scenes/etoile/meshes/element_269-itu_metal.ply": "b7150a116f21916ee4d844a04d74354314e8d44c1a9f127185dd24c6bd0964d5",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply": "4f09bd84384eb5abe0fa2d2518e503c0891bebcc2a5e5e3524785fcee2e50798",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00020.ply": "492adfc3e48a46c80e1729237958aacb97c313740e1fccb216a9941f4701819e",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00038.ply": "d542a73000e72827bfe678974e2d8dfc0fda7287d229fcd13e8b38e620ffce72",
+    "libraries/targets/digital_twin_update1/target_metadata.json": "cc20d833c61e7dad2b19198167f9ce7b0b6b443f34144bcd0e88e7bef4c95870",
+    "scenarios/visualizer/multi_device_trajectory/generate.py": "766912fc91b9609c1f707ddbed7f0e2fab26d0c0b3f856960b9640de9bf88787",
+    "scenarios/visualizer/multi_device_trajectory/scenario.yaml": "e2f831d90eb1377e0c369c55cbeef079d6ff24725c2f462f825f5426e4031d3c"
+  },
+  "sample_indices": [
+    0,
+    37
+  ],
+  "sample_times_s": [
+    0.0,
+    5.285714285714286
+  ],
+  "steps": 38,
+  "actors": [
+    {
+      "name": "gNB",
+      "role": "tx",
+      "members": [
+        "gNB"
+      ],
+      "sample_positions_m": [
+        [
+          166.171,
+          -64.377,
+          13.489
+        ],
+        [
+          166.171,
+          -64.377,
+          13.489
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            166.171,
+            -64.377,
+            13.489
+          ],
+          "rotation_matrix": [
+            [
+              0.8660254037844387,
+              -0.0,
+              -0.49999999999999994
+            ],
+            [
+              0.0,
+              1.0,
+              -0.0
+            ],
+            [
+              0.49999999999999994,
+              0.0,
+              0.8660254037844387
+            ]
+          ],
+          "forward_direction": [
+            0.8660254037844387,
+            0.0,
+            0.49999999999999994
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Drone_Tracker",
+      "role": "rx",
+      "members": [
+        "Drone_Tracker"
+      ],
+      "sample_positions_m": [
+        [
+          3.1419999999999995,
+          -21.565,
+          35.0
+        ],
+        [
+          4.827699999999994,
+          -22.388000000000027,
+          3.0000000000000018
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            3.1419999999999995,
+            -21.565,
+            35.0
+          ],
+          "rotation_matrix": [
+            [
+              -0.5921643340864229,
+              -1.2246467991473532e-16,
+              -0.8058172258248042
+            ],
+            [
+              7.251921563081617e-17,
+              -1.0,
+              9.868414863041463e-17
+            ],
+            [
+              -0.8058172258248042,
+              0.0,
+              0.5921643340864229
+            ]
+          ],
+          "forward_direction": [
+            -0.5921643340864229,
+            7.251921563081617e-17,
+            -0.8058172258248042
+          ]
+        },
+        {
+          "index": 19,
+          "time_s": 2.714285714285714,
+          "position_m": [
+            2.417303062104101,
+            -18.148033221376206,
+            18.56559441947879
+          ],
+          "rotation_matrix": [
+            [
+              -0.7974926056971599,
+              0.058470045956201484,
+              -0.6004887988832386
+            ],
+            [
+              -0.046709341356440316,
+              -0.9982891633819733,
+              -0.03517077912369654
+            ],
+            [
+              -0.601517897729072,
+              -3.469446951953614e-18,
+              0.7988593234804221
+            ]
+          ],
+          "forward_direction": [
+            -0.7974926056971599,
+            -0.046709341356440316,
+            -0.601517897729072
+          ]
+        },
+        {
+          "index": 37,
+          "time_s": 5.285714285714286,
+          "position_m": [
+            4.827699999999994,
+            -22.388000000000027,
+            3.0000000000000018
+          ],
+          "rotation_matrix": [
+            [
+              -0.9899631754991898,
+              -0.10658792738444448,
+              -0.09280045738814595
+            ],
+            [
+              0.10612267416412993,
+              -0.9943032805617653,
+              0.009948079833089202
+            ],
+            [
+              -0.09333214442952979,
+              -1.734723475976807e-18,
+              0.9956350289218361
+            ]
+          ],
+          "forward_direction": [
+            -0.9899631754991898,
+            0.10612267416412993,
+            -0.09333214442952979
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Drone_Overwatch",
+      "role": "rx",
+      "members": [
+        "Drone_Overwatch"
+      ],
+      "sample_positions_m": [
+        [
+          -35.019845691575085,
+          -48.52359451067815,
+          40.0
+        ],
+        [
+          -33.33414569157509,
+          -49.34659451067816,
+          40.0
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -35.019845691575085,
+            -48.52359451067815,
+            40.0
+          ],
+          "rotation_matrix": [
+            [
+              0.2674111353854647,
+              -0.8986198170226053,
+              0.3478127500913616
+            ],
+            [
+              0.5477216900598766,
+              0.43872818971916916,
+              0.7124033448712135
+            ],
+            [
+              -0.7927750216232908,
+              5.551115123125783e-17,
+              0.6095143682393311
+            ]
+          ],
+          "forward_direction": [
+            0.2674111353854647,
+            0.5477216900598766,
+            -0.7927750216232908
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Patrol",
+      "role": "rx",
+      "members": [
+        "Patrol"
+      ],
+      "sample_positions_m": [
+        [
+          -15.277077154212456,
+          -8.085702744660924,
+          1.5
+        ],
+        [
+          -13.591377154212456,
+          -8.908702744660925,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -15.277077154212456,
+            -8.085702744660924,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              0.8986198170226051,
+              0.43872818971916977,
+              0.0
+            ],
+            [
+              -0.43872818971916977,
+              0.8986198170226051,
+              -0.0
+            ],
+            [
+              -0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            0.8986198170226051,
+            -0.43872818971916977,
+            -0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pedestrian",
+      "role": "target",
+      "members": [
+        "Pedestrian"
+      ],
+      "sample_positions_m": [
+        [
+          -21.858,
+          -21.565,
+          0.98
+        ],
+        [
+          -20.1723,
+          -22.388,
+          0.98
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": true,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 19,
+          "mesh_index": 19,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00020.ply",
+          "time_s": 2.714285714285714,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 37,
+          "mesh_index": 37,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00038.ply",
+          "time_s": 5.285714285714286,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -21.858,
+            -21.565,
+            0.98
+          ],
+          "rotation_matrix": [
+            [
+              -0.4082684755982531,
+              -0.9128619018409513,
+              0.0
+            ],
+            [
+              0.9128619018409513,
+              -0.4082684755982531,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            0.8986198170226091,
+            -0.43872818971916117,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "c91078b25f2dffe777797c82692080dac58febc44d3218ef280e1018036c203b",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Concrete",
+      "display_rgb": [
+        0.68652,
+        0.68652,
+        0.68652
+      ]
+    },
+    {
+      "label": "Ground (concrete)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Marble",
+      "display_rgb": [
+        0.79668,
+        0.75792,
+        0.6498
+      ]
+    },
+    {
+      "label": "Metal",
+      "display_rgb": [
+        0.4696,
+        0.4696,
+        0.49272000000000005
+      ]
+    },
+    {
+      "label": "Wood",
+      "display_rgb": [
+        0.50088,
+        0.39412,
+        0.3608
+      ]
+    }
+  ],
+  "output_sha256": "3fdda01c6b2f3dc69be9899dabb463c78cb92c293349a914c3c5228b8017920b",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -460.9779345703125,
+        -365.10509399414065,
+        -2.0
+      ],
+      [
+        460.9779345703125,
+        365.10509399414065,
+        52.0
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "name"
+  },
+  "renderer_sha256": "077c6c55d104403a84b34169fe50aeb171dc177a740258aa388cb27e0b566b1e",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/visualizer/multi_device_trajectory"
+  ]
+}

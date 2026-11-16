@@ -1,51 +1,80 @@
 # Beamforming
 
-[Scenarios](../../README.md) > [Visualizer](../README.md) > Beamforming
+Display antenna beam patterns for a selected transmitter and receiver, then
+compare steering choices as the receiver moves. These overlays help inspect
+array response; changing them does not recompute propagation or modify the
+saved frames.
 
-These examples focus on the Visualizer Antennas tab and beam-pattern overlays.
-Their [`circular_rx/`](circular_rx/README.md) and
-[`multi_device/`](multi_device/README.md) child scenarios keep the two generated
-frame sets independent.
+To run it, see [Running](#running).
 
-Choose the [circular-receiver](circular_rx/README.md) case for one moving pair,
-or [multiple devices](multi_device/README.md) for explicit selection among two
-transmitters and three receivers. Each child page owns its runnable commands.
+## Choose An Example
 
-## Scenario Configuration
+| Example | What to explore |
+|---|---|
+| [Circular Receiver](circular_rx/README.md) | Follow one receiver around a fixed transmitter. Start here. |
+| [Multiple Devices](multi_device/README.md) | Switch between two transmitters and three receivers. |
 
-Both child scenarios use the default 28 GHz carrier and half-wavelength element
-spacing, and explicitly configure 4x8 TX/RX arrays. Those values initialize the
-beamforming view. Changing Antennas panel controls does not rewrite
-`scenario.yaml`.
+Both examples use 4 × 8 antenna arrays at 28 GHz with half-wavelength element
+spacing. The circular example uses isotropic TX elements; the multiple-device
+example uses directional TX elements.
 
-The circular case uses isotropic TX elements. The multiple-device case uses
-directional `tr38901` TX elements.
+## Running
 
-Each child writes its generated chunks to its own `frames/` directory and its
-diagnostic figures to its own `summary/` directory. Regenerating one case does
-not replace the other case's data.
+Run commands from the repository root.
 
-## What To Notice
+Generate the circular-receiver recording:
 
-- **Show Beam Patterns** displays transmitter and receiver antenna surfaces for
-  the selected pair.
-- **SVD (Current MPCs)**, **LOS Steering**, and **Manual Steering** change
-  overlay steering behavior.
-- Manual azimuth and elevation controls appear only for manual steering.
-- Pair selection comes from the persistent **Context** controls, not from a
-  separate **Antennas** selector.
+```bash
+orchav-generator scenarios/visualizer/beamforming/circular_rx
+```
 
-## Variants
+Open it to inspect the antenna pattern:
 
-- [Circular receiver](circular_rx/README.md) follows one moving receiver around
-  a stationary transmitter.
-- [Multiple devices](multi_device/README.md) exercises explicit selection among
-  two transmitters and three receivers.
+```bash
+orchav-visualizer --scenario scenarios/visualizer/beamforming/circular_rx --no-resume
+```
+
+Generation saves 32 frames under `circular_rx/frames/`. Paths start hidden so
+you can focus on the antenna surfaces.
+
+## Show And Steer The Patterns
+
+1. Under **Scene → Nodes → Labels**, set **TX/RX text** to **Device Name**.
+2. In **Context → TX/RX Scope**, select TX **CenterTX** and RX **OrbitRX**.
+   Select an individual device in each field: **All** disables beam patterns.
+3. Open **Antennas → Pattern Source**, select **Standalone**, and enable
+   **Show Beam Patterns**. A surface appears at each selected device.
+4. Under **Shared TX/RX Parameters**, set **Strategy** to **LOS Steering**.
+   Play or scrub the timeline: the patterns point toward the other device as
+   `OrbitRX` moves around `CenterTX`.
+5. Try **Manual Steering** and adjust azimuth and elevation. Then compare
+   **SVD (Current MPCs)**, which estimates steering from the saved paths.
+
+These recordings do not contain saved beamforming weights, so **Frame Data**
+is unavailable. For the meaning and limits of each strategy, see
+[Beam-Pattern Visualization](../../../docs/visualizer/beam_patterns.md).
+
+## Switch Between Pairs
+
+Generate the multiple-device recording:
+
+```bash
+orchav-generator scenarios/visualizer/beamforming/multi_device
+```
+
+Open it to compare device patterns:
+
+```bash
+orchav-visualizer --scenario scenarios/visualizer/beamforming/multi_device --no-resume
+```
+
+Repeat the steps above with **WestTX** and **OrbitRX**, then change the pair
+in **Context** to **EastTX** and **StaticSouthRX**. Both surfaces follow the
+new selection. The TX/RX fields in **Antennas** show the selected names;
+change the pair in **Context**.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../README.md) | [Visualizer](../README.md) |
-> Current: **Beamforming**
->
-> Choose: [Circular Receiver](circular_rx/README.md) |
-> [Multiple Devices](multi_device/README.md)
+Up: [Visualizer](../README.md) ·
+[Circular Receiver](circular_rx/README.md) ·
+[Multiple Devices](multi_device/README.md)

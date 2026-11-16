@@ -8,6 +8,8 @@ visualizer, while shared figure code reads these colors and colormap names.
 from dataclasses import dataclass, field
 from typing import Dict, List
 
+from .palettes import PRESENTATION_COLORMAPS, register_presentation_colormap
+
 
 @dataclass(frozen=True)
 class Theme:
@@ -105,6 +107,8 @@ class Theme:
         """
         import matplotlib.pyplot as plt
 
+        if self.continuous_colormap in PRESENTATION_COLORMAPS:
+            register_presentation_colormap(self.continuous_colormap)
         return plt.get_cmap(self.continuous_colormap)
 
     def get_categorical_colors(self, n: int) -> List[List[float]]:
@@ -164,6 +168,7 @@ AVAILABLE_CONTINUOUS_COLORMAPS = [
     "YlOrRd",
     "Blues",
     "Greens",
+    *PRESENTATION_COLORMAPS,
 ]
 
 AVAILABLE_CATEGORICAL_COLORMAPS = [

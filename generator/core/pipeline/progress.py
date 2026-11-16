@@ -45,6 +45,7 @@ class StderrProgress:
     bar_width: int = 30
     label: str = ""
     start_time: float = field(default_factory=time.time)
+    in_place: bool = True
 
     def update(self, step_idx: int) -> None:
         done = step_idx - self.first_step + 1
@@ -55,13 +56,16 @@ class StderrProgress:
         fill = int(self.bar_width * done / max(1, self.total_steps))
         bar = "#" * fill + "." * (self.bar_width - fill)
         prefix = f"{self.label} " if self.label else ""
+        eta = format_duration(remaining) if done > 0 else "--:--"
+        line_start = "\r" if self.in_place else ""
         msg = (
-            f"\r{prefix}[{bar}] {done}/{self.total_steps} {pct:5.1f}%"
+            f"{line_start}{prefix}[{bar}]"
+            f" {done}/{self.total_steps} {pct:5.1f}%"
             f" | elapsed {format_duration(elapsed)}"
-            f" | eta {format_duration(remaining)}"
+            f" | eta {eta}"
         )
         try:
-            sys.stderr.write(msg)
+            sys.stderr.write(msg if self.in_place else msg + "\n")
             sys.stderr.flush()
         except OSError:
             pass
@@ -72,6 +76,49 @@ class StderrProgress:
             sys.stderr.write("\n")
         except OSError:
             pass
+
+
+def stderr_status(message: str) -> None:
+    """Display a flushed CLI stage without depending on the logging level."""
+    try:
+        sys.stderr.write(message + "\n")
+        sys.stderr.flush()
+    except OSError:
+        pass
+
+
+class StderrPreparationProgress:
+    """Render counted startup stages, throttling terminal and redirected output.
+
+    Producers report completed work; display timing never changes the work or
+    its validation. Always show stage starts and completions, even for fast runs.
+    """
+
+    def __init__(self) -> None:
+        self._in_place = sys.stderr.isatty()
+        self._interval_s = 0.25 if self._in_place else 5.0
+        self._progress: StderrProgress | None = None
+        self._last_update = 0.0
+
+    def __call__(self, stage: str, done: int, total: int) -> None:
+        now = time.monotonic()
+        if self._progress is None or self._progress.label != stage:
+            self.close()
+            self._progress = StderrProgress(
+                first_step=0, total_steps=total, label=stage, in_place=self._in_place
+            )
+            self._last_update = now - self._interval_s
+        if done == 0 or done == total or now - self._last_update >= self._interval_s:
+            self._progress.update(done - 1)
+            self._last_update = now
+        if done == total:
+            self.close()
+
+    def close(self) -> None:
+        """Finish an active terminal line, including when preparation fails."""
+        if self._progress is not None and self._in_place:
+            self._progress.newline()
+        self._progress = None
 
 
 @dataclass

@@ -57,6 +57,7 @@ class TargetConfig:
     mesh_end_behavior: Literal["loop", "hold_last"] = "loop"
     asset_front_yaw_offset_deg: Optional[float] = None
     _initial_position: Optional[Tuple[float, float, float]] = None
+    animated_asset: Any | None = field(default=None, repr=False)
     _asset_front_yaw_offset_from_metadata: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self):

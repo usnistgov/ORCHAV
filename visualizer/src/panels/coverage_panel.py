@@ -12,11 +12,10 @@ from html import escape
 from typing import Any, Dict, Optional
 
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap, QValidator
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -37,6 +36,7 @@ from ..coverage.analysis import (
     coverage_metric_colormap,
     coverage_metric_comparator,
     coverage_metric_label,
+    coverage_quantity_family,
     default_coverage_threshold,
     format_coverage_slice_summary,
     format_coverage_value,
@@ -46,15 +46,11 @@ from ..coverage.analysis import (
     serving_tx_labels,
     supports_coverage_threshold,
 )
+from ..coverage.value_spinbox import CoverageValueSpinBox as _CoverageThresholdSpinBox
 from .base import BasePanel
 
 logger = get_logger("orchav.coverage_panel")
 
-_SERVING_METRIC_FAMILIES = {
-    "serving_path_gain_linear": "path_gain_linear",
-    "best_path_loss_db": "path_loss_db",
-    "best_rss_dbm": "rss_dbm",
-}
 _SELECTABLE_SERVING_METRICS = frozenset({"sinr_linear", "sinr_db"})
 
 
@@ -90,54 +86,6 @@ def _coverage_colormap_gradient_pixmap(
     return pixmap
 
 
-class _CoverageThresholdSpinBox(QDoubleSpinBox):
-    """QDoubleSpinBox that can expose very small linear values accurately."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._scientific = False
-
-    def set_scientific_mode(self, enabled: bool) -> None:
-        """Switch between ordinary fixed-point and compact scientific text."""
-        self._scientific = bool(enabled)
-        self.lineEdit().setText(self.textFromValue(self.value()) + self.suffix())
-
-    def textFromValue(self, value: float) -> str:  # noqa: N802 - Qt override
-        """Format linear path-gain thresholds without rounding them to zero."""
-        if self._scientific:
-            return f"{float(value):.6g}"
-        return super().textFromValue(value)
-
-    def valueFromText(self, text: str) -> float:  # noqa: N802 - Qt override
-        """Accept scientific notation when the active metric is linear."""
-        if not self._scientific:
-            return super().valueFromText(text)
-        value_text = str(text).strip()
-        suffix = self.suffix().strip()
-        if suffix and value_text.endswith(suffix):
-            value_text = value_text[: -len(suffix)].strip()
-        try:
-            return float(value_text)
-        except ValueError:
-            return self.value()
-
-    def validate(self, text: str, pos: int):  # noqa: N802 - Qt override
-        """Permit complete and in-progress scientific-notation edits."""
-        if not self._scientific:
-            return super().validate(text, pos)
-        value_text = str(text).strip()
-        if value_text in {"", "+", "-", ".", "+.", "-."}:
-            return QValidator.Intermediate, text, pos
-        try:
-            float(value_text)
-        except ValueError:
-            lowered = value_text.lower()
-            if lowered.endswith(("e", "e+", "e-")):
-                return QValidator.Intermediate, text, pos
-            return QValidator.Invalid, text, pos
-        return QValidator.Acceptable, text, pos
-
-
 class CoverageMapPanel(BasePanel):
     """Build and synchronize the coverage-map control panel."""
 
@@ -158,7 +106,6 @@ class CoverageMapPanel(BasePanel):
         self._pending_isoline_count = 6
         self._use_serving_tx = True
         self._selected_tx_name: Optional[str] = None
-        self._metric_preference_initialized = False
         self._tx_count: Optional[int] = None
         self._metric_variants: dict[
             str,
@@ -167,8 +114,9 @@ class CoverageMapPanel(BasePanel):
 
     def create_panel(self) -> QGroupBox:
         """Create compact, logically grouped coverage controls."""
-        group = self.create_group_box("Coverage Map")
+        group = self.create_group_box("Coverage")
         layout = QVBoxLayout(group)
+        layout.setAlignment(Qt.AlignTop)
         layout.setSpacing(6)
         layout.setContentsMargins(8, 8, 8, 8)
 
@@ -186,16 +134,61 @@ class CoverageMapPanel(BasePanel):
         self._set_label_emphasis(status, active=False)
         layout.addWidget(status)
 
-        layout.addWidget(self._create_display_group())
-        layout.addWidget(self._create_analysis_group())
+        self._display_group = self._create_display_group()
+        layout.addWidget(self._display_group)
+        self._analysis_group = self._create_analysis_group()
+        from .collapsible_section import CollapsibleSection
+
+        self._plane_analysis = CollapsibleSection(
+            "Height-plane analysis", start_open=False, flat_header=True
+        )
+        self._plane_analysis.content_layout().addWidget(self._analysis_group)
+        layout.addWidget(self._plane_analysis)
         self._height_animation_group = self._create_height_animation_group()
         self._height_animation_group.setVisible(False)
         layout.addWidget(self._height_animation_group)
+        from ..coverage.panel_view import CoveragePanelView
+
+        self.volume_view = CoveragePanelView(self)
+        layout.addWidget(self.volume_view.widget)
+        generate = QPushButton("Generate new coverage…")
+        generate.setToolTip(
+            "Run Sionna RT from the saved initial poses into a new result directory"
+        )
+        generate.clicked.connect(self._generate_coverage)
+        self.widgets["coverage_generate"] = generate
+        layout.addWidget(generate)
         return group
+
+    def _generate_coverage(self) -> None:
+        from ..coverage.generation_window import open_coverage_generation
+
+        try:
+            open_coverage_generation(self.parent)
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            self.widgets["coverage_status"].setText(f"Coverage generation unavailable: {exc}")
+
+    def sync_coverage_view(self):
+        """Update the one embedded view after visibility/data changes."""
+        self.volume_view.sync()
+
+    def set_volume_controls_active(self, active):
+        """Present one set of view controls, with height-plane fallback as needed."""
+        self._volume_controls_active = active
+        self.widgets["coverage_status"].setVisible(not active)
+        layout = self._display_group.layout()
+        # Data selection (first three rows) is shared by every representation.
+        for i in range(layout.count()):
+            row, _, _, _ = layout.getItemPosition(i)
+            widget = layout.itemAt(i).widget()
+            if row >= 3 and widget is not None:
+                widget.setVisible(not active)
+        self._plane_analysis.setVisible(not active)
+        self._height_animation_group.setVisible(not active and len(self.heights) > 1)
 
     def _create_display_group(self) -> QGroupBox:
         """Create selectors and renderer-facing display controls."""
-        group = self.create_subgroup_box("Layer")
+        group = self.create_subgroup_box("Data")
         layout = QGridLayout(group)
         layout.setHorizontalSpacing(8)
         layout.setVerticalSpacing(5)
@@ -204,34 +197,27 @@ class CoverageMapPanel(BasePanel):
         metric_combo = QComboBox()
         metric_combo.setAccessibleName("Coverage metric")
         metric_combo.setEnabled(False)
-        metric_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        metric_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        metric_combo.setMinimumContentsLength(12)
         metric_combo.setToolTip("Choose the coverage quantity shown on the map")
         metric_combo.currentTextChanged.connect(self._on_metric_changed)
         metric_label.setBuddy(metric_combo)
         self.widgets["coverage_metric_combo"] = metric_combo
         layout.addWidget(metric_label, 0, 0)
-        layout.addWidget(metric_combo, 0, 1)
+        layout.addWidget(metric_combo, 0, 1, 1, 3)
 
         self._tx_label = QLabel("&Transmitter:")
         tx_combo = QComboBox()
         tx_combo.setAccessibleName("Coverage transmitter")
+        tx_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        tx_combo.setMinimumContentsLength(12)
         tx_combo.setToolTip("Choose the transmitter for this per-transmitter metric")
         tx_combo.currentTextChanged.connect(self._on_tx_changed)
         self._tx_label.setBuddy(tx_combo)
         self.widgets["coverage_tx_combo"] = tx_combo
-        layout.addWidget(self._tx_label, 0, 2)
-        layout.addWidget(tx_combo, 0, 3)
+        layout.addWidget(self._tx_label, 1, 0)
+        layout.addWidget(tx_combo, 1, 1, 1, 3)
         self._set_tx_selector_visible(False)
-
-        serving_toggle = QCheckBox("Use serving transmitter")
-        serving_toggle.setAccessibleName("Use serving transmitter for coverage metric")
-        serving_toggle.setToolTip(
-            "Use the transmitter with the strongest received signal at each grid cell"
-        )
-        serving_toggle.toggled.connect(self._on_serving_mode_changed)
-        serving_toggle.setVisible(False)
-        self.widgets["coverage_serving_tx_toggle"] = serving_toggle
-        layout.addWidget(serving_toggle, 1, 0, 1, 2)
 
         height_label = QLabel("&Height:")
         height_combo = QComboBox()
@@ -242,8 +228,8 @@ class CoverageMapPanel(BasePanel):
         height_label.setBuddy(height_combo)
         self.widgets["coverage_height_text"] = height_label
         self.widgets["coverage_height_combo"] = height_combo
-        layout.addWidget(height_label, 2, 0)
-        layout.addWidget(height_combo, 2, 1)
+        layout.addWidget(height_label, 3, 0)
+        layout.addWidget(height_combo, 3, 1)
 
         smoothing_label = QLabel("&Smoothing:")
         interpolation_combo = QComboBox()
@@ -255,8 +241,8 @@ class CoverageMapPanel(BasePanel):
         interpolation_combo.currentTextChanged.connect(self._on_interpolation_changed)
         smoothing_label.setBuddy(interpolation_combo)
         self.widgets["coverage_interpolation"] = interpolation_combo
-        layout.addWidget(smoothing_label, 2, 2)
-        layout.addWidget(interpolation_combo, 2, 3)
+        layout.addWidget(smoothing_label, 3, 2)
+        layout.addWidget(interpolation_combo, 3, 3)
 
         self._opacity_container = QWidget()
         opacity_layout = QHBoxLayout(self._opacity_container)
@@ -279,10 +265,13 @@ class CoverageMapPanel(BasePanel):
         opacity_layout.addWidget(opacity_label)
         opacity_layout.addWidget(opacity_slider, stretch=1)
         opacity_layout.addWidget(opacity_value)
-        layout.addWidget(self._opacity_container, 3, 0, 1, 4)
+        layout.addWidget(self._opacity_container, 4, 0, 1, 4)
 
         self._legend_container = QWidget()
-        legend_layout = QHBoxLayout(self._legend_container)
+        legend_body = QVBoxLayout(self._legend_container)
+        legend_body.setContentsMargins(0, 0, 0, 0)
+        legend_body.setSpacing(4)
+        legend_layout = QHBoxLayout()
         legend_layout.setContentsMargins(0, 0, 0, 0)
         legend_layout.setSpacing(5)
         legend_title = QLabel("Scale:")
@@ -299,6 +288,8 @@ class CoverageMapPanel(BasePanel):
         legend_max.setAccessibleName("Coverage color scale maximum")
         missing_label = QLabel("Missing cells: hidden (transparent)")
         missing_label.setAccessibleName("Coverage missing-cell behavior")
+        missing_label.setWordWrap(True)
+        missing_label.setProperty("role", "muted")
         self.widgets["coverage_legend_min"] = legend_min
         self.widgets["coverage_legend_gradient"] = legend_gradient
         self.widgets["coverage_legend_max"] = legend_max
@@ -306,10 +297,10 @@ class CoverageMapPanel(BasePanel):
         legend_layout.addWidget(legend_min)
         legend_layout.addWidget(legend_gradient, stretch=1)
         legend_layout.addWidget(legend_max)
-        legend_layout.addSpacing(8)
-        legend_layout.addWidget(missing_label)
+        legend_body.addLayout(legend_layout)
+        legend_body.addWidget(missing_label)
         self._legend_container.setVisible(False)
-        layout.addWidget(self._legend_container, 4, 0, 1, 4)
+        layout.addWidget(self._legend_container, 5, 0, 1, 4)
         layout.setColumnStretch(1, 1)
         layout.setColumnStretch(3, 1)
         return group
@@ -331,10 +322,9 @@ class CoverageMapPanel(BasePanel):
         self.widgets["coverage_slice_summary"] = slice_summary
         self._set_label_emphasis(slice_summary, active=False)
         layout.addWidget(slice_label, 0, 0)
-        layout.addWidget(slice_summary, 0, 1, 1, 4)
+        layout.addWidget(slice_summary, 0, 1)
 
-        threshold_label = QLabel("Threshold:")
-        threshold_toggle = QCheckBox("Enable")
+        threshold_toggle = QCheckBox("Threshold")
         threshold_toggle.setAccessibleName("Enable coverage threshold")
         threshold_toggle.setEnabled(False)
         threshold_toggle.setToolTip(
@@ -365,21 +355,25 @@ class CoverageMapPanel(BasePanel):
         mask_toggle.toggled.connect(self._on_threshold_mask_toggled)
         self.widgets["coverage_threshold_mask_toggle"] = mask_toggle
 
-        layout.addWidget(threshold_label, 1, 0)
-        layout.addWidget(threshold_toggle, 1, 1)
-        layout.addWidget(comparator, 1, 2)
-        layout.addWidget(threshold_spin, 1, 3)
-        layout.addWidget(mask_toggle, 1, 4)
+        threshold_controls = QWidget()
+        threshold_row = QHBoxLayout(threshold_controls)
+        threshold_row.setContentsMargins(0, 0, 0, 0)
+        threshold_row.setSpacing(6)
+        threshold_row.addWidget(comparator)
+        threshold_row.addWidget(threshold_spin, 1)
+        self.widgets["coverage_threshold_controls"] = threshold_controls
+        layout.addWidget(threshold_toggle, 1, 0)
+        layout.addWidget(threshold_controls, 1, 1)
+        layout.addWidget(mask_toggle, 2, 1)
 
         summary = QLabel("Off")
         summary.setAccessibleName("Coverage threshold summary")
         summary.setWordWrap(True)
         self.widgets["coverage_threshold_summary"] = summary
         self._set_label_emphasis(summary, active=False)
-        layout.addWidget(summary, 2, 1, 1, 4)
+        layout.addWidget(summary, 3, 0, 1, 2)
 
-        isoline_label = QLabel("Contours:")
-        isolines_toggle = QCheckBox("Show")
+        isolines_toggle = QCheckBox("Contours")
         isolines_toggle.setAccessibleName("Show coverage contours")
         isolines_toggle.setEnabled(False)
         isolines_toggle.setToolTip(
@@ -404,12 +398,31 @@ class CoverageMapPanel(BasePanel):
         self._isoline_count_timer.setInterval(180)
         self._isoline_count_timer.timeout.connect(self._flush_isoline_count_change)
 
-        layout.addWidget(isoline_label, 3, 0)
-        layout.addWidget(isolines_toggle, 3, 1)
-        layout.addWidget(levels_label, 3, 2)
-        layout.addWidget(isoline_count, 3, 3)
-        layout.setColumnStretch(3, 1)
+        isoline_controls = QWidget()
+        isoline_row = QHBoxLayout(isoline_controls)
+        isoline_row.setContentsMargins(0, 0, 0, 0)
+        isoline_row.setSpacing(6)
+        isoline_row.addWidget(levels_label)
+        isoline_row.addWidget(isoline_count, 1)
+        self.widgets["coverage_isoline_controls"] = isoline_controls
+        layout.addWidget(isolines_toggle, 4, 0)
+        layout.addWidget(isoline_controls, 4, 1)
+        layout.setColumnStretch(1, 1)
+        self._sync_analysis_visibility()
         return group
+
+    def _sync_analysis_visibility(self) -> None:
+        """Reveal threshold and contour details only while their tools are enabled."""
+        threshold = self.widgets["coverage_threshold_toggle"].isChecked()
+        for key in (
+            "coverage_threshold_controls",
+            "coverage_threshold_mask_toggle",
+            "coverage_threshold_summary",
+        ):
+            self.widgets[key].setVisible(threshold)
+        self.widgets["coverage_isoline_controls"].setVisible(
+            self.widgets["coverage_isolines_toggle"].isChecked()
+        )
 
     def _create_height_animation_group(self) -> QGroupBox:
         """Create playback controls shown only for multi-height data."""
@@ -572,16 +585,17 @@ class CoverageMapPanel(BasePanel):
             self.update_slice_summary(None)
             self._legend_container.setVisible(False)
         self.set_renderer_capabilities(supports_transparency=supports_transparency)
+        self.volume_view.queue_sync()
 
     def reset_view_state(self) -> None:
         """Restore deterministic coverage-widget defaults without callbacks."""
+        self.volume_view.reset()
         self._isoline_count_timer.stop()
         self._pending_isoline_count = 6
         reset_values = (
             ("coverage_toggle", "setChecked", False),
             ("coverage_opacity", "setValue", 100),
             ("coverage_interpolation", "setCurrentText", "Raw"),
-            ("coverage_serving_tx_toggle", "setChecked", False),
             ("coverage_threshold_toggle", "setChecked", False),
             ("coverage_threshold_value", "setValue", 0.0),
             ("coverage_threshold_mask_toggle", "setChecked", False),
@@ -601,13 +615,11 @@ class CoverageMapPanel(BasePanel):
         self._metric_variants = {}
         self._use_serving_tx = True
         self._selected_tx_name = None
-        self._metric_preference_initialized = False
         self._tx_count = None
         tx_combo = self.widgets["coverage_tx_combo"]
         with QSignalBlocker(tx_combo):
             tx_combo.clear()
         self._set_tx_selector_visible(False)
-        self._set_serving_selector_visible(False)
         self.heights = []
         self.current_height_index = 0
         height_combo = self.widgets["coverage_height_combo"]
@@ -649,7 +661,9 @@ class CoverageMapPanel(BasePanel):
                 combo.setCurrentIndex(self.current_height_index)
             combo.setEnabled(multi)
 
-        self._height_animation_group.setVisible(multi)
+        self._height_animation_group.setVisible(
+            multi and not getattr(self, "_volume_controls_active", False)
+        )
         self._reset_animation_widgets(multi_height=multi)
         if not multi:
             controller = getattr(self.parent, "ui_controller", None)
@@ -711,20 +725,16 @@ class CoverageMapPanel(BasePanel):
             if selected_index >= 0:
                 combo.setCurrentIndex(selected_index)
         current_family = combo.currentData()
-        initialize_preference = bool(raw_metrics and not self._metric_preference_initialized)
         self._populate_tx_selector(
             str(current_family or ""),
             selected_metric=str(selected_metric or ""),
-            initialize_preference=initialize_preference,
         )
-        if raw_metrics:
-            self._metric_preference_initialized = True
 
     @staticmethod
     def _metric_family(base: str, selector: Optional[str]) -> tuple[str, bool]:
         """Return the GUI family and serving-transmitter mode for one metric."""
-        serving_family = _SERVING_METRIC_FAMILIES.get(base)
-        if serving_family is not None:
+        serving_family = coverage_quantity_family(base)
+        if serving_family != base:
             return serving_family, True
         if base in _SELECTABLE_SERVING_METRICS and selector is None:
             return base, True
@@ -735,76 +745,53 @@ class CoverageMapPanel(BasePanel):
         family: str,
         *,
         selected_metric: str = "",
-        initialize_preference: bool = False,
     ) -> None:
         """Synchronize serving mode and TX choices for one metric family."""
         tx_combo = self.widgets.get("coverage_tx_combo")
-        serving_toggle = self.widgets.get("coverage_serving_tx_toggle")
-        if tx_combo is None or serving_toggle is None:
+        if tx_combo is None:
             return
         variants = self._metric_variants.get(family, [])
         serving_variants = [variant for variant in variants if variant[2]]
         per_tx_variants = [variant for variant in variants if variant[1] is not None]
-        tx_count = int(self._tx_count or 0)
-        can_choose_mode = bool(serving_variants and per_tx_variants and tx_count > 1)
-        if initialize_preference and selected_metric and can_choose_mode:
-            if any(variant[0] == selected_metric for variant in serving_variants):
-                self._use_serving_tx = True
-            elif any(variant[0] == selected_metric for variant in per_tx_variants):
-                self._use_serving_tx = False
-        selected_selector = next(
-            (variant[1] for variant in per_tx_variants if variant[0] == selected_metric),
-            None,
-        )
-        if initialize_preference and selected_selector is not None:
+        if serving_variants and per_tx_variants and selected_metric:
+            self._use_serving_tx = any(
+                variant[0] == selected_metric for variant in serving_variants
+            )
+        selected_selector = next((v[1] for v in per_tx_variants if v[0] == selected_metric), None)
+        if selected_selector is not None and (
+            len(per_tx_variants) > 1 or self._selected_tx_name is None
+        ):
             self._selected_tx_name = selected_selector
-        use_serving_tx = bool(
-            serving_variants and (not per_tx_variants or (can_choose_mode and self._use_serving_tx))
-        )
+        use_serving = bool(serving_variants and (not per_tx_variants or self._use_serving_tx))
         with QSignalBlocker(tx_combo):
             tx_combo.clear()
-            for full_name, selector, _uses_serving_tx in per_tx_variants:
-                tx_combo.addItem(str(selector), full_name)
-            selected_index = tx_combo.findData(selected_metric) if selected_metric else -1
-            if selected_index < 0 and self._selected_tx_name is not None:
-                selected_index = next(
-                    (
-                        index
-                        for index in range(tx_combo.count())
-                        if tx_combo.itemText(index) == self._selected_tx_name
-                    ),
-                    -1,
-                )
-            if selected_index >= 0:
-                tx_combo.setCurrentIndex(selected_index)
-            if tx_combo.count() and self._selected_tx_name is None:
-                self._selected_tx_name = str(tx_combo.currentText())
-        with QSignalBlocker(serving_toggle):
-            serving_toggle.setChecked(use_serving_tx)
-        self._set_serving_selector_visible(can_choose_mode)
-        self._set_tx_selector_visible(bool(per_tx_variants) and tx_count > 1 and not use_serving_tx)
+            for metric, _selector, _serving in serving_variants:
+                tx_combo.addItem("Serving transmitter (strongest received power)", metric)
+            for metric, selector, _serving in per_tx_variants:
+                tx_combo.addItem(str(selector), metric)
+            if use_serving:
+                index = 0
+            else:
+                index = tx_combo.findData(selected_metric) if selected_metric else -1
+                if index < 0 and self._selected_tx_name is not None:
+                    index = tx_combo.findText(self._selected_tx_name)
+                if index < 0:
+                    index = len(serving_variants) if per_tx_variants else 0
+            tx_combo.setCurrentIndex(index)
+        self._set_tx_selector_visible(
+            bool(per_tx_variants or serving_variants) and int(self._tx_count or 0) > 1
+        )
+        tx_combo.setToolTip(
+            "Serving transmitter selects the strongest received power separately at each cell; it does not sum transmitter powers."
+        )
 
     def _selected_metric_for_family(self, family: str) -> Optional[str]:
-        """Return the exact logical metric selected by the family controls."""
+        """Return the logical metric chosen by the single transmitter selector."""
+        combo = self.widgets.get("coverage_tx_combo")
+        if combo is not None and combo.currentData():
+            return str(combo.currentData())
         variants = self._metric_variants.get(family, [])
-        serving_toggle = self.widgets.get("coverage_serving_tx_toggle")
-        if serving_toggle is not None and serving_toggle.isChecked():
-            serving_metric = next((variant[0] for variant in variants if variant[2]), None)
-            if serving_metric is not None:
-                return serving_metric
-        tx_combo = self.widgets.get("coverage_tx_combo")
-        if tx_combo is not None and tx_combo.count():
-            selected_tx_metric = tx_combo.currentData()
-            if selected_tx_metric:
-                return str(selected_tx_metric)
         return variants[0][0] if variants else None
-
-    def _set_serving_selector_visible(self, visible: bool) -> None:
-        """Show serving-transmitter mode only when both modes are meaningful."""
-        toggle = self.widgets.get("coverage_serving_tx_toggle")
-        if toggle is not None:
-            toggle.setVisible(bool(visible))
-            toggle.setEnabled(bool(visible))
 
     def _set_tx_selector_visible(self, visible: bool) -> None:
         """Keep TX selection out of aggregate and categorical workflows."""
@@ -910,7 +897,10 @@ class CoverageMapPanel(BasePanel):
 
         metric = str(metadata.get("metric_name")) if has_data and metadata else None
         thresholdable = bool(has_data and supports_coverage_threshold(metric))
-        metric_changed = metric != self._threshold_metric
+        metric_changed = coverage_quantity_family(metric) != coverage_quantity_family(
+            self._threshold_metric
+        )
+        previous_threshold = spin.value()
         self._threshold_metric = metric
 
         blockers = [QSignalBlocker(widget) for widget in (toggle, spin)]
@@ -920,7 +910,7 @@ class CoverageMapPanel(BasePanel):
                 toggle.setChecked(False)
                 spin.setEnabled(False)
                 spin.setSuffix("")
-                spin.set_scientific_mode(False)
+                spin.set_metric_display(metric)
                 if comparator_label is not None:
                     comparator_label.setText("")
                 for widget in (mask_toggle, isolines_toggle):
@@ -944,24 +934,35 @@ class CoverageMapPanel(BasePanel):
                 value_min, value_max = value_max, value_min
 
             _label, unit = coverage_metric_label(metric)
+            spin.set_metric_display(metric)
             if unit in {"linear", "W"}:
                 scale = max(abs(value_min), abs(value_max), 1.0e-30)
                 data_span = max(value_max - value_min, scale * 0.01, 1.0e-30)
                 lower = value_min - data_span
                 if value_min >= 0.0:
                     lower = 0.0
-                spin.setDecimals(30)
-                spin.setRange(lower, value_max + data_span)
-                spin.setSingleStep(max(data_span / 100.0, 1.0e-30))
-                spin.setSuffix("")
-                spin.set_scientific_mode(True)
+                spin.setRange(
+                    min(lower, previous_threshold) if not metric_changed else lower,
+                    (
+                        max(value_max + data_span, previous_threshold)
+                        if not metric_changed
+                        else value_max + data_span
+                    ),
+                )
             else:
                 span = max(value_max - value_min, 1.0)
-                spin.set_scientific_mode(False)
-                spin.setDecimals(2)
-                spin.setRange(value_min - span, value_max + span)
-                spin.setSingleStep(max(span / 100.0, 0.01))
-                spin.setSuffix(f" {unit}" if unit and unit != "index" else "")
+                spin.setRange(
+                    (
+                        min(value_min - span, previous_threshold)
+                        if not metric_changed
+                        else value_min - span
+                    ),
+                    (
+                        max(value_max + span, previous_threshold)
+                        if not metric_changed
+                        else value_max + span
+                    ),
+                )
 
             comparator = coverage_metric_comparator(metric)
             if comparator_label is not None:
@@ -993,6 +994,7 @@ class CoverageMapPanel(BasePanel):
                 self.set_threshold_summary("Off", active=False)
         finally:
             del blockers
+            self._sync_analysis_visibility()
 
     def set_analysis_state(
         self,
@@ -1034,6 +1036,7 @@ class CoverageMapPanel(BasePanel):
         finally:
             for widget in (toggle, spin, mask, isolines, count_widget):
                 widget.blockSignals(False)
+            self._sync_analysis_visibility()
 
     def restore_session_controls(
         self,
@@ -1200,6 +1203,7 @@ class CoverageMapPanel(BasePanel):
                 with QSignalBlocker(mask):
                     mask.setChecked(False)
             mask.setEnabled(bool(checked))
+        self._sync_analysis_visibility()
         controller = getattr(self.parent, "ui_controller", None)
         handler = getattr(controller, "handle_coverage_threshold_changed", None)
         if handler and spin is not None:
@@ -1231,6 +1235,7 @@ class CoverageMapPanel(BasePanel):
         count = self.widgets.get("coverage_isoline_count")
         if count is not None:
             count.setEnabled(bool(checked))
+        self._sync_analysis_visibility()
         controller = getattr(self.parent, "ui_controller", None)
         handler = getattr(controller, "handle_coverage_isolines_changed", None)
         if handler and count is not None:
@@ -1268,27 +1273,15 @@ class CoverageMapPanel(BasePanel):
             return
         self._forward_metric_selection(str(metric))
 
-    def _on_serving_mode_changed(self, checked: bool) -> None:
-        """Switch between the serving layer and a selected transmitter."""
-        self._use_serving_tx = bool(checked)
-        combo = self.widgets.get("coverage_metric_combo")
-        family = combo.currentData() if combo is not None else None
-        if not family:
-            return
-        variants = self._metric_variants.get(str(family), [])
-        per_tx_count = sum(variant[1] is not None for variant in variants)
-        self._set_tx_selector_visible(
-            per_tx_count > 0 and int(self._tx_count or 0) > 1 and not checked
-        )
-        metric = self._selected_metric_for_family(str(family))
-        if metric:
-            self._forward_metric_selection(metric)
-
     def _on_tx_changed(self, _display_text: str) -> None:
         tx_combo = self.widgets.get("coverage_tx_combo")
         metric = tx_combo.currentData() if tx_combo is not None else None
         if metric:
-            self._selected_tx_name = str(tx_combo.currentText())
+            base, separator, selector = str(metric).partition("/")
+            _, serving = self._metric_family(base, selector if separator else None)
+            self._use_serving_tx = serving
+            if not serving:
+                self._selected_tx_name = selector
             self._forward_metric_selection(str(metric))
 
     def _forward_metric_selection(self, metric: str) -> None:

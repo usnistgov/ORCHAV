@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 
+from shared.coverage.availability import classify_solver_gain
 from shared.coverage.schema import (
     COVERAGE_HDF5_SCHEMA_VERSION,
     COVERAGE_NO_SERVING_TX,
@@ -393,22 +394,28 @@ def _build_base_solver_kwargs(
     if seed is not None and "seed" in solver_params:
         solver_kwargs["seed"] = int(seed)
 
-    precoding_vec = _build_precoding_vec(getattr(coverage_config, "precoding_vec", None), mi)
+    precoding_vec = _build_precoding_vec(
+        getattr(coverage_config, "precoding_vec", None),
+        mi,
+        num_tx=max(1, len(getattr(scene, "transmitters", {}))),
+    )
     if precoding_vec is not None:
         solver_kwargs["precoding_vec"] = precoding_vec
     return solver_kwargs
 
 
-def _build_precoding_vec(precoding_vec: Any, mi: Any) -> Any | None:
+def _build_precoding_vec(precoding_vec: Any, mi: Any, *, num_tx: int = 1) -> Any | None:
     """Build the real/imaginary Sionna precoding tuple when configured."""
     if precoding_vec is None:
         return None
     try:
-        import drjit as dr
-
         real_vals = [float(v) for v in precoding_vec]
-        precoding_real = mi.TensorXf(real_vals)
-        precoding_imag = dr.zeros(mi.TensorXf, len(real_vals))
+        # Pass the documented TX × antenna shape directly. The installed
+        # Sionna/Dr.Jit 1D conversion can consume the input Tensor's storage,
+        # leaving an empty vector when it is reused for the next height.
+        values = np.tile(np.asarray(real_vals, dtype=np.float32), (num_tx, 1))
+        precoding_real = mi.TensorXf(values)
+        precoding_imag = mi.TensorXf(np.zeros_like(values))
         return precoding_real, precoding_imag
     except (ImportError, ValueError, TypeError) as exc:
         logger.warning("Could not build precoding vector: %s", exc)
@@ -443,7 +450,7 @@ def _extract_path_gain_slice(
         gain = _normalise_radio_map_tensor(
             getattr(radio_map, "path_gain", None), num_tx, name="path_gain"
         )
-        return np.where(np.isfinite(gain) & (gain > 0.0), gain, np.nan)
+        return np.where(np.isfinite(gain) & (gain >= 0.0), gain, np.nan)
     except ValueError:
         logger.exception(
             "Failed to extract path gain data from radio map for height %.2f",
@@ -856,7 +863,10 @@ def _run_radio_map_solver(
         )
         if solve_result is None:
             return None
-        path_gain_linear, grid_info = solve_result
+        raw_gain, grid_info = solve_result
+        availability = classify_solver_gain(raw_gain)
+        # Preserve existing RF arrays exactly; retain zero/invalid evidence separately.
+        path_gain_linear = np.where(np.isfinite(raw_gain) & (raw_gain > 0), raw_gain, np.nan)
 
         logger.info(f"Final grid: {grid_info['nx']} x {grid_info['ny']} x {grid_info['nz']}")
         logger.info(f"Total points: {grid_info['nx'] * grid_info['ny'] * grid_info['nz']}")
@@ -888,6 +898,7 @@ def _run_radio_map_solver(
             rx_names,
         )
 
+        coverage_data["availability"] = availability
         logger.info("Coverage map computed successfully")
         return coverage_data
 

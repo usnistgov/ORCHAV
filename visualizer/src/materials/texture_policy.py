@@ -8,6 +8,8 @@ color factor renderers should receive.
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -25,6 +27,7 @@ TEXTURE_MAP_KEYS = (
     "roughness_map_path",
     "ao_map_path",
     "metallic_map_path",
+    "clearcoat_roughness_map_path",
 )
 
 # Internal hand-off marker used when application code has already validated
@@ -33,6 +36,19 @@ TEXTURE_MAP_KEYS = (
 TEXTURE_POLICY_RESOLVED_KEY = "_texture_policy_resolved"
 
 _WARNED_TEXTURE_POLICY_MESSAGES: set[str] = set()
+# Session-only display choice; never rewrites launch environment or source assets.
+_TEXTURE_MAPS_OVERRIDE: bool | None = None
+_VIEW_TEXTURE_MAPS: ContextVar[bool | None] = ContextVar("view_texture_maps", default=None)
+
+
+@contextmanager
+def view_texture_maps(enabled: bool | None):
+    """Scope synchronous material assembly to one view, respecting launch opt-out."""
+    token = _VIEW_TEXTURE_MAPS.set(enabled)
+    try:
+        yield
+    finally:
+        _VIEW_TEXTURE_MAPS.reset(token)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,17 +82,48 @@ class TexturePolicyResult:
 
 
 def textures_globally_enabled() -> bool:
-    """Return True when launch policy allows texture maps.
+    """Return True when the launch policy and current display choice allow maps.
 
     Texture maps are opt-in so the default visualizer launch uses scalar PBR
     materials with predictable colors and lower startup cost. Set
     ``ORCHAV_ENABLE_TEXTURES=1`` or pass ``--enable-textures`` to activate
-    albedo/detail maps. ``ORCHAV_DISABLE_TEXTURES`` forces maps off.
+    albedo/detail maps, or choose On in the Materials panel for this session.
+    ``ORCHAV_DISABLE_TEXTURES`` forces maps off even after an in-app opt-in.
     """
 
-    if os.environ.get("ORCHAV_DISABLE_TEXTURES") == "1":
+    if textures_locked_off():
         return False
+    view_choice = _VIEW_TEXTURE_MAPS.get()
+    if view_choice is not None:
+        return view_choice
+    if _TEXTURE_MAPS_OVERRIDE is not None:
+        return _TEXTURE_MAPS_OVERRIDE
     return os.environ.get("ORCHAV_ENABLE_TEXTURES") == "1"
+
+
+def textures_locked_off() -> bool:
+    """Return whether an explicit launch opt-out prohibits in-app activation."""
+    return os.environ.get("ORCHAV_DISABLE_TEXTURES") == "1"
+
+
+def texture_maps_override() -> bool | None:
+    """Return the session choice, or None to follow the launch default."""
+    return _TEXTURE_MAPS_OVERRIDE
+
+
+def set_texture_maps_override(enabled: bool | None) -> bool:
+    """Set the reversible session choice; return False for a launch-locked opt-in.
+
+    The existing rendering policy is process-wide, so this display choice is
+    shared by material consumers in this visualizer process. It is not persisted.
+    """
+    global _TEXTURE_MAPS_OVERRIDE
+    if enabled is not None and not isinstance(enabled, bool):
+        raise TypeError("Texture maps choice must be True, False, or None")
+    if enabled is True and textures_locked_off():
+        return False
+    _TEXTURE_MAPS_OVERRIDE = enabled
+    return True
 
 
 def apply_texture_launch_policy(
@@ -87,6 +134,7 @@ def apply_texture_launch_policy(
     """Apply mutually exclusive launch flags to the process texture policy."""
     if enable_textures and disable_textures:
         raise ValueError("enable_textures and disable_textures are mutually exclusive")
+    set_texture_maps_override(None)
     if enable_textures:
         os.environ["ORCHAV_ENABLE_TEXTURES"] = "1"
         os.environ.pop("ORCHAV_DISABLE_TEXTURES", None)

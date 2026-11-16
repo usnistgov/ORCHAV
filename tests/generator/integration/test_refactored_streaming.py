@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 from unittest.mock import ANY, MagicMock, patch
 
 import pytest
@@ -119,6 +120,24 @@ def test_perform_pipeline_streaming_orchestration(
     handle.close()
 
     logger.info("perform_pipeline_streaming orchestration verified.")
+
+
+def test_streaming_rejects_sensing_before_pipeline_context_setup(
+    mock_simulation_config,
+) -> None:
+    mock_simulation_config.sensing = SimpleNamespace(enabled=True)
+
+    with patch("generator.core.pipeline.streaming.PipelineContext") as context_cls:
+        with pytest.raises(ValueError, match="file/HDF5-only"):
+            perform_pipeline_streaming(
+                [],
+                [],
+                [],
+                mock_simulation_config,
+                scenario_configuration=SimpleNamespace(),
+            )
+
+    context_cls.assert_not_called()
 
 
 def test_streaming_endpoint_explicit_overrides_win_without_changing_advertised_host(

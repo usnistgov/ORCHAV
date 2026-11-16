@@ -74,22 +74,32 @@ def orientations_to_array(orientations: Sequence[Any]) -> np.ndarray:
     return np.asarray(snapshot, dtype=np.float64).reshape((-1, 3))
 
 
-def velocities_to_array(velocities: Sequence[Any] | None) -> np.ndarray | None:
+def velocities_to_array(
+    velocities: Sequence[Any] | None, *, require_complete: bool = False
+) -> np.ndarray | None:
     """Convert optional per-entity velocities into a stable float array.
 
     ``None`` means the frame had no velocity channel to store. Individual
     missing velocities become zeros so the array still lines up with the target
-    ordering.
+    ordering. With ``require_complete=True``, missing or invalid rows make the
+    snapshot unavailable; a missing velocity cannot establish stationary truth.
     """
     if not velocities:
         return None
     snapshot = []
     for velocity in velocities:
         if velocity is None:
+            if require_complete:
+                return None
             snapshot.append((0.0, 0.0, 0.0))
             continue
         try:
-            snapshot.append(point_to_tuple(velocity, error_type=ValueError))
+            value = point_to_tuple(velocity, error_type=ValueError)
+            if require_complete and not np.all(np.isfinite(value)):
+                return None
+            snapshot.append(value)
         except (TypeError, ValueError, IndexError, AttributeError):
+            if require_complete:
+                return None
             snapshot.append((0.0, 0.0, 0.0))
     return np.asarray(snapshot, dtype=np.float64).reshape((-1, 3))

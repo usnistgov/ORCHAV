@@ -69,63 +69,69 @@ def test_pygfx_edge_width_updates_tracked_external_edge_names():
     assert redraws == [True]
 
 
-def test_pygfx_show_axes_creates_named_rgb_axis_payload():
+def _pygfx_guide_renderer():
+    import pygfx as gfx
+
     from visualizer.src.renderers.pygfx.renderer import PygfxRenderer
 
-    pygfx_renderer = PygfxRenderer.__new__(PygfxRenderer)
-    pygfx_renderer._initialized = True
-    pygfx_renderer._line_width = 2.0
-    records: list[tuple] = []
-    redraws: list[bool] = []
-    pygfx_renderer.compute_scene_bounds = lambda scope="visible": None
-    pygfx_renderer.ensure_named_geometry = (
-        lambda name, payload, material=None, visible=None, **_: records.append(
-            (name, payload, material, visible)
+    renderer = PygfxRenderer.__new__(PygfxRenderer)
+    renderer._initialized = True
+    renderer._gfx = gfx
+    renderer._scene = gfx.Scene()
+    renderer._objects = {}
+    renderer._name_to_handle = {}
+    renderer.request_redraw = lambda: None
+    return renderer
+
+
+def test_pygfx_show_axes_creates_native_rgb_guide_outside_scientific_registry():
+    import pygfx as gfx
+
+    renderer = _pygfx_guide_renderer()
+    redraws = []
+    renderer.request_redraw = lambda: redraws.append(True)
+    assert renderer.show_axes(True) is True
+    group = renderer._scene_axes_group
+    assert group in renderer._scene.children and group.visible
+    helper = group.children[0]
+    assert isinstance(helper, gfx.AxesHelper)
+    positions = helper.geometry.positions.data
+    np.testing.assert_array_equal(positions[::2], np.zeros((3, 3)))
+    directions = positions[1::2] / np.linalg.norm(positions[1::2], axis=1)[:, None]
+    np.testing.assert_allclose(directions, np.eye(3))
+    for index, color in enumerate(("#ff776d", "#88dd8e", "#85acff")):
+        np.testing.assert_allclose(
+            helper.geometry.colors.data[index * 2 : index * 2 + 2],
+            np.tile(tuple(gfx.Color(color)), (2, 1)),
         )
-        or True
+    assert [label._orchav_guide_text for label in group.children[1:]] == ["X", "Y", "Z"]
+    assert not helper.material.pick_write
+    assert renderer._objects == {} and renderer._name_to_handle == {}
+    assert redraws == [True]
+
+
+def test_pygfx_axes_size_scales_for_large_static_environments():
+    renderer = _pygfx_guide_renderer()
+    renderer._update_scene_guide_bounds = lambda: np.asarray(
+        [[0.0, 0.0, 0.0], [700.0, 705.0, 50.0]], dtype=np.float64
     )
-    pygfx_renderer.request_redraw = lambda: redraws.append(True)
-
-    assert pygfx_renderer.show_axes(True) is True
-
-    name, payload, material, visible = records[0]
-    assert name == PygfxRenderer.AXES_NAME
-    assert visible is True
-    assert payload.lines.tolist() == [[0, 1], [0, 2], [0, 3]]
-    assert payload.colors.shape == (3, 4)
-    assert material.shader == "unlit"
-    assert material.line_width == 3.0
-    assert redraws == [True]
+    assert renderer._default_axes_size(1.0) == pytest.approx(75.0)
+    assert renderer._default_axes_size(12.0) == pytest.approx(12.0)
 
 
-def test_pygfx_axes_size_scales_for_large_scenes():
-    from visualizer.src.renderers.pygfx.renderer import PygfxRenderer
-
-    class _BBox:
-        def get_extent(self):
-            return np.asarray([700.0, 705.0, 50.0], dtype=np.float64)
-
-    pygfx_renderer = PygfxRenderer.__new__(PygfxRenderer)
-    pygfx_renderer.compute_scene_bounds = lambda scope="visible": _BBox()
-
-    assert pygfx_renderer._default_axes_size(1.0) == pytest.approx(75.0)
-    assert pygfx_renderer._default_axes_size(12.0) == pytest.approx(12.0)
-
-
-def test_pygfx_show_axes_removes_named_axis_payload():
-    from visualizer.src.renderers.pygfx.renderer import PygfxRenderer
-
-    pygfx_renderer = PygfxRenderer.__new__(PygfxRenderer)
-    pygfx_renderer._initialized = True
-    removals: list[str] = []
-    redraws: list[bool] = []
-    pygfx_renderer.remove_named_geometry = lambda name: removals.append(name) or True
-    pygfx_renderer.request_redraw = lambda: redraws.append(True)
-
-    assert pygfx_renderer.show_axes(False) is True
-
-    assert removals == [PygfxRenderer.AXES_NAME]
-    assert redraws == [True]
+def test_pygfx_show_axes_hides_and_reuses_native_guide():
+    renderer = _pygfx_guide_renderer()
+    renderer.show_axes(True)
+    group = renderer._scene_axes_group
+    redraws = []
+    renderer.request_redraw = lambda: redraws.append(True)
+    assert renderer.show_axes(False) is True
+    assert not renderer.get_axes_visible() and not group.visible
+    assert group in renderer._scene.children
+    assert renderer.show_axes(True) is True
+    assert renderer._scene_axes_group is group and group.visible
+    assert renderer._objects == {} and renderer._name_to_handle == {}
+    assert redraws == [True, True]
 
 
 def test_pygfx_qt_window_close_marks_rendercanvas_closed():

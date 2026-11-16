@@ -11,7 +11,6 @@ scenario may be checked in one command.
 
 ```bash
 orchav-validate path/to/scenario
-orchav-validate scenario-a scenario-b
 ```
 
 Ordinary validation parses the YAML, validates the shared scenario schema, and
@@ -21,6 +20,16 @@ a nonzero exit status. A missing generated `frames/` directory is not checked
 in this mode, so validation also works before the first Generator run.
 The required [`schema_version: 2`](compatibility.md#scenario-yaml) is checked as
 part of this schema validation.
+
+Before generation, require all referenced input assets without requiring an
+output directory:
+
+```bash
+orchav-validate path/to/scenario --require-assets
+```
+
+`--require-assets` turns missing scene, mesh, motion and other referenced input
+paths into errors. It does not require generated frames. Use this check before the first generation of a scenario.
 
 Use strict validation after generating a scenario:
 
@@ -34,11 +43,8 @@ not open the manifest or HDF5 chunks. Use `orchav-inspect` afterward to confirm
 that an actual frame can be loaded.
 
 On success, the validator names the groups it checked, including whether it
-checked a saved-frame directory. To inspect the normalized configuration and
-applicable defaults in more detail, use `--dump-config`.
-
-To inspect the normalized scenario configuration derived from YAML without
-running the Generator, print it as YAML:
+checked a saved-frame directory. To print the normalized YAML and schema
+defaults before generation, run:
 
 ```bash
 orchav-validate --dump-config path/to/scenario
@@ -52,22 +58,17 @@ scene, are finalized at runtime. This diagnostic view is therefore not a
 replacement scenario file or a fully resolved runtime configuration. See the
 [Scenario YAML Reference](scenario_yaml.md) for those field-level behaviors.
 
-## Before Sharing a Scenario
+## Choose a validation mode
 
-Use the checks in this order:
+| Mode | Input assets | Generated frames |
+| --- | --- | --- |
+| Ordinary | Missing paths produce warnings. YAML/schema errors fail. | Not required. |
+| `--require-assets` | Missing referenced inputs fail. | Not required. |
+| `--strict` | Every referenced-path warning fails. | Configured frame directory must exist, but its contents are not decoded. |
 
-```bash
-orchav-validate path/to/scenario
-orchav-generator path/to/scenario
-orchav-validate --strict path/to/scenario
-orchav-inspect path/to/scenario --frame 0
-```
-
-This sequence validates the configuration, generates its output, applies the
-strict referenced-path and output-directory policy, and confirms that the first
-frame can be loaded without opening the Visualizer. For a Python-scripted
-scenario, replace the Generator command with
-`python path/to/scenario/generate.py`.
+After generation, use [frame inspection](../shared/frame_inspection.md) to
+confirm that a saved frame can be loaded. Validation alone does not establish
+that a recording is complete or scientifically correct.
 
 ## Contributor Project Checks
 

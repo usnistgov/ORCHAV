@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -104,11 +105,16 @@ def _materialize_dependencies(root: Path) -> None:
     (target / "frame_000.ply").write_text("ply", encoding="utf-8")
 
 
-def test_full_source_snapshot_round_trips_outside_builder_marker(tmp_path: Path) -> None:
+@pytest.mark.parametrize("rate_based", [False, True])
+def test_full_source_snapshot_round_trips_outside_builder_marker(
+    tmp_path: Path, rate_based
+) -> None:
     source = tmp_path / "source"
     source.mkdir()
     scenario_yaml = source / "scenario.yaml"
     mapping = _mapping()
+    if rate_based:
+        mapping["timeline"] = {"steps": 12, "sample_rate_hz": 1000.0}
     scenario_yaml.write_text(yaml.safe_dump(mapping, sort_keys=False), encoding="utf-8")
     _materialize_dependencies(source)
     (source / "target" / "frame_001.ply").write_text("ply", encoding="utf-8")
@@ -161,6 +167,26 @@ def test_scenario_copy_promotes_only_yaml_and_semantic_dependencies(tmp_path: Pa
     assert not (destination / "coverage").exists()
     assert not (destination / "cache").exists()
     assert not (destination / "diagnostics").exists()
+
+
+def test_rate_based_step_edit_saves_and_reopens_without_a_stale_duration(tmp_path: Path) -> None:
+    mapping = _mapping()
+    mapping["timeline"] = {"steps": 512, "sample_rate_hz": 1000.0}
+    source = tmp_path / "scenario.yaml"
+    source.write_text(yaml.safe_dump(mapping, sort_keys=False))
+    _materialize_dependencies(tmp_path)
+    loaded = load_for_authoring(source)
+    document = loaded.document
+    assert document is not None
+    document.set_timeline(replace(document.scenario.timeline, steps=1024))
+    save_document(document, compiler=_MergedCompiler())
+    assert yaml.safe_load(source.read_text())["timeline"] == {
+        "steps": 1024,
+        "sample_rate_hz": 1000.0,
+    }
+    reopened = load_for_authoring(source)
+    assert reopened.scenario is not None
+    assert reopened.scenario.timeline.duration_s == 1.023
 
 
 def test_transitive_scene_parent_traversal_opens_but_blocks_import_save(

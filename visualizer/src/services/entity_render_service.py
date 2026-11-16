@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Iterable
 
 from ..model import VisualEntity
 from .base import BaseService
+from .label_callout_service import label_with_callout
 
 if TYPE_CHECKING:
     from ...visualizer import OrchavVisualizer
@@ -47,7 +48,9 @@ class EntityRenderService(BaseService):
         if renderer is None:
             return False
 
-        object_ok = bool(renderer.ensure_object(entity.render_object))
+        object_ok = bool(
+            renderer.ensure_object(label_with_callout(entity.render_object, self.visualizer))
+        )
         label_ok = self._sync_label(entity)
         return object_ok and label_ok
 
@@ -71,4 +74,4 @@ class EntityRenderService(BaseService):
             return True
         if renderer is None:
             return False
-        return bool(renderer.ensure_object(label))
+        return bool(renderer.ensure_object(label_with_callout(label, self.visualizer)))

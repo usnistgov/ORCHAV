@@ -1,8 +1,8 @@
 # Hello World Scripted - Calculated Python Trajectory
 # ==================================================
 # Shared scenario settings for the scripted example. TX/RX objects are created
-# in generate.py so the script can calculate waypoints and build the standard
-# waypoint mobility model.
+# in actors.py so generation and preview share the calculated waypoints and
+# standard waypoint mobility model.
 #
 # Run with:
 #   python scenarios/getting_started/hello_world_scripted/generate.py

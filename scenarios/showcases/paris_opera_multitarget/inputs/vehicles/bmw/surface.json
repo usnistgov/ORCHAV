@@ -1,0 +1,5 @@
+{
+  "schema": "orchav.target_surface.v1",
+  "texture": "albedo.png",
+  "uv_map": "surface_uv.npz"
+}

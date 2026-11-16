@@ -124,12 +124,14 @@ def test_sequence_registration_does_not_stat_animation_frames(
     assert stat_calls == []
 
 
-def test_default_capacity_holds_a_typical_short_animation_sequence(
+@pytest.mark.parametrize("pose_count", [37, 192, 384])
+def test_default_capacity_holds_short_animation_loops(
     cache_factory: Callable[..., TargetAssetCache],
     tmp_path: Path,
+    pose_count: int,
 ) -> None:
     cache = cache_factory()
-    paths = [tmp_path / f"etoile_{index:05d}.ply" for index in range(37)]
+    paths = [tmp_path / f"pose_{index:05d}.ply" for index in range(pose_count)]
     for index, path in enumerate(paths):
         _write_source(path)
         cache.put(_registered_asset(cache, "etoile", path, offset=float(index)))
@@ -140,6 +142,9 @@ def test_default_capacity_holds_a_typical_short_animation_sequence(
     assert inventory["entries"] == len(paths)
     assert inventory["evictions"] == 0
     assert inventory["bytes"] < inventory["max_bytes"]
+    # A second playback loop must reuse its meshes, not start loading again.
+    for path in paths:
+        assert cache.get("etoile", path.name) is not None
 
 
 def test_entry_and_byte_budgets_evict_the_true_lru(

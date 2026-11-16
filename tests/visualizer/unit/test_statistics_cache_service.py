@@ -9,10 +9,9 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from PySide6.QtWidgets import QLabel
 
 from shared.frames.directory_ownership import capture_frame_directory
-from shared.frames.provider_base import DataProvider, ProviderInfo
+from shared.frames.provider_base import DataProvider, ProviderCapability, ProviderInfo
 from shared.frames.types import StandardMPCFrame
 from shared.scenarios.actors import TimelineSpec
 from shared.statistics.themes import theme_manager
@@ -129,7 +128,9 @@ def _provider(
     frame_set_id: str = "frame-set-a",
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        info=SimpleNamespace(
+        info=ProviderInfo(
+            name="test",
+            source="snapshot",
             generation_id=generation_id,
             frame_set_id=frame_set_id,
         )
@@ -338,7 +339,7 @@ def test_failed_statistics_cache_save_removes_its_unique_temp(
 
 def test_statistics_cache_round_trip(tmp_path: Path):
     scenario = SimpleNamespace(
-        root=tmp_path / "scenario", frames_dir=tmp_path / "scenario" / "frames"
+        data_mode="files", root=tmp_path / "scenario", frames_dir=tmp_path / "scenario" / "frames"
     )
     _write_frame_files(scenario.frames_dir)
 
@@ -392,7 +393,7 @@ def test_statistics_cache_round_trip(tmp_path: Path):
 
 def test_statistics_cache_invalidates_on_frame_set_change(tmp_path: Path):
     scenario = SimpleNamespace(
-        root=tmp_path / "scenario", frames_dir=tmp_path / "scenario" / "frames"
+        data_mode="files", root=tmp_path / "scenario", frames_dir=tmp_path / "scenario" / "frames"
     )
     _write_frame_files(scenario.frames_dir)
 
@@ -407,7 +408,7 @@ def test_statistics_cache_invalidates_on_frame_set_change(tmp_path: Path):
 
 def test_statistics_cache_fingerprint_includes_frame_metadata_files(tmp_path: Path):
     scenario = SimpleNamespace(
-        root=tmp_path / "scenario", frames_dir=tmp_path / "scenario" / "frames"
+        data_mode="files", root=tmp_path / "scenario", frames_dir=tmp_path / "scenario" / "frames"
     )
     _write_frame_files(scenario.frames_dir)
     service = StatisticsCacheService(SimpleNamespace(scenario=scenario))
@@ -420,7 +421,7 @@ def test_statistics_cache_fingerprint_includes_frame_metadata_files(tmp_path: Pa
 
 def test_statistics_cache_fingerprint_is_stat_based_for_frame_payloads(tmp_path: Path):
     scenario = SimpleNamespace(
-        root=tmp_path / "scenario", frames_dir=tmp_path / "scenario" / "frames"
+        data_mode="files", root=tmp_path / "scenario", frames_dir=tmp_path / "scenario" / "frames"
     )
     scenario.frames_dir.mkdir(parents=True)
     frame_file = scenario.frames_dir / "mpc_frames_00000-00099.h5"
@@ -534,7 +535,7 @@ def test_statistics_panel_renders_scalar_coverage_figures_without_cached_mpc_sta
     monkeypatch.setattr(panel, "_ensure_plot_dependencies", lambda: True)
     monkeypatch.setattr(
         panel,
-        "_create_matplotlib_chart",
+        "_create_chart",
         lambda _widget, chart_type, data, title="": rendered.append((chart_type, data, title)),
     )
 
@@ -587,7 +588,7 @@ def test_statistics_panel_renders_serving_tx_share_without_categorical_curve(mon
     monkeypatch.setattr(panel, "_ensure_plot_dependencies", lambda: True)
     monkeypatch.setattr(
         panel,
-        "_create_matplotlib_chart",
+        "_create_chart",
         lambda _widget, chart_type, data, title="": rendered.append((chart_type, data, title)),
     )
 
@@ -606,6 +607,7 @@ def test_statistics_panel_all_graph_hosts_have_central_explanations(qtbot):
     graphs = panel.create_graphs_panel()
     qtbot.addWidget(graphs)
     expected_keys = {
+        "delay_time_chart",
         "coverage_distribution_chart",
         "coverage_success_chart",
         "reflection_order_chart",
@@ -633,15 +635,22 @@ def test_statistics_panel_all_graph_hosts_have_central_explanations(qtbot):
         assert panel.widgets[key].toolTip() == _GRAPH_EXPLANATIONS[key]
 
 
-def test_statistics_panel_coverage_chart_renderers_create_matplotlib_canvases(qtbot):
-    pytest.importorskip("matplotlib")
-    panel = StatisticsPanel(SimpleNamespace())
+def _visible_chart(panel, qtbot, key, kind, data, title="Chart"):
+    host = panel._create_chart_widget(key)
+    qtbot.addWidget(host)
+    host.resize(560, 320)
+    host.show()
+    panel._create_chart(host, kind, data, title)
+    return host
 
-    chart_inputs = [
+
+@pytest.mark.parametrize(
+    "kind,data",
+    [
         (
             "coverage_histogram",
             {
-                "values": np.array([1.0, 2.0, 3.0]),
+                "values": [1.0, 2.0, 3.0],
                 "xlabel": "SINR (linear)",
                 "color_scale": "logarithmic",
                 "percentiles": (1.2, 2.0, 2.8),
@@ -650,8 +659,8 @@ def test_statistics_panel_coverage_chart_renderers_create_matplotlib_canvases(qt
         (
             "coverage_success_curve",
             {
-                "thresholds": np.array([1.0, 2.0, 3.0]),
-                "percentages": np.array([75.0, 50.0, 25.0]),
+                "thresholds": [1.0, 2.0, 3.0],
+                "percentages": [75.0, 50.0, 25.0],
                 "xlabel": "SINR (linear)",
                 "comparator": ">=",
                 "color_scale": "logarithmic",
@@ -669,232 +678,143 @@ def test_statistics_panel_coverage_chart_renderers_create_matplotlib_canvases(qt
                 "colors": ["#1f77b4", "#d62728", "#7f7f7f"],
             },
         ),
-    ]
+    ],
+)
+def test_statistics_panel_coverage_chart_renderers_create_pyqtgraph_plots(qtbot, kind, data):
+    import pyqtgraph as pg
 
-    host_keys = {
-        "coverage_histogram": "coverage_distribution_chart",
-        "coverage_success_curve": "coverage_success_chart",
-        "coverage_serving_share": "coverage_distribution_chart",
-    }
-    for chart_type, data in chart_inputs:
-        host = panel._create_chart_widget(host_keys[chart_type])
-        qtbot.addWidget(host)
-        panel._create_matplotlib_chart(host, chart_type, data, "Coverage chart")
-
-        canvases = [
-            host.layout().itemAt(index).widget()
-            for index in range(host.layout().count())
-            if isinstance(host.layout().itemAt(index).widget(), panel.FigureCanvas)
-        ]
-        assert len(canvases) == 1
-        assert canvases[0].chart_metadata["chart_type"] == chart_type
-        assert canvases[0].toolTip() == host.toolTip()
-
-
-def _chart_canvases(panel: StatisticsPanel, host) -> list:
-    """Return Matplotlib canvases currently attached to one chart host."""
-    return [
-        host.layout().itemAt(index).widget()
-        for index in range(host.layout().count())
-        if isinstance(host.layout().itemAt(index).widget(), panel.FigureCanvas)
-    ]
+    panel = StatisticsPanel(SimpleNamespace())
+    key = (
+        "coverage_success_chart"
+        if kind == "coverage_success_curve"
+        else "coverage_distribution_chart"
+    )
+    host = _visible_chart(panel, qtbot, key, kind, data)
+    assert isinstance(host.plot, pg.PlotWidget)
+    assert host.chart_metadata["chart_type"] == kind
+    assert host.plot.toolTip() == host.toolTip()
+    # The same input also has a purely headless publication path.
+    pytest.importorskip("matplotlib")
+    figure = panel._create_publication_figure(kind, data)
+    assert figure.canvas.__class__.__name__ == "FigureCanvasAgg"
 
 
 def test_statistics_panel_interaction_charts_use_semantic_labels_and_active_series(qtbot):
-    pytest.importorskip("matplotlib")
-    from matplotlib.colors import to_hex
+    import pyqtgraph as pg
 
     panel = StatisticsPanel(SimpleNamespace())
-    distribution_host = panel._create_chart_widget("interaction_type_chart")
-    evolution_host = panel._create_chart_widget("mpc_type_evolution_chart")
-    qtbot.addWidget(distribution_host)
-    qtbot.addWidget(evolution_host)
-
-    panel._create_matplotlib_chart(
-        distribution_host,
+    host = _visible_chart(
+        panel,
+        qtbot,
+        "interaction_type_chart",
         "interaction_type",
         {0: 10, 99: 2, -1: 1},
         "MPCs by Initial Propagation Mechanism",
     )
-    distribution_canvas = _chart_canvases(panel, distribution_host)[0]
-    distribution_ax = distribution_canvas.chart_metadata["ax"]
-    assert distribution_ax.get_title() == "MPCs by Initial Propagation Mechanism"
-    assert distribution_ax.get_ylabel() == "Initial Mechanism"
-    assert [tick.get_text() for tick in distribution_ax.get_yticklabels()] == [
+    assert host.title.text() == "MPCs by Initial Propagation Mechanism"
+    assert [label for _, label in host.plot.getAxis("left")._tickLevels[0]] == [
         "LoS",
         "Virtual",
         "Unknown",
     ]
-    assert [to_hex(patch.get_facecolor()) for patch in distribution_ax.patches] == [
+    bars = next(item for item in host.plot.items() if isinstance(item, pg.BarGraphItem))
+    assert [brush.color().name() for brush in bars.opts["brushes"]] == [
         "#ffd600",
         "#ff9933",
         "#808080",
     ]
-    distribution_data = distribution_canvas.chart_metadata["data"]
-    x_val, y_val = panel._find_nearest_chart_point(
-        1.0,
-        1.0,
-        "interaction_type",
-        distribution_data,
-    )
-    assert (x_val, y_val) == (2.0, 1.0)
+    data = host.chart_metadata["data"]
+    x, y = panel._find_nearest_chart_point(1.0, 1.0, "interaction_type", data)
+    assert (x, y) == (2.0, 1.0)
     assert (
-        panel._format_chart_tooltip(
-            x_val,
-            y_val,
-            "interaction_type",
-            distribution_data,
-        )
+        panel._format_chart_tooltip(x, y, "interaction_type", data)
         == "Initial mechanism: Virtual\nCount: 2"
     )
-
-    panel._create_matplotlib_chart(
-        evolution_host,
+    evolution = _visible_chart(
+        panel,
+        qtbot,
+        "mpc_type_evolution_chart",
         "mpc_type_evolution",
-        {
-            "frame_indices": [0, 1],
-            "type_data": {0: [3, 2], 8: [0, 0], 99: [0, 1], -1: [1, 0]},
-        },
-        "Initial Propagation Mechanism per Frame",
+        {"frame_indices": [0, 1], "type_data": {0: [3, 2], 8: [0, 0], 99: [0, 1], -1: [1, 0]}},
     )
-    evolution_canvas = _chart_canvases(panel, evolution_host)[0]
-    evolution_ax = evolution_canvas.chart_metadata["ax"]
-    assert [line.get_label() for line in evolution_ax.lines] == ["LoS", "Virtual", "Unknown"]
-    assert "Type 99" not in evolution_ax.get_legend_handles_labels()[1]
-    assert "Type -1" not in evolution_ax.get_legend_handles_labels()[1]
-    evolution_data = evolution_canvas.chart_metadata["data"]
-    x_val, y_val = panel._find_nearest_chart_point(
-        1.0,
-        1.0,
-        "mpc_type_evolution",
-        evolution_data,
-    )
-    assert (x_val, y_val) == (1.0, 0.0)
-    tooltip = panel._format_chart_tooltip(
-        x_val,
-        y_val,
-        "mpc_type_evolution",
-        evolution_data,
-    )
-    assert tooltip.splitlines() == ["Frame: 1", "LoS: 2", "Virtual: 1", "Unknown: 0"]
+    assert [series[0] for series in evolution._series] == ["LoS", "Virtual", "Unknown"]
+    data = evolution.chart_metadata["data"]
+    x, y = panel._find_nearest_chart_point(1.0, 1.0, "mpc_type_evolution", data)
+    assert (x, y) == (1.0, 0.0)
+    assert panel._format_chart_tooltip(x, y, "mpc_type_evolution", data).splitlines() == [
+        "Frame: 1",
+        "LoS: 2",
+        "Virtual: 1",
+        "Unknown: 0",
+    ]
 
 
 def test_statistics_panel_interaction_order_evolution_uses_active_symlog_lines(qtbot):
-    pytest.importorskip("matplotlib")
+    from visualizer.src.panels.statistics_plot import transform
+
+    SymmetricalLogTransform = pytest.importorskip("matplotlib.scale").SymmetricalLogTransform
+
     panel = StatisticsPanel(SimpleNamespace())
-    host = panel._create_chart_widget("mpc_order_evolution_hist_chart")
-    qtbot.addWidget(host)
-
-    panel._create_matplotlib_chart(
-        host,
-        "mpc_order_evolution",
-        {
-            "frame_indices": [0, 1, 2],
-            "order_data": {0: [1, 0, 1], 1: [100, 120, 110], 2: [0, 0, 0]},
-        },
-        "Interaction Order Counts per Frame",
+    data = {
+        "frame_indices": [0, 1, 2],
+        "order_data": {0: [1, 0, 1], 1: [100, 120, 110], 2: [0, 0, 0]},
+    }
+    host = _visible_chart(
+        panel, qtbot, "mpc_order_evolution_hist_chart", "mpc_order_evolution", data
     )
-
-    canvas = _chart_canvases(panel, host)[0]
-    ax = canvas.chart_metadata["ax"]
-    assert [line.get_label() for line in ax.lines] == ["0", "1"]
-    assert len(ax.collections) == 0
-    assert ax.get_yscale() == "symlog"
-    assert ax.get_legend_handles_labels()[1] == ["0", "1"]
-    data = canvas.chart_metadata["data"]
-    x_val, y_val = panel._find_nearest_chart_point(
-        1.0,
-        100.0,
-        "mpc_order_evolution",
-        data,
+    assert [series[0] for series in host._series] == ["Order 0", "Order 1"]
+    assert host.plot.getAxis("left").display_scale == "symlog"
+    values = np.array([-100, -1, -0.5, 0, 0.5, 1, 100, 120.0])
+    np.testing.assert_allclose(
+        transform(values, "symlog"), SymmetricalLogTransform(10, 1.0, 1.0).transform(values)
     )
-    assert (x_val, y_val) == (1.0, 0.0)
-    assert panel._format_chart_tooltip(
-        x_val,
-        y_val,
-        "mpc_order_evolution",
-        data,
-    ).splitlines() == ["Frame: 1", "Order 0: 0", "Order 1: 120"]
+    data = host.chart_metadata["data"]
+    x, y = panel._find_nearest_chart_point(1.0, 100.0, "mpc_order_evolution", data)
+    assert (x, y) == (1.0, 0.0)
+    assert panel._format_chart_tooltip(x, y, "mpc_order_evolution", data).splitlines() == [
+        "Frame: 1",
+        "Order 0: 0",
+        "Order 1: 120",
+    ]
 
 
 def test_statistics_panel_polar_rose_hover_reports_azimuth_bin(qtbot):
-    pytest.importorskip("matplotlib")
     panel = StatisticsPanel(SimpleNamespace())
-    host = panel._create_chart_widget("aod_az_polar_chart")
-    qtbot.addWidget(host)
-    panel._create_matplotlib_chart(
-        host,
+    host = _visible_chart(
+        panel,
+        qtbot,
+        "aod_az_polar_chart",
         "polar_rose",
         {"values": [-170.0, -10.0, 10.0, 170.0], "n_bins": 4},
-        "AoD Azimuth",
     )
-
-    canvas = _chart_canvases(panel, host)[0]
-    data = canvas.chart_metadata["data"]
-    x_val, y_val = panel._find_nearest_chart_point(
-        np.deg2rad(10.0),
-        1.0,
-        "polar_rose",
-        data,
-    )
-
-    assert x_val == pytest.approx(np.deg2rad(45.0))
-    assert y_val == 1.0
+    data = host.chart_metadata["data"]
+    x, y = panel._find_nearest_chart_point(np.deg2rad(10.0), 1.0, "polar_rose", data)
+    assert x == pytest.approx(np.deg2rad(45.0))
+    assert y == 1.0
     assert (
-        panel._format_chart_tooltip(
-            x_val,
-            y_val,
-            "polar_rose",
-            data,
-        )
+        panel._format_chart_tooltip(x, y, "polar_rose", data)
         == "Azimuth bin: 0 deg to 90 deg\nCount: 1"
     )
-    assert canvas.toolTip() == _GRAPH_EXPLANATIONS["aod_az_polar_chart"]
+    assert host.plot.toolTip() == _GRAPH_EXPLANATIONS["aod_az_polar_chart"]
+    pytest.importorskip("matplotlib")
+    figure = panel._create_publication_figure("polar_rose", data)
+    assert figure.axes[0].get_theta_offset() == 0
+    assert figure.axes[0].get_theta_direction() == 1
 
 
-def test_statistics_panel_hover_restores_graph_explanation(qapp):
-    assert qapp is not None
-
-    class _FakeCanvas:
-        def __init__(self):
-            self.tooltip = ""
-            self.callbacks = {}
-
-        def setToolTip(self, text):
-            self.tooltip = text
-
-        def mpl_connect(self, event_name, callback):
-            self.callbacks[event_name] = callback
+def test_statistics_panel_hover_restores_graph_explanation(qtbot):
+    from PySide6.QtCore import QPointF
 
     panel = StatisticsPanel(SimpleNamespace())
-    canvas = _FakeCanvas()
-    axes = object()
-    explanation = _GRAPH_EXPLANATIONS["reflection_order_chart"]
-    panel._connect_chart_mouse_events(
-        canvas,
-        axes,
-        "reflection_order",
-        {0: 4},
-        base_tooltip=explanation,
-    )
-
-    canvas.callbacks["motion_notify_event"](
-        SimpleNamespace(inaxes=axes, xdata=0.0, ydata=4.0, guiEvent=None)
-    )
-    assert canvas.tooltip == "Interaction order: 0\nCount: 4"
-
-    canvas.callbacks["motion_notify_event"](
-        SimpleNamespace(inaxes=None, xdata=None, ydata=None, guiEvent=None)
-    )
-    assert canvas.tooltip == explanation
+    host = _visible_chart(panel, qtbot, "reflection_order_chart", "reflection_order", {0: 4})
+    host.plot.setToolTip("Interaction order: 0\nCount: 4")
+    host._hover((QPointF(-1000, -1000),))
+    assert host.plot.toolTip() == _GRAPH_EXPLANATIONS["reflection_order_chart"]
 
 
 def test_statistics_panel_constant_pair_states_replace_chart_without_stale_widgets(qtbot):
-    pytest.importorskip("matplotlib")
     panel = StatisticsPanel(SimpleNamespace())
-    host = panel._create_chart_widget("pair_visibility_chart")
-    qtbot.addWidget(host)
-    constant_data = {
+    constant = {
         "frame_indices": list(range(50)),
         "category_data": {
             "direct_path_present": [3] * 50,
@@ -902,25 +822,14 @@ def test_statistics_panel_constant_pair_states_replace_chart_without_stale_widge
             "no_path": [0] * 50,
         },
     }
-
-    panel._create_matplotlib_chart(
-        host,
-        "pair_visibility_evolution",
-        constant_data,
-        "TX/RX Pair Path-State Counts per Frame",
+    host = _visible_chart(
+        panel, qtbot, "pair_visibility_chart", "pair_visibility_evolution", constant
     )
-    assert _chart_canvases(panel, host) == []
-    labels = [
-        host.layout().itemAt(index).widget()
-        for index in range(host.layout().count())
-        if isinstance(host.layout().itemAt(index).widget(), QLabel)
-    ]
-    assert len(labels) == 1
-    assert "all have a direct path" in labels[0].text()
-    assert "50 frames" in labels[0].text()
-    assert labels[0].toolTip() == _GRAPH_EXPLANATIONS["pair_visibility_chart"]
-
-    changing_data = {
+    assert host.plot is None
+    assert "all have a direct path" in host.message.text()
+    assert "50 frames" in host.message.text()
+    assert host.message.toolTip() == _GRAPH_EXPLANATIONS["pair_visibility_chart"]
+    changing = {
         "frame_indices": [0, 1, 2],
         "category_data": {
             "direct_path_present": [3, 2, 3],
@@ -928,26 +837,15 @@ def test_statistics_panel_constant_pair_states_replace_chart_without_stale_widge
             "no_path": [0, 0, 0],
         },
     }
-    panel._create_matplotlib_chart(
-        host,
-        "pair_visibility_evolution",
-        changing_data,
-        "TX/RX Pair Path-State Counts per Frame",
-    )
-    assert len(_chart_canvases(panel, host)) == 1
-    assert not any(
-        isinstance(host.layout().itemAt(index).widget(), QLabel)
-        for index in range(host.layout().count())
-    )
-
-    panel._create_matplotlib_chart(
-        host,
-        "pair_visibility_evolution",
-        constant_data,
-        "TX/RX Pair Path-State Counts per Frame",
-    )
-    assert _chart_canvases(panel, host) == []
-    assert host.layout().count() == 1
+    panel._create_chart(host, "pair_visibility_evolution", changing)
+    plot = host.plot
+    assert plot is not None and plot.isVisible()
+    assert host.message.isHidden()
+    panel._create_chart(host, "pair_visibility_evolution", constant)
+    assert host.plot is plot and plot.isHidden()
+    assert host.message.isVisible()
+    panel._create_chart(host, "pair_visibility_evolution", changing)
+    assert host.plot is plot and plot.isVisible()
 
 
 def test_constant_pair_state_message_does_not_claim_pair_identity() -> None:
@@ -1027,7 +925,7 @@ def test_statistics_panel_renders_evolution_charts_from_cached_arrays(monkeypatc
     def _record_chart(widget, chart_type, data, title=""):
         rendered_chart_types.append(chart_type)
 
-    monkeypatch.setattr(panel, "_create_matplotlib_chart", _record_chart)
+    monkeypatch.setattr(panel, "_create_chart", _record_chart)
 
     panel._update_statistics()
 
@@ -1136,54 +1034,35 @@ def test_statistics_panel_graph_status_explains_hidden_sections():
 
 
 def test_statistics_panel_chart_export_uses_unique_paths(monkeypatch, tmp_path: Path):
+    pytest.importorskip("matplotlib")
+
     class _FakeFigure:
         def __init__(self):
-            self.saved_paths: list[Path] = []
+            self.saved_paths = []
 
         def savefig(self, path, **_kwargs):
             out_path = Path(path)
             out_path.write_text("new chart", encoding="utf-8")
             self.saved_paths.append(out_path)
 
-    class _FakeCanvas:
-        def __init__(self):
-            self.figure = _FakeFigure()
+        def clear(self):
+            pass
 
-    class _FakeItem:
-        def __init__(self, widget):
-            self._widget = widget
-
-        def widget(self):
-            return self._widget
-
-    class _FakeLayout:
-        def __init__(self, widget):
-            self._item = _FakeItem(widget)
-
-        def count(self):
-            return 1
-
-        def itemAt(self, index):
-            return self._item if index == 0 else None
-
-    class _FakeWidget:
-        def __init__(self, widget):
-            self._layout = _FakeLayout(widget)
-
-        def layout(self):
-            return self._layout
-
-    canvas = _FakeCanvas()
+    figure = _FakeFigure()
     existing = tmp_path / "reflection_order_chart.png"
     existing.write_text("existing chart", encoding="utf-8")
-
     panel = StatisticsPanel(SimpleNamespace())
     panel.stats = {"total_mpcs": 1}
-    panel.FigureCanvas = _FakeCanvas
-    panel.widgets = {"reflection_order_chart": _FakeWidget(canvas)}
-    panel._graphs_dirty = False
-    panel._graphs_rendered = True
-    monkeypatch.setattr(panel, "_ensure_plot_dependencies", lambda: True)
+    panel._chart_specs = {
+        "reflection_order_chart": {
+            "chart_type": "reflection_order",
+            "data": {0: 1},
+            "title": "Order counts",
+        }
+    }
+    panel._graphs_dirty = panel._coverage_graphs_dirty = False
+    panel._graphs_rendered = panel._graphs_panel_created = True
+    monkeypatch.setattr(panel, "_create_publication_figure", lambda **_kwargs: figure)
     monkeypatch.setattr(
         "visualizer.src.panels.statistics_panel.QFileDialog.getExistingDirectory",
         lambda *_args, **_kwargs: str(tmp_path),
@@ -1193,15 +1072,12 @@ def test_statistics_panel_chart_export_uses_unique_paths(monkeypatch, tmp_path: 
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "visualizer.src.panels.statistics_panel.QMessageBox.warning",
-        lambda *_args, **_kwargs: None,
+        "visualizer.src.panels.statistics_panel.QMessageBox.warning", lambda *_args, **_kwargs: None
     )
-
     panel._on_export_charts()
-
     assert existing.read_text(encoding="utf-8") == "existing chart"
     assert (tmp_path / "reflection_order_chart_1.png").read_text(encoding="utf-8") == "new chart"
-    assert canvas.figure.saved_paths == [tmp_path / "reflection_order_chart_1.png"]
+    assert figure.saved_paths == [tmp_path / "reflection_order_chart_1.png"]
 
 
 def test_statistics_csv_uses_semantic_virtual_and_unknown_labels(
@@ -1272,3 +1148,99 @@ def test_statistics_panel_does_not_refresh_for_mpc_palette_changes():
         assert panel._graphs_dirty is False
     finally:
         theme_manager.set_colormap("categorical", original)
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+@pytest.mark.parametrize("with_identity", [False, True])
+@pytest.mark.parametrize("capability", [ProviderCapability.STREAMING, ProviderCapability.OVERRIDES])
+def test_mutable_source_never_borrows_or_overwrites_local_cache(
+    tmp_path, wrapped, with_identity, capability
+):
+    scenario = _file_scenario(tmp_path)
+    _write_frame_files(scenario.frames_dir)
+    service = StatisticsCacheService(SimpleNamespace(scenario=scenario))
+    path = service.save_cached_stats({"total_mpcs": 6})
+    original = path.read_bytes()
+    provider = _provider()
+    provider.info.capabilities = capability | ProviderCapability.CACHING
+    if not with_identity:
+        provider.info.generation_id = provider.info.frame_set_id = None
+    if wrapped:
+        provider = SimpleNamespace(provider=provider)
+
+    assert service.load_cached_stats(provider=provider) is None
+    assert service.save_cached_stats({"total_mpcs": 4}, provider=provider) is None
+    assert path.read_bytes() == original
+
+
+def test_remote_snapshot_without_generation_reuses_and_invalidates(tmp_path):
+    scenario = _file_scenario(tmp_path)
+    service = StatisticsCacheService(SimpleNamespace(scenario=scenario))
+    remote = _provider(None, "remote-snapshot-a")
+    path = service.save_cached_stats({"total_mpcs": 468}, provider=remote)
+    assert path is not None
+    assert not scenario.frames_dir.exists()
+    assert service.load_cached_stats(provider=remote)["total_mpcs"] == 468
+    assert service.load_cached_stats(provider=_provider(None, "remote-snapshot-b")) is None
+    assert (
+        service.load_cached_stats(provider=_provider("generation-a", "remote-snapshot-a")) is None
+    )
+    # A configured local destination is not part of this remote snapshot identity.
+    _write_frame_files(scenario.frames_dir)
+    assert service.load_cached_stats(provider=remote)["total_mpcs"] == 468
+
+
+@pytest.mark.parametrize("mode", [None, "live_grpc", "remote_hdf5"])
+def test_providerless_cache_requires_explicit_local_context(tmp_path, mode):
+    scenario = SimpleNamespace(frames_dir=tmp_path / "frames", data_mode=mode)
+    _write_frame_files(scenario.frames_dir)
+    service = StatisticsCacheService(SimpleNamespace(scenario=scenario))
+    assert service.save_cached_stats({"total_mpcs": 6}) is None
+    assert service.load_cached_stats() is None
+
+
+def test_unknown_source_without_identity_cannot_borrow_local_files(tmp_path):
+    scenario = _file_scenario(tmp_path)
+    _write_frame_files(scenario.frames_dir)
+    service = StatisticsCacheService(SimpleNamespace(scenario=scenario))
+    provider = _provider(None, None)
+    assert service.save_cached_stats({"total_mpcs": 6}, provider=provider) is None
+    assert service._cache_key(provider=SimpleNamespace()) is None
+
+
+def test_legacy_local_identity_tracks_actual_provider_files(tmp_path):
+    scenario = _file_scenario(tmp_path / "configured")
+    _write_frame_files(scenario.frames_dir)
+    actual = tmp_path / "active" / "frames"
+    _write_frame_files(actual)
+    provider = _provider(None, None)
+    provider.recording_paths = lambda: tuple(actual.iterdir())
+    service = StatisticsCacheService(SimpleNamespace(scenario=scenario))
+    path = service.save_cached_stats({"total_mpcs": 8}, provider=provider)
+    assert path is not None
+    (scenario.frames_dir / "frames_manifest.json").write_text("unrelated change")
+    assert service.load_cached_stats(provider=provider)["total_mpcs"] == 8
+    (actual / "frames_manifest.json").write_text("active recording changed")
+    assert service.load_cached_stats(provider=provider) is None
+    provider.recording_paths = lambda: tuple(scenario.frames_dir.iterdir())
+    assert service.load_cached_stats(provider=provider) is None
+
+
+def test_unsafe_previous_statistics_schema_is_rejected(tmp_path):
+    scenario = _file_scenario(tmp_path)
+    _write_frame_files(scenario.frames_dir)
+    service = StatisticsCacheService(SimpleNamespace(scenario=scenario))
+    path = service._cache_path()
+    np.savez(
+        path,
+        metadata_json=np.array(
+            json.dumps(
+                {
+                    "schema_version": 4,
+                    "cache_key": service._cache_key(),
+                    "stats": {"total_mpcs": 6},
+                }
+            )
+        ),
+    )
+    assert service.load_cached_stats() is None

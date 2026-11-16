@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ..materials.texture_policy import resolve_texture_policy
 from ..services.cache_service import CacheInvalidationScope, invalidate_visualizer_cache
+from ..services.source_edit_policy import visual_surface_source_edit_message
 
 if TYPE_CHECKING:
     from ...visualizer import OrchavVisualizer
@@ -122,6 +123,13 @@ class MaterialUIController:
 
     def handle_material_id_changed(self, entry: Dict[str, Any], new_id: str) -> None:
         """Assign a scene material ID and refresh affected renderer entries."""
+        message = visual_surface_source_edit_message(entry)
+        if message is not None:
+            logger.warning(message)
+            status = getattr(self.visualizer, "_set_status_message", None)
+            if callable(status):
+                status(message, 10000)
+            return
         if not self.material_entry_edit_service:
             logger.warning("MaterialEntryEditService not available for material ID editing")
             return

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "kind": "visualizer_gui_captures",
+  "renderer": "pygfx",
+  "notes": [
+    "Unedited captures from saved results. Generate recordings with the commands in the scenario README first.",
+    "Image hashes identify these exact captures; pixel output can vary across graphics drivers."
+  ],
+  "figures": [
+    {
+      "image": "wall_cutaway_3d.png",
+      "image_sha256": "f3b859b4fbd3ba9fa7fd71de234ac1069af04396a10ddff2164c67b7531623ad",
+      "source_identity": "c5fa777c733fa86d2dcb44e5679af7353cd319b914331699dee3ff38c66500ba",
+      "camera": {
+        "eye": [
+          10.0,
+          -13.0,
+          10.0
+        ],
+        "lookat": [
+          0.0,
+          0.0,
+          2.700000047683716
+        ],
+        "up": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "fov": 38.0
+      },
+      "capture_file": "cutaway_3d.png",
+      "command": "python -m scenarios.sensing.applications.wall_detection_volume.generate output/examples/wall-tutorial-1m --report --capture-3d"
+    },
+    {
+      "image": "open_cutaway_3d.png",
+      "image_sha256": "9783eb7115328b8f227d5e4d9d8291587f2196445847fd7e53645eb8d23810de",
+      "source_identity": "dfbac504c46e7d510f29c876d71cefa6bc7c80b065cbaa1cedad64f9193e8805",
+      "camera": {
+        "eye": [
+          10.0,
+          -13.0,
+          10.0
+        ],
+        "lookat": [
+          0.0,
+          0.0,
+          2.700000047683716
+        ],
+        "up": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "fov": 38.0
+      },
+      "capture_file": "cutaway_3d.png",
+      "command": "python -m scenarios.sensing.applications.wall_detection_volume.generate output/examples/wall-tutorial-1m --report --capture-3d"
+    },
+    {
+      "image": "drone_west_3d.png",
+      "image_sha256": "28f821a436fdbce6e56bca255b98532e57239f8ba47f17aac0e4f4a6d866f6ef",
+      "source_identity": "4f688498-75ba-405d-9436-f4e0f7170566",
+      "camera": {
+        "eye": [
+          17.342002868652344,
+          -14.89265251159668,
+          13.537683486938477
+        ],
+        "lookat": [
+          6.741257190704346,
+          -1.8455796241760254,
+          3.7523796558380127
+        ],
+        "up": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "fov": 45.0
+      },
+      "capture_file": "west_3d.png",
+      "command": "python -m visualizer.capture_sensing --fusion analysis/drone-tracking/multiple-fusion --output-dir analysis/drone-tracking/multiple-fusion/3d"
+    },
+    {
+      "image": "drone_fusion_3d.png",
+      "image_sha256": "873d6ae28096b31d6aef68eade1c4affec81c0321aecec58e9d40c1bab4086d0",
+      "source_identity": "4f688498-75ba-405d-9436-f4e0f7170566",
+      "camera": {
+        "eye": [
+          17.342002868652344,
+          -14.89265251159668,
+          13.537683486938477
+        ],
+        "lookat": [
+          6.741257190704346,
+          -1.8455796241760254,
+          3.7523796558380127
+        ],
+        "up": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "fov": 45.0
+      },
+      "capture_file": "fusion_3d.png",
+      "command": "python -m visualizer.capture_sensing --fusion analysis/drone-tracking/multiple-fusion --output-dir analysis/drone-tracking/multiple-fusion/3d"
+    }
+  ],
+  "source_receipt_sha256": "b60fb690c077837d1fb40101e5c52f72527bf830fe5405da5b7fe066b4c53012",
+  "receipt_scope": "Original capture records for images included in this distribution."
+}

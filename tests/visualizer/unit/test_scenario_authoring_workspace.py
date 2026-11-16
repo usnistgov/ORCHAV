@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -35,6 +36,7 @@ from shared.scenarios.actors import (
     StationaryMobilitySpec,
     WaypointMobilitySpec,
 )
+from tests.visualizer.authoring.test_imported_sensing import imported_sensing_scenario
 from visualizer.src.authoring import workspace as workspace_module
 from visualizer.src.authoring.assets import TargetPreviewAsset, prepared_actor_pose
 from visualizer.src.authoring.compilation_scheduler import CompilationFailure
@@ -116,6 +118,8 @@ class _Port:
         self.end_drag_calls = 0
         self.clear_gizmo_calls = 0
         self.show_gizmo_calls = []
+        self.fit_actors_calls = 0
+        self.fit_all_calls = 0
 
     def reconcile(self, snapshot):
         self.snapshots.append(snapshot)
@@ -150,6 +154,11 @@ class _Port:
         return True
 
     def fit_all(self):
+        self.fit_all_calls += 1
+        return True
+
+    def fit_actors(self):
+        self.fit_actors_calls += 1
         return True
 
 
@@ -174,12 +183,16 @@ class _RouterRuntime:
         self.poses = {}
         self.sync_calls = []
         self.gizmo = object()
+        self.live_preview_picking = False
 
     def add_event_handler(self, _callback, *_event_types) -> None:
         return None
 
     def remove_event_handler(self, _callback, *_event_types) -> None:
         return None
+
+    def set_live_preview_picking(self, enabled: bool) -> None:
+        self.live_preview_picking = bool(enabled)
 
     def ensure_gizmo(self, *, authoring=True):
         return self.gizmo
@@ -324,6 +337,83 @@ def _workspace(document: ScenarioDocument, compiler=None) -> ScenarioAuthoringWo
     )
 
 
+@pytest.mark.parametrize(
+    "document_location,explicit_compiler",
+    [(None, False), ("checkout", False), ("standalone", False), ("checkout", True)],
+)
+def test_workspace_preserves_document_viewer_and_explicit_asset_roots(
+    qapp, tmp_path, document_location, explicit_compiler
+):
+    roots = []
+    for name in ("viewer", "document"):
+        root = tmp_path / name
+        (root / "scenarios").mkdir(parents=True)
+        for relative in ("scenes/empty/empty.xml", "targets/cube/cube.ply"):
+            target = root / "libraries" / relative
+            target.parent.mkdir(parents=True)
+            target.write_bytes((_Compiler.project_root / "libraries" / relative).read_bytes())
+        roots.append(root)
+    viewer_root, document_root = roots
+    visualizer = QWidget()
+    visualizer.current_project_root = viewer_root
+    document = ScenarioDocument.new()
+    if document_location == "checkout":
+        document = ScenarioDocument(
+            document.scenario, path=document_root / "scenarios" / "scenario.yaml"
+        )
+    elif document_location == "standalone":
+        standalone = tmp_path / "standalone"
+        standalone.mkdir()
+        (standalone / "scene.xml").write_bytes(
+            (viewer_root / "libraries/scenes/empty/empty.xml").read_bytes()
+        )
+        document = ScenarioDocument(
+            replace(document.scenario, scene=SceneReference("local", "scene.xml")),
+            path=standalone / "scenario.yaml",
+        )
+    explicit = _Compiler() if explicit_compiler else None
+    workspace = _track_workspace(
+        ScenarioAuthoringWorkspace(
+            visualizer, document, compiler=explicit, viewport_factory=_Viewport
+        )
+    )
+
+    if explicit_compiler:
+        assert workspace.compiler is explicit
+    else:
+        assert workspace.compiler.project_root == (
+            document_root if document_location == "checkout" else viewer_root
+        )
+        workspace.refresh_now()
+        assert not any(
+            issue.code == "scene.asset.unresolved" for issue in workspace.compilation.issues
+        )
+
+
+def test_selection_camera_focus_is_optional_and_role_label_is_plain(qapp):
+    document = ScenarioDocument.new()
+    first = document.add_default_actor(ActorRole.TX)
+    second = document.add_default_actor(ActorRole.RX)
+    workspace = _workspace(document)
+    workspace.refresh_now()
+    selections = []
+    workspace.camera_controls = SimpleNamespace(
+        sync=lambda snapshot: None,
+        select=lambda identity, focus=False: selections.append((identity, focus)),
+        close_camera=lambda: None,
+    )
+    workspace.viewport.port.current_snapshot = lambda: None
+    document.select(first.id)
+    qapp.processEvents()
+    assert selections[-1] == (first.id, False)
+    assert workspace.role_label.text() == "TX"
+    workspace.focus_on_select.setChecked(True)
+    document.select(second.id)
+    qapp.processEvents()
+    assert selections[-1] == (second.id, True)
+    assert workspace.role_label.text() == "RX"
+
+
 def _router_workspace(
     document: ScenarioDocument,
     compiler=None,
@@ -343,6 +433,91 @@ def _place(workspace, point, phase=PointerPhase.DOWN) -> None:
     workspace._on_viewport_input(HitResult(point))
 
 
+def test_native_target_apply_and_undo_keep_identity_and_motion(qapp):
+    document = ScenarioDocument.new()
+    actor = document.add_default_actor(ActorRole.TARGET)
+    workspace = _workspace(document)
+    workspace.refresh_now()
+    editor = workspace.target_representation_editor
+    editor.representation.setCurrentIndex(editor.representation.findData("constant_rcs"))
+    editor.sigma.setValue(4.0)
+    assert workspace._target_draft_pending
+    assert workspace._apply_target()
+    updated = document.scenario.actor(actor.id)
+    assert updated.id == actor.id
+    assert updated.mobility == actor.mobility
+    assert updated.orientation == actor.orientation
+    assert updated.representation == "constant_rcs"
+    assert updated.constant_rcs.sigma_m2 == 4.0
+    assert updated.target is None
+    document.undo()
+    assert document.scenario.actor(actor.id) == actor
+
+
+def test_native_target_pending_reset_does_not_change_model(qapp):
+    document = ScenarioDocument.new()
+    actor = document.add_default_actor(ActorRole.TARGET)
+    workspace = _workspace(document)
+    workspace.refresh_now()
+    editor = workspace.target_representation_editor
+    editor.representation.setCurrentIndex(editor.representation.findData("tr38901"))
+    editor.object_type.setCurrentIndex(editor.object_type.findData("human"))
+    editor.random_flags["random_phases"].setChecked(True)
+    assert workspace._target_draft_pending
+    workspace._reset_pending_target()
+    assert not workspace._target_draft_pending
+    assert document.scenario.actor(actor.id) == actor
+    assert editor.representation.currentData() == "mesh_material"
+
+
+@pytest.mark.parametrize("size", [(1366, 768), (1920, 1080), (1100, 650)])
+def test_native_inspector_controls_remain_reachable_in_compact_workspace(qapp, qtbot, size):
+    document = ScenarioDocument.new()
+    document.add_default_actor(ActorRole.TARGET)
+    workspace = _workspace(document)
+    workspace.refresh_now()
+    editor = workspace.target_representation_editor
+    editor.representation.setCurrentIndex(editor.representation.findData("tr38901"))
+    editor.object_type.setCurrentIndex(editor.object_type.findData("human"))
+    assert workspace._apply_target()
+    workspace.resize(*size)
+    workspace.show()
+    qapp.processEvents()
+    scroll = workspace.inspector_scroll
+    assert workspace.height() <= size[1]
+    assert scroll.verticalScrollBar().maximum() > 0
+    controls = (
+        editor.representation,
+        editor.geometry_type,
+        *editor.dimensions,
+        editor.object_type,
+        editor.model_type,
+        *editor.random_flags.values(),
+    )
+    for control in controls:
+        scroll.ensureWidgetVisible(control)
+        qapp.processEvents()
+        assert control.isVisible()
+        assert control.height() >= control.minimumSizeHint().height()
+        center = control.mapTo(scroll.viewport(), control.rect().center())
+        assert scroll.viewport().rect().contains(center), control.objectName()
+    editor.random_flags["random_phases"].setChecked(True)
+    qapp.processEvents()
+    assert workspace.has_pending_inspector_edits
+    assert workspace.pending_inspector_banner.isVisible()
+    for button in (workspace.pending_apply_button, workspace.pending_reset_button):
+        assert workspace.inspector_panel.rect().contains(
+            button.mapTo(workspace.inspector_panel, button.rect().center())
+        )
+        assert not scroll.isAncestorOf(button)
+
+    assert workspace.pending_reset_button.isVisible()
+    assert workspace.pending_reset_button.text() == "Discard"
+    assert workspace.target_apply_button.isHidden()
+    workspace._reset_all_pending_inspector_edits()
+    assert not workspace.has_pending_inspector_edits
+
+
 def test_workspace_exposes_scene_catalog_tree_and_work_plane_controls(
     qapp,
     monkeypatch,
@@ -360,7 +535,7 @@ def test_workspace_exposes_scene_catalog_tree_and_work_plane_controls(
     assert {
         workspace.scene_source_combo.itemData(index)
         for index in range(workspace.scene_source_combo.count())
-    } == {"sionna", "library", "local"}
+    } == {"sionna", "library", "local", "osm"}
     assert workspace.scene_source_combo.currentData() == "library"
     assert workspace.scene_id_combo.currentText() == "empty/empty.xml"
     assert "ORCHAV library" in workspace.scene_id_combo.lineEdit().placeholderText()
@@ -468,6 +643,51 @@ def test_imported_custom_quality_is_preserved_until_explicit_replacement(qapp) -
     assert document.scenario.timeline.quality is QualityPreset.HIGH
     assert document.scenario.source_snapshot.has_path("raytracing.quality.custom")
     assert workspace.quality_combo.currentText() == ("high + custom overrides (preserved)")
+    workspace.close_workspace()
+
+
+def test_rate_based_timeline_applies_resets_and_undoes_without_duration_drift(qapp) -> None:
+    document = ScenarioDocument.new()
+    workspace = _workspace(document)
+    workspace.steps_spin.setValue(512)
+    workspace.sample_rate_check.setChecked(True)
+    workspace.sample_rate_spin.setValue(1000.0)
+    assert workspace.duration_spin.value() == pytest.approx(0.511)
+    assert not workspace.duration_spin.isEnabled()
+    assert workspace.sample_rate_spin.isEnabled()
+    assert workspace._apply_timeline()
+    assert document.scenario.timeline.duration_s == 0.511
+    assert document.scenario.timeline.sample_rate_hz == 1000
+
+    workspace.steps_spin.setValue(1024)
+    assert workspace.duration_spin.value() == pytest.approx(1.023)
+    workspace._reset_pending_timeline()
+    assert workspace.steps_spin.value() == 512
+    assert workspace.duration_spin.value() == pytest.approx(0.511)
+    assert not workspace.has_pending_timeline_edits
+
+    workspace.sample_rate_check.setChecked(False)
+    workspace.duration_spin.setValue(0.75)
+    assert workspace.duration_spin.isEnabled()
+    assert workspace._apply_timeline()
+    assert document.scenario.timeline.sample_rate_hz is None
+    assert document.scenario.timeline.duration_s == 0.75
+    document.undo()
+    assert document.scenario.timeline.sample_rate_hz == 1000
+    assert workspace.sample_rate_check.isChecked()
+    assert not workspace.duration_spin.isEnabled()
+    workspace.close_workspace()
+
+
+def test_count_edit_preserves_imported_fractional_rate(qapp) -> None:
+    document = ScenarioDocument.new()
+    rate = 30000 / 1001
+    document.set_timeline(TimelineSettings(steps=512, sample_rate_hz=rate))
+    workspace = _workspace(document)
+    workspace.steps_spin.setValue(1024)
+    assert workspace._apply_timeline()
+    assert document.scenario.timeline.sample_rate_hz == rate
+    assert document.scenario.timeline.duration_s == 1023 / rate
     workspace.close_workspace()
 
 
@@ -653,6 +873,11 @@ def test_async_edit_marks_previous_validation_evidence_as_pending(qapp) -> None:
     )
     workspace.refresh_now()
     assert "Previous draft problem" in workspace.inline_errors.text()
+    assert workspace.preview_status_label.property("validationState") == "error"
+    assert "1 error" in workspace.preview_status_label.text()
+    assert "No scene meshes loaded" in workspace.preview_status_label.text()
+    QTest.mouseClick(workspace.show_problems_button, Qt.LeftButton)
+    assert workspace.drawer.currentWidget() is workspace.problems_tree
 
     current = document.scenario.actor(actor.id)
     document.replace_actor(
@@ -671,6 +896,37 @@ def test_async_edit_marks_previous_validation_evidence_as_pending(qapp) -> None:
     assert workspace.inline_errors.text() == ""
     assert workspace.actor_tree.topLevelItem(0).text(4) == "Validating"
     assert workspace.viewport.port.snapshots[-1].actors[0].status is ActorVisualState.PENDING
+    assert workspace.preview_status_label.property("validationState") == "pending"
+    assert "Previous geometry" in workspace.preview_status_label.text()
+    assert "1 error" not in workspace.preview_status_label.text()
+
+    workspace.compiler.result = CompilationResult(
+        {},
+        "current: true\n",
+        (),
+        {actor.id: ActorSamples(((0.0, 0.0, 0.0), (2.0, 0.0, 0.0)), ((0.0, 0.0, 0.0),) * 2)},
+    )
+    workspace.refresh_now()
+    assert workspace.preview_status_label.property("validationState") == "valid"
+    assert "1/1 actors prepared" in workspace.preview_status_label.text()
+    assert "No scene meshes loaded" in workspace.preview_status_label.text()
+    assert "ready" not in workspace.preview_status_label.text().lower()
+    assert workspace.problems_tree.topLevelItemCount() == 0
+    workspace.close_workspace()
+
+
+def test_preview_camera_controls_stay_visible_outside_overflowing_toolbar(qapp) -> None:
+    workspace = _workspace(ScenarioDocument.new())
+    workspace.resize(1100, 750)
+    workspace.show()
+    qapp.processEvents()
+    for button in (workspace.fit_actors_button, workspace.fit_scene_button):
+        assert button.isVisible()
+        assert button.parentWidget().objectName() == "authoringPreviewSummary"
+        assert button.geometry().right() < button.parentWidget().width()
+        QTest.mouseClick(button, Qt.LeftButton)
+    assert workspace.viewport.port.fit_actors_calls == 1
+    assert workspace.viewport.port.fit_all_calls == 1
     workspace.close_workspace()
 
 
@@ -1029,6 +1285,8 @@ def test_no_selection_and_read_only_import_clear_orientation_inspector(qapp) -> 
         )
     )
     assert workspace.document is None
+    assert workspace.preview_status_label.property("validationState") == "read_only"
+    assert "validation unavailable" in workspace.preview_status_label.text()
     assert workspace.viewport.port.snapshots[-1].actors == ()
     assert workspace.viewport.port.snapshots[-1].scene_assets == ()
     assert workspace.viewport.port.snapshots[-1].work_plane_visible is False
@@ -1092,6 +1350,19 @@ def test_explicit_validation_reports_errors_and_warnings(qapp) -> None:
     workspace.close_workspace()
 
 
+def test_preview_warning_is_visible_without_opening_generation_tab(qapp) -> None:
+    issue = ValidationIssue(IssueSeverity.WARNING, "test.warning", "scene", "Scene warning")
+    workspace = _workspace(
+        ScenarioDocument.new(),
+        _FixedCompiler(CompilationResult({}, "schema_version: 2\n", (issue,), {})),
+    )
+    workspace.refresh_now()
+    assert workspace.preview_status_label.property("validationState") == "warning"
+    assert "1 warning" in workspace.preview_status_label.text()
+    assert workspace.drawer.currentWidget() is not workspace.problems_tree
+    workspace.close_workspace()
+
+
 def test_explicit_validation_distinguishes_generation_problems(qapp) -> None:
     generation_issue = ValidationIssue(
         IssueSeverity.ERROR,
@@ -1111,6 +1382,8 @@ def test_explicit_validation_distinguishes_generation_problems(qapp) -> None:
     workspace.validate_current_draft()
 
     assert workspace.validation_status.text() == ("Validation passed, but Generate has 1 problem.")
+    assert workspace.preview_status_label.property("validationState") == "generation_limited"
+    assert "Generation limited" in workspace.preview_status_label.text()
     workspace.close_workspace()
 
 
@@ -1124,6 +1397,8 @@ def test_explicit_validation_surfaces_unexpected_compiler_failure(qapp) -> None:
     workspace.validate_current_draft()
 
     assert workspace.validation_status.text().endswith("builtins.RuntimeError: compiler exploded")
+    assert workspace.preview_status_label.property("validationState") == "error"
+    assert "Preview validation failed" in workspace.preview_status_label.text()
     assert workspace.problems_tree.topLevelItemCount() == 1
     assert workspace.problems_tree.topLevelItem(0).text(1) == "compiler"
     workspace.close_workspace()
@@ -1181,6 +1456,7 @@ def test_two_step_ten_second_timeline_uses_ten_second_interval(qapp) -> None:
     assert workspace.timeline_slider.maximum() == 1
     assert workspace._play_timer.interval() == 10_000
 
+    workspace._play_origin_time -= 10.0
     workspace._advance_playback()
     assert workspace.timeline_slider.value() == 1
     workspace.close_workspace()
@@ -1200,6 +1476,18 @@ def test_timeline_edit_updates_active_playback_interval(qapp) -> None:
     workspace.close_workspace()
 
 
+def test_high_rate_preview_uses_elapsed_physical_time(qapp, monkeypatch):
+    scenario = AuthoringScenario(timeline=TimelineSettings(steps=2048, duration_s=1.0235))
+    workspace = _workspace(ScenarioDocument(scenario))
+    workspace._play_origin_time = 100.0
+    workspace._play_origin_step = 0
+    monkeypatch.setattr(workspace_module.time, "monotonic", lambda: 100.5)
+    workspace._advance_playback()
+    assert workspace.timeline_slider.value() == 1000
+    assert workspace._play_origin_time == 100.0
+    workspace.close_workspace()
+
+
 def test_zero_duration_static_timeline_cannot_start_busy_playback(qapp) -> None:
     document = ScenarioDocument.new()
     document.add_default_actor(ActorRole.TX)
@@ -1212,7 +1500,7 @@ def test_zero_duration_static_timeline_cannot_start_busy_playback(qapp) -> None:
     assert not workspace._play_timer.isActive()
 
     document.set_timeline(TimelineSettings(steps=1_000_000, duration_s=0.001))
-    assert workspace._play_timer.interval() == 1
+    assert workspace._play_timer.interval() == 16
     assert workspace.play_button.isEnabled()
     assert (
         workspace._playback_interval_ms(TimelineSettings(steps=2, duration_s=1e308))
@@ -1244,6 +1532,65 @@ def test_target_material_inspector_uses_generator_registry_choices(qapp) -> None
     assert updated.target is not None
     assert updated.target.material == "concrete"
     workspace.close_workspace()
+
+
+@pytest.mark.parametrize("previous", ["Pedestrian", "Car"])
+def test_new_target_can_choose_asset_after_selecting_an_imported_target(qapp, previous, tmp_path):
+    from visualizer.src.authoring.persistence import load_for_authoring
+
+    loaded = load_for_authoring(imported_sensing_scenario(tmp_path))
+    workspace = _workspace(loaded.document)
+    loaded.document.select(loaded.scenario.actor_by_name(previous).id)
+    assert not workspace.target_asset_combo.isEnabled()
+    workspace._add_actor(ActorRole.TARGET)
+    actor = loaded.document.selected_actor
+    assert actor.name == "Target1"
+    assert actor.target is None
+    assert workspace.target_asset_combo.isEnabled()
+    assert workspace.target_scale_spin.isEnabled()
+    assert workspace.target_mesh_animation.isEnabled()
+    assert workspace.target_representation_editor.isEnabled()
+    assert workspace.target_asset_combo.currentData() == ""
+    assert (
+        workspace.target_asset_combo.findData(
+            loaded.scenario.actor_by_name(previous).target.asset_id
+        )
+        == -1
+    )
+    index = workspace.target_asset_combo.findData("cube")
+    assert index > 0
+    workspace.target_asset_combo.setCurrentIndex(index)
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
+    assert loaded.document.selected_actor.target.asset_id == "cube"
+    loaded.document.undo()
+    assert loaded.document.selected_actor.target is None
+    assert workspace.target_asset_combo.isEnabled()
+    loaded.document.redo()
+    assert loaded.document.selected_actor.target.asset_id == "cube"
+
+
+@pytest.mark.parametrize("size", [(1366, 768), (1920, 1080)])
+def test_add_target_puts_asset_choice_above_motion_and_in_view(qapp, size):
+    workspace = _workspace(ScenarioDocument.new())
+    workspace.resize(*size)
+    workspace.show()
+    workspace._add_actor(ActorRole.TARGET)
+    qapp.processEvents()
+    scroll = workspace.inspector_scroll
+    combo = workspace.target_asset_combo
+    assert combo.isEnabled() and combo.count() > 1
+    assert scroll.verticalScrollBar().value() == 0
+    assert scroll.viewport().rect().contains(combo.mapTo(scroll.viewport(), combo.rect().topLeft()))
+    assert (
+        scroll.viewport()
+        .rect()
+        .contains(combo.mapTo(scroll.viewport(), combo.rect().bottomRight()))
+    )
+    sections = scroll.widget().layout()
+    assert sections.indexOf(workspace.target_group) < sections.indexOf(workspace.mobility_group)
+    assert sections.indexOf(workspace.target_group) < sections.indexOf(workspace.orientation_group)
+    assert workspace.target_group.layout().getWidgetPosition(combo)[0] == 0
 
 
 def test_mobility_type_change_keeps_stationary_world_position(qapp) -> None:
@@ -1729,7 +2076,7 @@ def test_target_asset_change_invalidates_prepared_orientation_cache(qapp) -> Non
     workspace.refresh_now()
     assert workspace._prepared_samples(actor) is samples
 
-    changed = actor.with_changes(target=TargetAsset.from_catalog_id("nist_human_walking"))
+    changed = actor.with_changes(target=TargetAsset.from_catalog_id("digital_twin_update1"))
     document.replace_actor(changed)
     compiler.result = CompilationResult({}, "schema_version: 2\n", (), {})
     workspace.compilation = compiler.result
@@ -1877,6 +2224,8 @@ def test_direct_waypoint_drag_commits_once_and_escape_cancels(qapp) -> None:
             component="mobility_control_waypoint_1",
         )
     )
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
     assert document.scenario.actor(actor.id).mobility == WaypointMobilitySpec(
         points_m=((0.0, 0.0, 1.0), (4.0, 5.0, 1.0))
     )
@@ -2077,6 +2426,8 @@ def test_edit_mobility_path_drag_translates_the_whole_trajectory(qapp) -> None:
         )
     )
 
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
     assert document.scenario.actor(actor.id).mobility == LinearMobilitySpec(
         start_m=(2.0, 3.0, 2.0),
         end_m=(12.0, 3.0, 2.0),
@@ -2120,11 +2471,11 @@ def test_two_actor_figure8_path_drag_keeps_prepared_preview_and_identity(qapp) -
     overlays = {
         overlay.actor_id: overlay for overlay in workspace.viewport.port.snapshots[-1].actors
     }
-    assert overlays[tx.id].positions == expected_positions
-    assert overlays[tx.id].frame_samples == expected_positions
-    assert overlays[tx.id].current_position == expected_positions[0]
+    assert overlays[tx.id].pending_positions == expected_positions
+    assert overlays[tx.id].positions == tx_samples.positions
+    assert overlays[tx.id].pending_current_position == expected_positions[0]
     assert overlays[rx.id].positions == rx_samples.positions
-    assert document.scenario.actor(tx.id).mobility == Figure8MobilitySpec(
+    assert workspace._candidate_scenario.actor(tx.id).mobility == Figure8MobilitySpec(
         center_m=(14.0, 17.0, 3.0),
         size_m=8.0,
     )
@@ -2137,9 +2488,12 @@ def test_two_actor_figure8_path_drag_keeps_prepared_preview_and_identity(qapp) -
     overlays = {
         overlay.actor_id: overlay for overlay in workspace.viewport.port.snapshots[-1].actors
     }
-    assert overlays[tx.id].positions == expected_positions
-    assert overlays[tx.id].current_position == expected_positions[3]
+    assert overlays[tx.id].pending_positions == expected_positions
+    assert overlays[tx.id].pending_current_position == expected_positions[3]
     assert overlays[rx.id].positions == rx_samples.positions
+    assert document.scenario.actor(tx.id) == tx
+    assert document.undo_stack.count == command_count
+    assert workspace._apply_all_pending_inspector_edits()
     assert document.undo_stack.count == command_count + 1
     workspace.close_workspace()
 
@@ -2282,6 +2636,8 @@ def test_group_member_path_drag_updates_only_the_local_group_offset(qapp) -> Non
         )
     )
 
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
     updated = document.scenario.actor(tx.id)
     assert updated is not None
     assert updated.mobility == GroupMemberMobilitySpec(
@@ -2345,7 +2701,7 @@ def test_figure8_group_path_drag_keeps_prepared_preview_through_commit(qapp) -> 
     overlay = next(
         item for item in workspace.viewport.port.snapshots[-1].actors if item.actor_id == group.id
     )
-    assert overlay.positions == expected_positions
+    assert overlay.pending_positions == expected_positions
 
     workspace._on_viewport_input(PointerInput(PointerPhase.UP, (20.0, 20.0), button=1))
     workspace._on_viewport_input(moved_hit)
@@ -2353,8 +2709,10 @@ def test_figure8_group_path_drag_keeps_prepared_preview_through_commit(qapp) -> 
     overlay = next(
         item for item in workspace.viewport.port.snapshots[-1].actors if item.actor_id == group.id
     )
-    assert overlay.positions == expected_positions
-    assert overlay.current_position == expected_positions[3]
+    assert overlay.pending_positions == expected_positions
+    assert overlay.pending_current_position == expected_positions[3]
+    assert document.scenario.group(group.id) == group
+    assert workspace._apply_all_pending_inspector_edits()
     assert document.scenario.group(group.id).mobility == Figure8MobilitySpec(
         center_m=(20.0, -3.0, 4.0),
         size_m=12.0,
@@ -2391,6 +2749,8 @@ def test_linear_arrival_handle_changes_only_the_endpoint(qapp) -> None:
         )
     )
 
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
     assert document.scenario.actor(actor.id).mobility == LinearMobilitySpec(
         start_m=original.start_m,
         end_m=(9.0, 5.0, 3.0),
@@ -2442,7 +2802,7 @@ def test_circular_radius_and_start_angle_handles_are_independent(qapp) -> None:
             radius_source.component,
         )
     )
-    resized = document.scenario.actor(actor.id).mobility
+    resized = workspace._candidate_scenario.actor(actor.id).mobility
     assert isinstance(resized, CircularMobilitySpec)
     assert resized.radius_m == pytest.approx(6.0)
     assert resized.start_angle_deg == pytest.approx(math.degrees(0.25))
@@ -2466,10 +2826,13 @@ def test_circular_radius_and_start_angle_handles_are_independent(qapp) -> None:
             angle_source.component,
         )
     )
-    rotated = document.scenario.actor(actor.id).mobility
+    rotated = workspace._candidate_scenario.actor(actor.id).mobility
     assert isinstance(rotated, CircularMobilitySpec)
     assert rotated.radius_m == pytest.approx(6.0)
     assert rotated.start_angle_deg == pytest.approx(-90.0)
+    assert document.scenario.actor(actor.id).mobility.radius_m == 4.0
+    assert workspace._apply_all_pending_inspector_edits()
+    assert document.scenario.actor(actor.id).mobility == rotated
     workspace.close_workspace()
 
 
@@ -2623,6 +2986,8 @@ def test_target_gizmo_translation_rotation_is_one_undo_command(qapp) -> None:
         TransformInput(actor.id, TransformPhase.COMMIT, tuple(map(tuple, changed)))
     )
 
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
     updated = document.scenario.actor(actor.id)
     assert updated.mobility == LinearMobilitySpec(
         start_m=(2.0, 3.0, 1.5),
@@ -2665,10 +3030,13 @@ def test_target_gizmo_round_trips_pitch_and_roll_through_asset_front_alignment(
         TransformInput(actor.id, TransformPhase.COMMIT, tuple(map(tuple, rendered)))
     )
 
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
     updated = document.scenario.actor(actor.id)
     assert updated.orientation.yaw_deg == pytest.approx(authored_angles[0])
     assert updated.orientation.pitch_deg == pytest.approx(authored_angles[1])
     assert updated.orientation.roll_deg == pytest.approx(authored_angles[2])
+    assert updated.orientation == actor.orientation
     assert workspace._transform_preview_samples is None
     workspace.close_workspace()
 
@@ -2722,6 +3090,8 @@ def test_router_workspace_gizmo_commits_after_scrub_and_active_reconcile(
     assert runtime.callback is callback
     callback({"phase": "committed", "object_id": object_id, "transform": changed})
 
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
     assert document.scenario.actor(actor.id).mobility == LinearMobilitySpec(
         start_m=(1.0, 0.0, 1.0),
         end_m=(11.0, 0.0, 1.0),
@@ -2763,9 +3133,9 @@ def test_two_actor_figure8_rotation_keeps_path_and_active_proxy_pose(qapp) -> No
     }
     assert overlays[tx.id].positions == tx_samples.positions
     assert overlays[tx.id].current_position == tx_samples.positions[0]
-    np.testing.assert_allclose(overlays[tx.id].orientation_matrix, changed)
+    np.testing.assert_allclose(overlays[tx.id].pending_orientation_matrix, changed)
     assert overlays[rx.id].positions == rx_samples.positions
-    assert document.scenario.actor(tx.id).orientation == FixedOrientationSpec(
+    assert workspace._candidate_scenario.actor(tx.id).orientation == FixedOrientationSpec(
         yaw_deg=55.0,
         pitch_deg=0.0,
         roll_deg=0.0,
@@ -2780,13 +3150,15 @@ def test_two_actor_figure8_rotation_keeps_path_and_active_proxy_pose(qapp) -> No
     assert overlays[tx.id].positions == tx_samples.positions
     assert overlays[tx.id].current_position == tx_samples.positions[3]
     np.testing.assert_allclose(
-        overlays[tx.id].orientation_matrix,
+        overlays[tx.id].pending_orientation_matrix,
         prepared_actor_pose(tx_samples.positions[3], (55.0, 0.0, 0.0)),
     )
     assert overlays[rx.id].positions == rx_samples.positions
     assert document.scenario.actor(tx.id).mobility == tx.mobility
     assert document.scenario.actor(rx.id) == rx
     assert document.selected_actor_id == tx.id
+    assert document.scenario.actor(tx.id) == tx
+    assert workspace._apply_all_pending_inspector_edits()
     assert document.undo_stack.count == command_count + 1
     workspace.close_workspace()
 
@@ -2836,6 +3208,8 @@ def test_tx_gizmo_transforms_without_compiled_target_assets(qapp) -> None:
         TransformInput(actor.id, TransformPhase.COMMIT, tuple(map(tuple, changed)))
     )
 
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
     updated = document.scenario.actor(actor.id)
     assert updated.mobility == LinearMobilitySpec(
         start_m=(2.0, 3.0, 4.0),
@@ -2895,6 +3269,8 @@ def test_target_gizmo_translation_preserves_derived_orientation_mode(
         TransformInput(actor.id, TransformPhase.COMMIT, tuple(map(tuple, changed)))
     )
 
+    assert workspace.has_pending_inspector_edits
+    assert workspace._apply_all_pending_inspector_edits()
     updated = document.scenario.actor(actor.id)
     assert updated.mobility == LinearMobilitySpec(
         start_m=(2.0, 3.0, 1.0),
@@ -2925,6 +3301,7 @@ def test_pointer_hover_shows_placement_ghost_and_one_click_finishes(qapp) -> Non
 
 def test_inspector_mobility_draft_previews_without_mutating_document_and_resets(
     qapp,
+    monkeypatch,
 ) -> None:
     class _DraftCompiler(_Compiler):
         def compile(self, scenario, *, scenario_directory=None):
@@ -2955,7 +3332,7 @@ def test_inspector_mobility_draft_previews_without_mutating_document_and_resets(
     assert workspace.has_pending_inspector_edits
     assert workspace._mobility_draft_pending
     assert not workspace.pending_inspector_banner.isHidden()
-    assert not workspace.mobility_reset_button.isHidden()
+    assert not workspace.pending_reset_button.isHidden()
     assert workspace.pending_apply_button.objectName() == "pendingInspectorApplyButton"
     assert document.scenario.actor(actor.id).mobility == StationaryMobilitySpec(
         position_m=(0.0, 0.0, 0.0)
@@ -2968,10 +3345,29 @@ def test_inspector_mobility_draft_previews_without_mutating_document_and_resets(
     candidate_overlay = workspace.viewport.port.snapshots[-1].actors[0]
     assert candidate_overlay.pending_positions
     assert candidate_overlay.mobility_draft_pending
+    assert workspace.trajectory_preview.committed == candidate_overlay.positions
+    assert workspace.trajectory_preview.proposed == candidate_overlay.pending_positions
+    assert "Height Z:" in workspace.trajectory_preview.height_label.text()
     assert document.revision == original_revision
     assert document.undo_stack.count == original_undo_count
 
-    workspace.mobility_reset_button.click()
+    previous = workspace._candidate_compilation
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            workspace.mobility_editor,
+            "mobility",
+            lambda: (_ for _ in ()).throw(ValueError("Route is disconnected")),
+        )
+        workspace._mark_inspector_draft("mobility")
+        workspace._candidate_compile_timer.stop()
+        workspace._compile_candidate_draft()
+        assert workspace._candidate_compilation is previous
+        assert "Last valid preview" in workspace.trajectory_preview.title.text()
+        assert "Route is disconnected" in workspace.pending_inspector_label.text()
+        assert not workspace._apply_all_pending_inspector_edits()
+        assert document.revision == original_revision
+
+    workspace.pending_reset_button.click()
     assert not workspace.has_pending_inspector_edits
     assert workspace.pending_inspector_banner.isHidden()
     assert workspace.mobility_editor.type_combo.currentData() == "stationary"
@@ -3019,7 +3415,9 @@ def test_pending_group_mobility_survives_sync_and_seed_range_is_schema_bound(qap
         position_m=(0.0, 0.0, 0.0)
     )
     assert workspace.group_deviation_seed.minimum() == 0
-    assert workspace.group_deviation_seed.maximum() == workspace_module.MAX_RANDOM_SEED
+    from shared.scenarios.actors import MAX_RANDOM_SEED
+
+    assert workspace.group_deviation_seed.maximum() == MAX_RANDOM_SEED
     workspace.mobility_reset_button.click()
     assert not workspace.has_pending_inspector_edits
     workspace.close_workspace()
@@ -3156,9 +3554,9 @@ def test_dragged_look_at_reference_reprepares_owner_orientation(qapp) -> None:
         for overlay in workspace.viewport.port.snapshots[-1].actors
         if overlay.actor_id == owner.id
     )
-    assert owner_overlay.orientation_matrix is not None
+    assert owner_overlay.pending_orientation_matrix is not None
     np.testing.assert_allclose(
-        np.asarray(owner_overlay.orientation_matrix)[:2, :2],
+        np.asarray(owner_overlay.pending_orientation_matrix)[:2, :2],
         ((0.0, -1.0), (1.0, 0.0)),
         atol=1e-6,
     )
@@ -3222,9 +3620,9 @@ def test_target_and_group_settings_are_protected_pending_sections(qapp) -> None:
 
     workspace.target_scale_spin.setValue(2.5)
     assert workspace._target_draft_pending
-    assert not workspace.target_reset_button.isHidden()
+    assert not workspace.pending_reset_button.isHidden()
     assert document.scenario.actor(target.id).target.scale == 1.0
-    workspace.target_reset_button.click()
+    workspace.pending_reset_button.click()
     assert workspace.target_scale_spin.value() == 1.0
     assert not workspace.has_pending_inspector_edits
 
@@ -3232,9 +3630,9 @@ def test_target_and_group_settings_are_protected_pending_sections(qapp) -> None:
     workspace.group_deviation_enabled.setChecked(True)
     workspace.group_deviation_spins[0].setValue(0.25)
     assert workspace._group_settings_draft_pending
-    assert not workspace.group_settings_reset_button.isHidden()
+    assert not workspace.pending_reset_button.isHidden()
     assert document.scenario.group(group.id).deviation is None
-    workspace.group_settings_reset_button.click()
+    workspace.pending_reset_button.click()
     assert document.scenario.group(group.id).deviation is None
     assert not workspace.has_pending_inspector_edits
     workspace.close_workspace()
@@ -3497,13 +3895,14 @@ def test_group_control_drag_keeps_members_on_exact_canonical_preview(qapp) -> No
         )
     )
 
-    expected = ScenarioCompiler().compile(document.scenario)
+    assert document.scenario.group(group.id) == group
+    expected = ScenarioCompiler().compile(workspace._candidate_scenario)
     overlays = {
         overlay.actor_id: overlay for overlay in workspace.viewport.port.snapshots[-1].actors
     }
-    assert overlays[tx.id].positions == expected.samples[tx.id].positions
-    assert overlays[rx.id].positions == expected.samples[rx.id].positions
-    assert overlays[group.id].frame_samples == expected.group_samples[group.id].positions
+    assert overlays[tx.id].pending_positions == expected.samples[tx.id].positions
+    assert overlays[rx.id].pending_positions == expected.samples[rx.id].positions
+    assert overlays[group.id].pending_positions == expected.group_samples[group.id].positions
     workspace._finish_mobility_drag(commit=False)
     workspace.close_workspace()
 
@@ -3640,10 +4039,11 @@ def test_type_conversion_reconnects_dynamic_candidate_cell_editors(qapp) -> None
     workspace._compile_candidate_draft()
     assert workspace._candidate_compilation is not None
     waypoint_x = workspace.mobility_editor.waypoint_table.cellWidget(1, 0)
+    previous_preview = workspace._candidate_compilation
     waypoint_x.setValue(6.0)
     assert waypoint_x.value() == 6.0
     assert workspace.mobility_editor.mobility().points_m[1][0] == 6.0
-    assert workspace._candidate_compilation is None
+    assert workspace._candidate_compilation is previous_preview
     assert workspace._candidate_compile_timer.isActive()
     workspace._candidate_compile_timer.stop()
     workspace._compile_candidate_draft()
@@ -3658,10 +4058,303 @@ def test_type_conversion_reconnects_dynamic_candidate_cell_editors(qapp) -> None
     workspace._compile_candidate_draft()
     assert workspace._candidate_compilation is not None
     keyframe_yaw = workspace.orientation_editor.keyframes_table.cellWidget(1, 1)
+    previous_preview = workspace._candidate_compilation
     keyframe_yaw.setValue(65.0)
-    assert workspace._candidate_compilation is None
+    assert workspace._candidate_compilation is previous_preview
     workspace._candidate_compile_timer.stop()
     workspace._compile_candidate_draft()
     overlay = workspace.viewport.port.snapshots[-1].actors[0]
     assert overlay.pending_orientation_matrix is not None
     workspace.close_workspace()
+
+
+def test_osm_map_build_installs_one_undoable_scene_and_keeps_targets(qapp, tmp_path):
+    from tests.visualizer.authoring.test_osm_builder import FakeJob, complete_scene
+
+    document = ScenarioDocument.new()
+    target = document.add_default_actor(ActorRole.TARGET)
+    before = document.scenario
+    workspace = _workspace(document)
+    workspace.osm_panel.job_factory = FakeJob
+    workspace.scene_source_combo.setCurrentIndex(workspace.scene_source_combo.findData("osm"))
+    panel = workspace.osm_panel
+    panel.show_map()
+    assert workspace.viewport.port.tool == AuthoringTool.OSM_REGION
+    assert workspace.viewport.port.snapshots[-1].scene_assets
+    assert not workspace.viewport.port.snapshots[-1].actors
+    assert not workspace.save_button.isEnabled()
+    panel.keep_map.setChecked(False)
+    panel.build()
+    job = panel._build_job
+    root = complete_scene(tmp_path / "built", job.config)
+    job.finished.emit({"event": "complete", "result": {"scene_root": str(root)}, "elapsed_s": 1.2})
+    assert document.scenario.scene.source == "osm"
+    assert document.actors == (target,)
+    assert not panel.active and workspace.viewport.port.tool == AuthoringTool.SELECT
+    document.undo()
+    assert document.scenario == before
+
+
+def test_osm_failure_keeps_scene_and_old_job_cannot_change_new_document(qapp, tmp_path):
+    from tests.visualizer.authoring.test_osm_builder import FakeJob, complete_scene
+
+    original = ScenarioDocument.new()
+    workspace = _workspace(original)
+    panel = workspace.osm_panel
+    panel.job_factory = FakeJob
+    panel.keep_map.setChecked(False)
+    workspace.scene_source_combo.setCurrentIndex(workspace.scene_source_combo.findData("osm"))
+    panel.show_map()
+    panel.build()
+    panel._build_job.finished.emit({"event": "failed", "error": "Provider timed out"})
+    assert original.scenario.scene.source == "library"
+    assert "timed out" in panel.status.text()
+    panel.build()
+    old_job = panel._build_job
+    root = complete_scene(tmp_path / "stale", old_job.config)
+    next_document = ScenarioDocument.new()
+    workspace.bind_document(next_document)
+    assert old_job.cancelled
+    old_job.finished.emit(
+        {"event": "complete", "result": {"scene_root": str(root)}, "elapsed_s": 1}
+    )
+    assert next_document.scenario.scene.source == "library"
+    assert next_document.revision == 0
+
+
+def test_imported_animated_actor_opens_before_compilation_and_has_no_motion_handles(qapp, tmp_path):
+    from visualizer.src.authoring.persistence import load_for_authoring
+
+    loaded = load_for_authoring(imported_sensing_scenario(tmp_path))
+    workspace = _workspace(loaded.document)
+    actor = loaded.scenario.actor_by_name("Pedestrian")
+    loaded.document.select(actor.id)
+    workspace.set_tool(AuthoringTool.MOVE)
+    assert not workspace.mobility_group.isVisible()
+    assert not workspace.orientation_editor.apply_button.isEnabled()
+    assert not workspace.target_scale_spin.isEnabled()
+    assert not workspace.target_representation_editor.isEnabled()
+    assert actor.id not in workspace.viewport.port.show_gizmo_calls
+    assert "Route editing is not supported" in workspace.animation_notice.text()
+    assert "assets/walker/animated_target.json" in workspace.animation_notice.toolTip()
+    assert not workspace.motion_edit_button.isEnabled()
+    assert "Pedestrian" in workspace.tool_hint_label.text()
+    assert "Animation owns motion" in workspace.tool_hint_label.text()
+    workspace.close_workspace()
+
+
+def test_motion_action_is_in_inspector_and_tracks_tree_selection_and_locks(qtbot, tmp_path):
+    from PySide6.QtWidgets import QToolBar
+
+    from visualizer.src.authoring.persistence import load_for_authoring
+
+    loaded = load_for_authoring(imported_sensing_scenario(tmp_path))
+    document = loaded.document
+    workspace = _workspace(document)
+    workspace.resize(1366, 768)
+    workspace.show()
+    qtbot.addWidget(workspace)
+    qtbot.wait(1)
+    action = workspace._tool_actions[AuthoringTool.MOVE]
+    assert workspace.inspector_panel.isAncestorOf(workspace.motion_edit_button)
+    for bar in workspace.findChildren(QToolBar):
+        assert action not in bar.actions()
+        assert workspace._tool_actions[AuthoringTool.SELECT] not in bar.actions()
+
+    def select(name):
+        item = workspace.actor_tree.findItems(name, Qt.MatchExactly | Qt.MatchRecursive, 0)[0]
+        workspace.actor_tree.scrollToItem(item)
+        position = workspace.actor_tree.visualItemRect(item).center()
+        position.setX(workspace.actor_tree.columnWidth(0) // 2)
+        qtbot.mouseClick(
+            workspace.actor_tree.viewport(),
+            Qt.LeftButton,
+            pos=position,
+        )
+        assert document.selected_actor.name == name
+        assert name in workspace.tool_hint_label.text()
+        assert workspace.name_edit.text() == name
+
+    select("RadarTX")
+    assert workspace.motion_edit_button.isEnabled()
+    qtbot.mouseClick(workspace.motion_edit_button, Qt.LeftButton)
+    assert workspace._tool is AuthoringTool.MOVE and action.isChecked()
+    qtbot.mouseClick(workspace.motion_edit_button, Qt.LeftButton)
+    assert workspace._tool is AuthoringTool.SELECT
+    document.update_actor(document.selected_actor.id, locked=True)
+    assert not workspace.motion_edit_button.isEnabled()
+    assert "Unlock" in workspace.motion_edit_hint.text()
+    document.undo()
+    assert workspace.motion_edit_button.isEnabled()
+    workspace.set_tool(AuthoringTool.MOVE)
+    qtbot.wait(1)  # Let the scheduled tree rebuild finish before selecting another row.
+    select("Car")
+    assert not workspace.motion_edit_button.isEnabled()
+    assert workspace.mobility_editor.type_combo.isEnabled()
+    assert "route endpoints" in workspace.motion_edit_hint.text()
+    assert workspace._tool is AuthoringTool.SELECT
+    select("Pedestrian")
+    assert not workspace.motion_edit_button.isEnabled()
+    document.select(None)
+    assert "Select an actor" in workspace.tool_hint_label.text()
+    assert not workspace.motion_edit_button.isEnabled()
+
+
+def test_animated_actor_keeps_full_path_when_scrubbing_and_switching_selection(qapp, tmp_path):
+    from visualizer.src.authoring.persistence import load_for_authoring
+
+    loaded = load_for_authoring(imported_sensing_scenario(tmp_path))
+    actor = loaded.scenario.actor_by_name("Pedestrian")
+    path = ((2.0, 3.0, 1.0), (4.0, 5.0, 1.5), (7.0, 4.0, 2.0))
+    provider = SimpleNamespace(
+        trajectory_positions=path,
+        sample=lambda step: ActorSamples((path[step],), ((0.0, 0.0, 0.0),)),
+    )
+    result = CompilationResult({}, "", (), {}, pose_sources={actor.id: provider})
+    workspace = _workspace(loaded.document, _FixedCompiler(result))
+    workspace.refresh_now()
+    loaded.document.select(actor.id)
+    for step in (0, 2, 1):
+        workspace.timeline_slider.setValue(step)
+        overlay = next(
+            item
+            for item in workspace.viewport.port.snapshots[-1].actors
+            if item.actor_id == actor.id
+        )
+        assert overlay.positions == path
+        assert overlay.current_position == path[step]
+        assert workspace.trajectory_preview.committed == path
+        assert f"{path[step][2]:.3f} m" in workspace.trajectory_preview.height_label.text()
+    loaded.document.select(loaded.scenario.actor_by_name("Car").id)
+    assert workspace.trajectory_preview.committed != path
+    loaded.document.select(actor.id)
+    assert workspace.trajectory_preview.committed == path
+
+
+def test_stationary_move_then_circular_handles_share_one_pending_transaction(qapp, monkeypatch):
+    actor = AuthoringActor.create(ActorRole.TX, "Moving TX", position=(8.0, 9.0, 2.0))
+    document = ScenarioDocument(
+        AuthoringScenario(actors=(actor,), timeline=TimelineSettings(steps=17, duration_s=4.0))
+    )
+    document.select(actor.id)
+    workspace = _workspace(document, ScenarioCompiler())
+    workspace.refresh_now()
+    workspace.set_tool(AuthoringTool.MOVE)
+    original = document.scenario
+    commands = document.undo_stack.count
+    monkeypatch.setattr(
+        workspace,
+        "_resolve_pending_inspector_edits",
+        lambda: pytest.fail("Continuing the same motion draft must not ask to apply it"),
+    )
+    initial = prepared_actor_pose((8.0, 9.0, 2.0), (0.0, 0.0, 0.0))
+    moved = prepared_actor_pose((14.0, 5.0, 4.0), (0.0, 0.0, 0.0))
+    for phase, matrix in ((TransformPhase.BEGIN, initial), (TransformPhase.COMMIT, moved)):
+        workspace._on_viewport_input(TransformInput(actor.id, phase, tuple(map(tuple, matrix))))
+    assert document.scenario == original
+    assert workspace.trajectory_preview.proposed[0] == (14.0, 5.0, 4.0)
+
+    editor = workspace.mobility_editor
+    editor.type_combo.setCurrentIndex(editor.type_combo.findData("circular"))
+    workspace._candidate_compile_timer.stop()
+    workspace._compile_candidate_draft(immediate=True)
+    assert workspace._candidate_failure is None
+    proposed = workspace._candidate_scenario.actor(actor.id).mobility
+    assert isinstance(proposed, CircularMobilitySpec)
+    assert workspace.trajectory_preview.proposed[0] == pytest.approx((14.0, 5.0, 4.0))
+    overlay = workspace.viewport.port.snapshots[-1].actors[0]
+    radius = overlay.mobility_control_rig.control("radius")
+    axis = np.asarray(radius.position) - np.asarray(proposed.center_m)
+    source = HitResult(radius.position, "radius", actor.id, "mobility_control_radius")
+    resized = tuple(np.asarray(proposed.center_m) + axis * 1.5)
+    workspace._handle_mobility_drag(source, PointerPhase.DOWN)
+    workspace._handle_mobility_drag(replace(source, world_position=resized), PointerPhase.UP)
+    resized_draft = workspace._candidate_scenario.actor(actor.id)
+    assert resized_draft.mobility.radius_m == pytest.approx(proposed.radius_m * 1.5)
+    assert document.scenario == original
+    assert document.undo_stack.count == commands
+    assert (
+        workspace.trajectory_preview.proposed
+        == workspace.viewport.port.snapshots[-1].actors[0].pending_positions
+    )
+
+    # Cancelling another gesture returns to the prior draft, not the saved actor.
+    radius = mobility_control_rig(resized_draft.mobility).control("radius")
+    source = replace(source, world_position=radius.position)
+    workspace._handle_mobility_drag(source, PointerPhase.DOWN)
+    workspace._handle_mobility_drag(
+        replace(source, world_position=tuple(np.asarray(resized) + axis)), PointerPhase.MOVE
+    )
+    workspace._finish_mobility_drag(commit=False)
+    assert workspace._candidate_scenario.actor(actor.id) == resized_draft
+    assert workspace._apply_all_pending_inspector_edits()
+    assert document.scenario.actor(actor.id) == resized_draft
+    assert document.undo_stack.count == commands + 1
+    document.undo()
+    assert document.scenario == original
+    document.redo()
+    assert document.scenario.actor(actor.id) == resized_draft
+    workspace.close_workspace()
+
+
+def test_motion_discard_and_invalid_input_preserve_document_and_last_valid_preview(
+    qapp, monkeypatch
+):
+    actor = AuthoringActor.create(ActorRole.RX, "RX", position=(1.0, 2.0, 3.0))
+    document = ScenarioDocument(AuthoringScenario(actors=(actor,)))
+    document.select(actor.id)
+    workspace = _workspace(document, ScenarioCompiler())
+    workspace.refresh_now()
+    workspace.set_tool(AuthoringTool.MOVE)
+    initial = prepared_actor_pose((1.0, 2.0, 3.0), (0.0, 0.0, 0.0))
+    moved = prepared_actor_pose((5.0, 6.0, 7.0), (0.0, 0.0, 0.0))
+    for phase, matrix in ((TransformPhase.BEGIN, initial), (TransformPhase.COMMIT, moved)):
+        workspace._on_viewport_input(TransformInput(actor.id, phase, tuple(map(tuple, matrix))))
+    valid = workspace._candidate_compilation
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            workspace.mobility_editor,
+            "mobility",
+            lambda: (_ for _ in ()).throw(ValueError("Invalid path")),
+        )
+        workspace._mark_inspector_draft("mobility")
+        workspace._on_viewport_input(
+            TransformInput(actor.id, TransformPhase.BEGIN, tuple(map(tuple, moved)))
+        )
+        assert workspace._transform_actor_id is None
+        assert workspace._candidate_compilation is valid
+        assert "Invalid path" in workspace.pending_inspector_label.text()
+    workspace._reset_all_pending_inspector_edits()
+    assert not workspace.has_pending_inspector_edits
+    assert document.scenario.actor(actor.id) == actor
+    assert document.undo_stack.count == 0
+    assert not workspace.trajectory_preview.proposed
+    workspace.close_workspace()
+
+
+def test_osm_router_reserves_left_drag_for_region(qapp):
+    from tests.visualizer.authoring.test_osm_builder import FakeJob
+
+    workspace = _router_workspace(ScenarioDocument.new())
+    workspace.osm_panel.job_factory = FakeJob
+    workspace.scene_source_combo.setCurrentIndex(workspace.scene_source_combo.findData("osm"))
+    workspace.osm_panel.show_map()
+    router = workspace.viewport.port.router
+    assert not router._should_route_camera_event(
+        SimpleNamespace(type="pointer_down", button=1, buttons=(1,))
+    )
+    assert router._should_route_camera_event(
+        SimpleNamespace(type="pointer_down", button=2, buttons=(2,))
+    )
+
+
+def test_geographic_drag_accepts_a_surface_without_an_actor(qapp):
+    workspace = _router_workspace(ScenarioDocument.new())
+    router = workspace.viewport.port.router
+    hit = HitResult((0, 0, 0), component="scene_surface", surface=True)
+    with pytest.raises(ValueError, match="actor"):
+        router.begin_drag_plane(0, hit)
+    router.set_tool(AuthoringTool.OSM_REGION)
+    router.begin_drag_plane(0, hit)
+    assert router._drag_source is hit
+    router.end_drag()

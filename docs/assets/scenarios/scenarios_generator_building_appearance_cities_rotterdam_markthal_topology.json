@@ -1,0 +1,285 @@
+{
+  "scenario": "scenarios/generator/building_appearance/cities/rotterdam_markthal/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "generated_scene/scene.xml"
+  },
+  "source_files": {
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/buildings_brick.ply": "6721b3236c5bb10a9b66e1d075841cd1a81275a7b935b007255885a2c5cfe18f",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/buildings_concrete.ply": "ea9380b08e078b2c23adbfc5517f1bc5dc21589bbbf80a503666c0257c6760dd",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/buildings_glass.ply": "dd30ec556c787d42162e4a7e13bf8af513da09cd534178b96155b13caabfc22e",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/buildings_marble.ply": "11d88534854c4090423406ec1c3858115cfe51fbceb6abcbd528b0a6c7830557",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/buildings_metal.ply": "37563dbf0f25e297ebf750b6c16ea1fc90b4e4560bfa9a77f6c338b325e57ce4",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/buildings_wood.ply": "393a488458d02aafd8d4bc76c97511053e265ce60a31684a5e4e72d91f749c89",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/ground.ply": "ac49f55e564f7b05969c71486f24366ea8afed495c3f9ad340085557328f726f",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/streets_concrete.ply": "529b06cfd26f8eb562da2d7746418bb9ae2c03a6aa3b7a2992c29365d9cdbea8",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/streets_medium_dry_ground.ply": "8b8da91479122b6f98845e22e1f58cf78d7cc670cc5089c61b3db45449ce0f9a",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/vegetation.ply": "5c20f70ef77ee618aec35722571b78996c539b3aaa900dc4c2a10e8f266cd748",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/mesh/water.ply": "97d5743cd518c4757a281623bcbbcd3f88b6e9ba6febae962800f44cf733fca1",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/generated_scene/scene.xml": "e329244df9fd6cba75489172497ebfe3a1d51901525394f09783d6ebf9527375",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal/scenario.yaml": "599400f92a7134bb8137a054d3d35313fdff86e056f91bb47124140ef6d1f5c6"
+  },
+  "sample_indices": [
+    0
+  ],
+  "sample_times_s": [
+    0.0
+  ],
+  "steps": 1,
+  "actors": [
+    {
+      "name": "TX",
+      "role": "tx",
+      "members": [
+        "TX"
+      ],
+      "sample_positions_m": [
+        [
+          -400.0,
+          -420.0,
+          5.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -400.0,
+            -420.0,
+            5.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX",
+      "role": "rx",
+      "members": [
+        "RX"
+      ],
+      "sample_positions_m": [
+        [
+          400.0,
+          420.0,
+          5.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            400.0,
+            420.0,
+            5.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "166de8d347b33ee0d1361c3819d6cf2f1ae3ca3ecb6c210b1ad7a3ebd6599e23",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (mat-itu medium dry ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Ground (mat-itu wet ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Mat-Itu Brick",
+      "display_rgb": [
+        0.5920000000000001,
+        0.39480000000000004,
+        0.3812
+      ]
+    },
+    {
+      "label": "Mat-Itu Concrete",
+      "display_rgb": [
+        0.6872,
+        0.6872,
+        0.6872
+      ]
+    },
+    {
+      "label": "Mat-Itu Glass",
+      "display_rgb": [
+        0.6784313725490196,
+        0.7764705882352941,
+        0.803921568627451
+      ]
+    },
+    {
+      "label": "Mat-Itu Marble",
+      "display_rgb": [
+        0.796,
+        0.7552000000000001,
+        0.6532
+      ]
+    },
+    {
+      "label": "Mat-Itu Metal",
+      "display_rgb": [
+        0.4696,
+        0.4696,
+        0.49
+      ]
+    },
+    {
+      "label": "Mat-Itu Wood",
+      "display_rgb": [
+        0.6940000000000001,
+        0.558,
+        0.43560000000000004
+      ]
+    },
+    {
+      "label": "Road (mat-itu concrete)",
+      "display_rgb": [
+        0.6235294117647059,
+        0.6627450980392157,
+        0.6784313725490196
+      ]
+    }
+  ],
+  "output_sha256": "0fb416b7873f2762a40a575b6c2f44aa983e8bf8271589450db5551805e584f5",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -696.229462890625,
+        -683.4489819335937,
+        -6.0
+      ],
+      [
+        737.9173291015625,
+        631.90802734375,
+        156.0
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "ef1158c348035b465264fffe0e89ec2f7ce041fa72adf21bba951cf058f35c7d",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/building_appearance/cities/rotterdam_markthal"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

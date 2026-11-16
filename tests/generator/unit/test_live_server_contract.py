@@ -12,6 +12,7 @@ import grpc
 import pytest
 
 from generator.core.propagation import apply_target_scale_overrides, normalize_live_overrides
+from generator.core.propagation.live_overrides import apply_live_overrides
 from generator.io.grpc import live_server
 from generator.io.grpc.cache import GeneratorFrameCache
 from shared.grpc_transport import (
@@ -685,6 +686,201 @@ def test_unknown_node_update_fails_without_advancing_revision() -> None:
     assert cache.get_frame(0) is cached_frame
 
 
+@pytest.mark.parametrize("category", ["tx", "rx", "target"])
+@pytest.mark.parametrize("collision", ["later_exact", "case_distinct", "earlier_exact"])
+def test_live_acknowledgement_identifies_the_only_actor_moved(category, collision) -> None:
+    names, requested, selected = {
+        "later_exact": (["alpha", f"{category}1"], f"{category}1", 1),
+        "case_distinct": (["Station", "station"], "station", 1),
+        "earlier_exact": ([f"{category}2", "alpha"], f"{category}2", 0),
+    }[collision]
+    service, compute_step = _service()
+    service.configs[f"{category}_configs"] = [SimpleNamespace(name=name) for name in names]
+    computed_positions = {}
+
+    def compute_with_live_actor_state(frame_idx, live_overrides=None):
+        kwargs = {}
+        for kind in ("tx", "rx", "target"):
+            configs = service.configs[f"{kind}_configs"]
+            kwargs[f"{kind}_configs"] = configs
+            kwargs[f"{kind}_positions"] = [
+                (float(index), 0.0, 0.0) for index in range(len(configs))
+            ]
+            kwargs[f"{kind}_orientations"] = [(0.0, 0.0, 0.0)] * len(configs)
+        apply_live_overrides(live_overrides, **kwargs)
+        computed_positions.update(
+            {kind: kwargs[f"{kind}_positions"] for kind in ("tx", "rx", "target")}
+        )
+        return {"frame_idx": frame_idx, "paths": None}
+
+    compute_step.side_effect = compute_with_live_actor_state
+    responses = list(
+        service.StreamFrames(
+            iter(
+                [
+                    visualizer_pb2.FrameRequest(
+                        object_update=visualizer_pb2.ObjectUpdate(
+                            object_name=requested,
+                            object_type=getattr(visualizer_pb2, f"NODE_TYPE_{category.upper()}"),
+                            has_position=True,
+                            x=7.0,
+                            y=8.0,
+                            z=9.0,
+                        )
+                    ),
+                    _get_frame_request(),
+                ]
+            ),
+            _ActiveContext(),
+        )
+    )
+
+    acknowledgement = responses[0].object_update_response
+    assert acknowledgement.success is True
+    assert acknowledgement.object_name == requested
+    assert acknowledgement.generation_epoch == 1
+    assert responses[1].WhichOneof("response_type") == "frame_data"
+    assert computed_positions[category][selected] == (7.0, 8.0, 9.0)
+    assert computed_positions[category][1 - selected] == (float(1 - selected), 0.0, 0.0)
+    assert compute_step.call_args.kwargs["live_overrides"][0]["name"] == requested
+
+
+@pytest.mark.parametrize("command", ["object_update", "override_cmd"])
+@pytest.mark.parametrize(
+    "names, requested, error",
+    [
+        (["Station", "station"], "STATION", "Ambiguous"),
+        (["alpha", "RX1"], "rx1", "Ambiguous"),
+        (["Main"], "typo", "Unknown"),
+    ],
+)
+def test_rejected_actor_identity_preserves_cached_frame_and_revision(
+    command, names, requested, error
+) -> None:
+    cache = GeneratorFrameCache(max_frames=4, ttl_seconds=0, max_size_bytes=0)
+    cached_frame = {"frame_idx": 0}
+    cache.add_frame(0, cached_frame)
+    service, compute_step = _service(cache=cache)
+    service.configs["rx_configs"] = [SimpleNamespace(name=name) for name in names]
+    if command == "object_update":
+        request = visualizer_pb2.FrameRequest(
+            object_update=visualizer_pb2.ObjectUpdate(
+                object_name=requested,
+                object_type=visualizer_pb2.NODE_TYPE_RX,
+                has_position=True,
+                x=7.0,
+                y=8.0,
+                z=9.0,
+            )
+        )
+    else:
+        request = visualizer_pb2.FrameRequest(
+            override_cmd=visualizer_pb2.NodeOverrideList(
+                overrides=[
+                    visualizer_pb2.NodeOverride(
+                        name=requested, type=visualizer_pb2.NODE_TYPE_RX, x=7.0, y=8.0, z=9.0
+                    ),
+                ]
+            )
+        )
+    responses = list(service.StreamFrames(iter([request, _get_frame_request()]), _ActiveContext()))
+    if command == "object_update":
+        assert responses[0].object_update_response.success is False
+        assert error in responses[0].object_update_response.message
+    else:
+        assert responses[0].error.code == "INVALID_OVERRIDE"
+        assert error in responses[0].error.message
+    assert responses[1].WhichOneof("response_type") == "frame_data"
+    assert service.generation_epoch == 0
+    assert cache.get_frame(0) is cached_frame
+    compute_step.assert_not_called()
+
+
+def test_case_distinct_overrides_survive_batch_state_and_incremental_merges() -> None:
+    service, compute_step = _service(total_steps=2)
+    service.configs["rx_configs"] = [SimpleNamespace(name=name) for name in ("Station", "station")]
+    requests = [
+        visualizer_pb2.FrameRequest(
+            override_cmd=visualizer_pb2.NodeOverrideList(
+                overrides=[
+                    visualizer_pb2.NodeOverride(
+                        name="Station", type=visualizer_pb2.NODE_TYPE_RX, x=1.0
+                    ),
+                    visualizer_pb2.NodeOverride(
+                        name="station", type=visualizer_pb2.NODE_TYPE_RX, x=2.0
+                    ),
+                ]
+            )
+        ),
+        visualizer_pb2.FrameRequest(
+            object_update=visualizer_pb2.ObjectUpdate(
+                object_name="station",
+                object_type=visualizer_pb2.NODE_TYPE_RX,
+                has_orientation=True,
+                orientation=[10.0, 20.0, 30.0],
+            )
+        ),
+        _get_frame_request(),
+    ]
+    responses = list(service.StreamFrames(iter(requests), _ActiveContext()))
+    assert responses[0].object_update_response.success is True
+    assert responses[0].generation_epoch == 2
+    assert compute_step.call_args.kwargs["live_overrides"] == [
+        {"name": "Station", "type": "rx", "position": (1.0, 0.0, 0.0)},
+        {
+            "name": "station",
+            "type": "rx",
+            "position": (2.0, 0.0, 0.0),
+            "orientation": (10.0, 20.0, 30.0),
+        },
+    ]
+
+
+@pytest.mark.parametrize("category", ["tx", "rx", "target"])
+@pytest.mark.parametrize("name", ["", "{category}1", "{category}_1", "main"])
+def test_live_node_update_preserves_default_and_unambiguous_aliases(category, name) -> None:
+    service, compute_step = _service()
+    service.configs[f"{category}_configs"] = [SimpleNamespace(name="Main")]
+    request = visualizer_pb2.FrameRequest(
+        object_update=visualizer_pb2.ObjectUpdate(
+            object_name=name.format(category=category),
+            object_type=getattr(visualizer_pb2, f"NODE_TYPE_{category.upper()}"),
+            has_position=True,
+            x=7.0,
+            y=8.0,
+            z=9.0,
+        )
+    )
+    responses = list(service.StreamFrames(iter([request, _get_frame_request()]), _ActiveContext()))
+    assert responses[0].object_update_response.success is True
+    assert compute_step.call_args.kwargs["live_overrides"] == [
+        {"name": "Main", "type": category, "position": (7.0, 8.0, 9.0)},
+    ]
+
+
+@pytest.mark.parametrize("category", ["tx", "rx", "target"])
+def test_unnamed_node_update_means_first_actor_despite_later_alias_collision(category) -> None:
+    service, compute_step = _service()
+    service.configs[f"{category}_configs"] = [
+        SimpleNamespace(name="Main"),
+        SimpleNamespace(name=f"{category}_1"),
+    ]
+    request = visualizer_pb2.FrameRequest(
+        object_update=visualizer_pb2.ObjectUpdate(
+            object_type=getattr(visualizer_pb2, f"NODE_TYPE_{category.upper()}"),
+            has_position=True,
+            x=7.0,
+            y=8.0,
+            z=9.0,
+        )
+    )
+    responses = list(service.StreamFrames(iter([request, _get_frame_request()]), _ActiveContext()))
+    assert responses[0].object_update_response.success is True
+    assert compute_step.call_args.kwargs["live_overrides"] == [
+        {"name": "Main", "type": category, "position": (7.0, 8.0, 9.0)},
+    ]
+
+
 def test_target_scale_override_does_not_leak_to_the_next_controller() -> None:
     service, compute_step = _service(total_steps=1)
     manager = SimpleNamespace(
@@ -787,3 +983,44 @@ def test_conversion_failure_is_not_reported_as_an_empty_frame() -> None:
     assert responses[0].WhichOneof("response_type") == "error"
     assert responses[0].error.code == "ENCODING_FAILED"
     assert "cannot encode" in responses[0].error.message
+
+
+def test_finite_eof_keeps_same_stream_available_for_seek_and_parameter_edit():
+    config = _raytracing_config(max_depth=4)
+    initial = _raytracing_settings(config)
+    initial["max_depth"] = 2
+    service, compute = _service(total_steps=2, settings=initial)
+    requests = [
+        _get_frame_request(1),
+        _get_frame_request(2),
+        _get_frame_request(3),
+        _get_frame_request(0),
+        visualizer_pb2.FrameRequest(
+            parameter_update=visualizer_pb2.ParameterUpdate(
+                raytracing_config=config,
+                flush_cache=True,
+            )
+        ),
+        _get_frame_request(1),
+    ]
+    responses = list(service.StreamFrames(iter(requests), _ActiveContext()))
+    kinds = [response.WhichOneof("response_type") for response in responses]
+    assert kinds[:5] == ["frame_data", "eof", "eof", "frame_data", "param_update_response"]
+    assert all(
+        response.eof.last_frame_idx == 1 for response in responses if response.HasField("eof")
+    )
+    assert responses[4].param_update_response.success
+    assert responses[4].param_update_response.cache_flushed
+    assert responses[4].generation_epoch == 1
+    assert responses[5].HasField("frame_data")
+    assert responses[5].frame_idx == 1
+    assert responses[5].generation_epoch == 1
+    assert compute.call_count == 3
+
+
+def test_unbounded_live_recording_still_accepts_later_frame_requests():
+    service, compute = _service(total_steps=0)
+    responses = list(service.StreamFrames(iter([_get_frame_request(50)]), _ActiveContext()))
+    assert [response.WhichOneof("response_type") for response in responses] == ["frame_data"]
+    assert responses[0].frame_idx == 50
+    compute.assert_called_once()

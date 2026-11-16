@@ -356,3 +356,38 @@ def test_set_building_transparency_refreshes_all_scene_owners_once(
     assert mock_visualizer.renderer.transparency_updates == []
     assert mock_visualizer.renderer.material_updates == []
     assert mock_visualizer.renderer.render_updates == 1
+
+
+def test_procedural_scenario_defaults_apply_once_and_sync_controls():
+    calls = []
+    entry = {"name": "mesh"}
+    viz = SimpleNamespace(
+        mesh_entries=[entry],
+        building_appearance="original",
+        facade_theme="mixed",
+        road_appearance="original",
+        object_appearance_service=SimpleNamespace(
+            refresh_entry_appearance_batch=lambda entries: calls.append(entries) or True
+        ),
+        ui_manager=SimpleNamespace(
+            panels={
+                "materials": SimpleNamespace(sync_procedural_controls=lambda: calls.append("sync"))
+            }
+        ),
+    )
+    service = SceneAppearanceService(viz)
+    assert service.apply_procedural_defaults(
+        {"building_appearance": "varied", "facade_theme": "asian", "road_appearance": "marked"}
+    )
+    assert (viz.building_appearance, viz.facade_theme, viz.road_appearance) == (
+        "varied",
+        "asian",
+        "marked",
+    )
+    assert calls == [[entry], "sync"]
+    assert not service.apply_procedural_defaults({"camera_view": "top"})
+    with pytest.raises(ValueError):
+        service.apply_procedural_defaults(
+            {"facade_theme": "invalid", "building_appearance": "original"}
+        )
+    assert viz.building_appearance == "varied"

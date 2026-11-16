@@ -1,0 +1,637 @@
+{
+  "scenario": "scenarios/generator/targets/target_orientation/scenario.yaml",
+  "scene_source": {
+    "source": "library",
+    "id": "ground/ground_60x50.xml"
+  },
+  "source_files": {
+    "libraries/scenes/ground/ground_60x50.ply": "ac6fde51be56692107e71a2faa61ca661a47e171bd9244b58523b2cc01dcd0fa",
+    "libraries/scenes/ground/ground_60x50.xml": "17359e5bee8e7bbd1b3340dbf6c20ece66636db0431d745d818947499445ef46",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply": "4f09bd84384eb5abe0fa2d2518e503c0891bebcc2a5e5e3524785fcee2e50798",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00009.ply": "ee865b429de315d86f4235263ca076d3476a85b00dc64b1f575df0a8766bd84d",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00027.ply": "0329a83c42f12547204875271a8e16c45b35c07105ae8c714e06de941993f6f4",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00033.ply": "fe7720080180f71c45395c06d5c678f192ef637affd70072f9658aaf7cc538c3",
+    "libraries/targets/digital_twin_update1/target_metadata.json": "cc20d833c61e7dad2b19198167f9ce7b0b6b443f34144bcd0e88e7bef4c95870",
+    "scenarios/generator/targets/target_orientation/scenario.yaml": "b3976172c4097dc940d7c025cc3a0ca65b731f70c2549b1613efbb2a9d89f187"
+  },
+  "sample_indices": [
+    0,
+    140
+  ],
+  "sample_times_s": [
+    0.0,
+    20.0
+  ],
+  "steps": 141,
+  "actors": [
+    {
+      "name": "FollowWalkerEastTX",
+      "role": "tx",
+      "members": [
+        "FollowWalkerEastTX"
+      ],
+      "sample_positions_m": [
+        [
+          -24.0,
+          -14.0,
+          7.0
+        ],
+        [
+          -24.0,
+          -14.0,
+          7.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -24.0,
+            -14.0,
+            7.0
+          ],
+          "rotation_matrix": [
+            [
+              0.25440168649746064,
+              -0.9647638212377324,
+              0.06716063681961712
+            ],
+            [
+              0.9328061838240259,
+              0.26311740579210785,
+              0.24625566833859683
+            ],
+            [
+              -0.25524969211911996,
+              0.0,
+              0.9668751701606028
+            ]
+          ],
+          "forward_direction": [
+            0.25440168649746064,
+            0.9328061838240259,
+            -0.25524969211911996
+          ]
+        },
+        {
+          "index": 70,
+          "time_s": 10.0,
+          "position_m": [
+            -24.0,
+            -14.0,
+            7.0
+          ],
+          "rotation_matrix": [
+            [
+              0.6194973310314209,
+              -0.7739572992033211,
+              0.13119891712528367
+            ],
+            [
+              0.7571634045939589,
+              0.6332377902572627,
+              0.16035423204201338
+            ],
+            [
+              -0.20718744071161968,
+              0.0,
+              0.9783012646477408
+            ]
+          ],
+          "forward_direction": [
+            0.6194973310314209,
+            0.7571634045939589,
+            -0.20718744071161968
+          ]
+        },
+        {
+          "index": 140,
+          "time_s": 20.0,
+          "position_m": [
+            -24.0,
+            -14.0,
+            7.0
+          ],
+          "rotation_matrix": [
+            [
+              0.7960499575560145,
+              -0.5913636636275174,
+              0.12881569165326107
+            ],
+            [
+              0.5837699688744106,
+              0.8064049958557056,
+              0.09446484054572477
+            ],
+            [
+              -0.15974069148290687,
+              0.0,
+              0.9871590102331856
+            ]
+          ],
+          "forward_direction": [
+            0.7960499575560145,
+            0.5837699688744106,
+            -0.15974069148290687
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FollowWalkerWestRX",
+      "role": "rx",
+      "members": [
+        "FollowWalkerWestRX"
+      ],
+      "sample_positions_m": [
+        [
+          24.0,
+          -14.0,
+          2.0
+        ],
+        [
+          24.0,
+          -14.0,
+          2.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            24.0,
+            -14.0,
+            2.0
+          ],
+          "rotation_matrix": [
+            [
+              -0.44592672411712586,
+              -0.8944271909999161,
+              -0.033902163915729436
+            ],
+            [
+              0.8918534482342514,
+              -0.4472135954999583,
+              0.06780432783145884
+            ],
+            [
+              -0.07580754309991145,
+              -3.469446951953614e-17,
+              0.9971224681096876
+            ]
+          ],
+          "forward_direction": [
+            -0.44592672411712586,
+            0.8918534482342514,
+            -0.07580754309991145
+          ]
+        },
+        {
+          "index": 70,
+          "time_s": 10.0,
+          "position_m": [
+            24.0,
+            -14.0,
+            2.0
+          ],
+          "rotation_matrix": [
+            [
+              -0.8311269776019725,
+              -0.5547001962252291,
+              -0.039187235292931145
+            ],
+            [
+              0.554084651734648,
+              -0.8320502943378443,
+              0.026124823528620753
+            ],
+            [
+              -0.047097195397445106,
+              0.0,
+              0.9988903113884401
+            ]
+          ],
+          "forward_direction": [
+            -0.8311269776019725,
+            0.554084651734648,
+            -0.047097195397445106
+          ]
+        },
+        {
+          "index": 140,
+          "time_s": 20.0,
+          "position_m": [
+            24.0,
+            -14.0,
+            2.0
+          ],
+          "rotation_matrix": [
+            [
+              -0.9280143988564562,
+              -0.3713906763541039,
+              -0.029295751096899934
+            ],
+            [
+              0.37120575954258267,
+              -0.9284766908852593,
+              0.011718300438759979
+            ],
+            [
+              -0.031552489561119515,
+              0.0,
+              0.9995020962471742
+            ]
+          ],
+          "forward_direction": [
+            -0.9280143988564562,
+            0.37120575954258267,
+            -0.031552489561119515
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WalkerEast",
+      "role": "target",
+      "members": [
+        "WalkerEast"
+      ],
+      "sample_positions_m": [
+        [
+          -18.0,
+          8.0,
+          0.98
+        ],
+        [
+          6.0,
+          8.0,
+          0.98
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": true,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 70,
+          "mesh_index": 32,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00033.ply",
+          "time_s": 10.0,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 140,
+          "mesh_index": 26,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00027.ply",
+          "time_s": 20.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -18.0,
+            8.0,
+            0.98
+          ],
+          "rotation_matrix": [
+            [
+              -0.7673763924964729,
+              -0.6411969059806035,
+              0.0
+            ],
+            [
+              0.6411969059806035,
+              -0.7673763924964729,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            0.9999999999999998,
+            1.0925338875153338e-17,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WalkerWest",
+      "role": "target",
+      "members": [
+        "WalkerWest"
+      ],
+      "sample_positions_m": [
+        [
+          18.0,
+          -2.0,
+          0.98
+        ],
+        [
+          -6.0,
+          -2.0,
+          0.98
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": true,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 70,
+          "mesh_index": 32,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00033.ply",
+          "time_s": 10.0,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 140,
+          "mesh_index": 26,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00027.ply",
+          "time_s": 20.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            18.0,
+            -2.0,
+            0.98
+          ],
+          "rotation_matrix": [
+            [
+              0.7673763924964729,
+              0.6411969059806036,
+              0.0
+            ],
+            [
+              -0.6411969059806036,
+              0.7673763924964729,
+              -0.0
+            ],
+            [
+              -0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -0.9999999999999999,
+            1.0009696358736232e-16,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TrackingYawHuman",
+      "role": "target",
+      "members": [
+        "TrackingYawHuman"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          -10.0,
+          0.98
+        ],
+        [
+          0.0,
+          -10.0,
+          0.98
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00009.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            -10.0,
+            0.98
+          ],
+          "rotation_matrix": [
+            [
+              0.08922237056200755,
+              0.9960117311514437,
+              0.0
+            ],
+            [
+              -0.9960117311514437,
+              0.08922237056200755,
+              -0.0
+            ],
+            [
+              -0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -0.7071067811865472,
+            0.7071067811865477,
+            0.0
+          ]
+        },
+        {
+          "index": 70,
+          "time_s": 10.0,
+          "position_m": [
+            0.0,
+            -10.0,
+            0.98
+          ],
+          "rotation_matrix": [
+            [
+              -0.3656270731722451,
+              0.930761432034814,
+              0.0
+            ],
+            [
+              -0.930761432034814,
+              -0.3656270731722451,
+              -0.0
+            ],
+            [
+              -0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -0.31622776601683716,
+            0.9486832980505139,
+            0.0
+          ]
+        },
+        {
+          "index": 140,
+          "time_s": 20.0,
+          "position_m": [
+            0.0,
+            -10.0,
+            0.98
+          ],
+          "rotation_matrix": [
+            [
+              -0.850958517758684,
+              0.5252329017245052,
+              0.0
+            ],
+            [
+              -0.5252329017245052,
+              -0.850958517758684,
+              -0.0
+            ],
+            [
+              -0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            0.31622776601683755,
+            0.948683298050514,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "4cb1396b232f27e4d4eeea51d53c1955904c7a8a707dc334be6450ea1a3d379b",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (concrete)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    }
+  ],
+  "output_sha256": "78dd54acc843cd5beddbe3c842a4ac66ad03ab29614490c2420f005756a755eb",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -32.4,
+        -27.0,
+        -0.28
+      ],
+      [
+        32.4,
+        27.0,
+        7.28
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "name"
+  },
+  "renderer_sha256": "077c6c55d104403a84b34169fe50aeb171dc177a740258aa388cb27e0b566b1e",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.3",
+    "matplotlib": "3.11.2",
+    "sionna-rt": "2.2.0",
+    "open3d": "0.20.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "--yaml-only",
+    "scenarios/generator/targets/target_orientation"
+  ]
+}

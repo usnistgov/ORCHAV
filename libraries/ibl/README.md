@@ -1,38 +1,12 @@
-# IBL Lighting Assets
+# Image-based lighting assets
 
-This directory contains image-based lighting (IBL) assets used by the ORCHAV
-Visualizer renderers.
+The Visualizer uses an environment image to light scene surfaces and show reflections. This directory includes a generated neutral outdoor sky for offline use.
 
-## Included Neutral Environments
+| Renderer | Bundled environment |
+| --- | --- |
+| pygfx | `neutral_outdoor.hdr`, a Radiance panorama converted to a cubemap at runtime. |
+| Open3D | `neutral_outdoor_ibl.ktx` and `neutral_outdoor_skybox.ktx`, a matched Filament pair. |
 
-ORCHAV includes one generated neutral fallback environment:
+For a different sky in pygfx, choose a Poly Haven preset and click **Download & apply**, or use **Load HDR…** for a local panorama. For Open3D, use **Load KTX…** with a matched pair. If you redistribute an environment, include its source, license, and required attribution.
 
-- `neutral_outdoor.*` for a sky-like outdoor response.
-
-The neutral environment is generated rather than downloaded from an HDRI
-library. It provides deterministic lighting for examples while keeping the
-distribution self-contained and avoiding third-party HDRI licensing
-requirements.
-
-## What Is IBL?
-
-Image-Based Lighting uses a high-dynamic-range panoramic image to light a 3D
-scene. The `open3d` renderer uses Filament KTX cubemaps. The `pygfx` renderer
-can load standard HDR equirectangular images.
-
-| Backend | File type | Notes |
-|---------|-----------|-------|
-| `open3d` | KTX pair (`*_ibl.ktx` and `*_skybox.ktx`) | Both files must exist |
-| `pygfx` | `.hdr` | Converted to a cubemap at runtime |
-
-## Adding New Environments
-
-Users may add their own properly licensed HDRI or KTX assets under this
-directory. For `open3d`, provide matching `*_ibl.ktx` and `*_skybox.ktx`
-files. For `pygfx`, provide a standard `.hdr` file.
-
-When distributing additional environments, keep the source, license, and any
-required attribution with the assets.
-
-Renderer selection and lighting behavior are summarized in
-[Renderers](../../docs/visualizer/renderers.md).
+See [Sky environments](../../docs/visualizer/appearance.md#lighting-and-skies) for the available presets, cache locations, and offline use. The [renderer guide](../../docs/visualizer/renderers.md) explains platform support.

@@ -1,0 +1,46 @@
+{
+  "path": "orchav_features.mp4",
+  "decoded_frames": 1590,
+  "full_decode_passed": true,
+  "bytes": 13932757,
+  "sha256": "0f27b4845a71630551204f74dbf37dee557f9830c35d0db780f6e69864d29b10",
+  "fps": 30,
+  "dimensions": [
+    1600,
+    900
+  ],
+  "duration_s": 53.0,
+  "chapters": [
+    {
+      "clip": "materials",
+      "start_s": 2.0,
+      "duration_s": 10.0,
+      "title": "One scene. Many ways to see it."
+    },
+    {
+      "clip": "pbr",
+      "start_s": 12.0,
+      "duration_s": 8.0,
+      "title": "Shape the look with PBR materials"
+    },
+    {
+      "clip": "metrics",
+      "start_s": 20.0,
+      "duration_s": 10.0,
+      "title": "Watch the channel change"
+    },
+    {
+      "clip": "trends",
+      "start_s": 30.0,
+      "duration_s": 8.0,
+      "title": "Put a frame in the context of a whole run"
+    },
+    {
+      "clip": "coverage",
+      "start_s": 38.0,
+      "duration_s": 12.0,
+      "title": "Explore coverage in three dimensions"
+    }
+  ],
+  "audio": false
+}

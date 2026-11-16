@@ -6,12 +6,23 @@ owning application-specific colors for custom controls and dense panels.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QSettings, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QAbstractSpinBox,
+    QApplication,
+    QComboBox,
+    QLabel,
+    QLineEdit,
+    QWidget,
+)
+from shiboken6 import isValid
 
 
 @dataclass(frozen=True)
@@ -188,6 +199,12 @@ def generate_application_stylesheet(theme: ThemeColors | None = None) -> str:
     rules let more-specific selectors win.
     """
     t = theme or DEFAULT_THEME
+    icons = (
+        Path(__file__).resolve().parents[2]
+        / "resources"
+        / "ui"
+        / ("dark" if t.is_dark else "light")
+    ).as_posix()
 
     return f"""
         /* Global */
@@ -349,6 +366,13 @@ def generate_application_stylesheet(theme: ThemeColors | None = None) -> str:
             border-radius: 2px;
         }}
 
+        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+            image: url("{icons}/up.svg"); width: 8px; height: 8px;
+        }}
+        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+            image: url("{icons}/down.svg"); width: 8px; height: 8px;
+        }}
+
         /* QCheckBox */
         QCheckBox {{
             color: {t.text_primary};
@@ -362,6 +386,7 @@ def generate_application_stylesheet(theme: ThemeColors | None = None) -> str:
             border-radius: 3px;
         }}
         QCheckBox::indicator:checked {{
+            image: url("{icons}/check.svg");
             border-color: {t.accent};
             background: {t.accent};
         }}
@@ -405,6 +430,9 @@ def generate_application_stylesheet(theme: ThemeColors | None = None) -> str:
         QComboBox::drop-down {{
             border: none;
             width: 20px;
+        }}
+        QComboBox::down-arrow {{
+            image: url("{icons}/down.svg"); width: 10px; height: 10px;
         }}
         QComboBox QAbstractItemView {{
             border: 1px solid {t.border_primary};
@@ -538,6 +566,49 @@ def generate_application_stylesheet(theme: ThemeColors | None = None) -> str:
             border-color: {t.border_primary};
         }}
 
+        /* All workflow inspectors use the same quiet section rules. */
+        QWidget[workflowWorkspace="true"] {{ background: {t.bg_secondary}; }}
+        QWidget[workflowWorkspace="true"] QGroupBox[scenePanel="true"] {{
+            border: none;
+            border-radius: 0;
+            margin: 0;
+            padding: 0;
+        }}
+        QWidget[workflowWorkspace="true"] QWidget[sceneSection="true"] > QPushButton {{
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid {t.border_primary};
+            border-radius: 0;
+            padding: 10px 2px;
+            font-size: 13px;
+        }}
+        QWidget[workflowWorkspace="true"] QPushButton[sectionHeader="true"],
+        QWidget[workflowWorkspace="true"] QPushButton[sectionHeader="true"]:checked {{
+            text-align: left;
+            color: {t.text_primary};
+            background: transparent;
+            border: none;
+            border-radius: 2px;
+            padding: 6px 4px;
+            font-weight: normal;
+        }}
+        QWidget[workflowWorkspace="true"] QPushButton[sectionHeader="true"]:hover {{ background: {t.bg_tertiary}; }}
+        QWidget[workflowWorkspace="true"] QWidget[sceneEntityRow="true"] {{
+            border-bottom: 1px solid {t.border_subtle};
+        }}
+        QWidget[workflowWorkspace="true"] QComboBox,
+        QWidget[workflowWorkspace="true"] QAbstractSpinBox,
+        QWidget[workflowWorkspace="true"] QLineEdit {{ min-height: 22px; }}
+
+        /* Compact overflow buttons must not inherit section-header padding. */
+        QTabBar QToolButton {{ padding: 0px; border-radius: 2px; }}
+        QToolButton::left-arrow {{
+            image: url("{icons}/left.svg"); width: 10px; height: 10px;
+        }}
+        QToolButton::right-arrow {{
+            image: url("{icons}/right.svg"); width: 10px; height: 10px;
+        }}
+
         /* QFrame separator */
         QFrame[frameShape="4"] {{
             color: {t.border_subtle};
@@ -611,11 +682,79 @@ class ThemeManager(QObject):
         self._applied_stylesheet: str | None = None
         self._scheme_connected = False
         self._applying = False
+        self._scale = 1.0
 
     @property
     def mode(self) -> ThemeMode:
         """Return the active theme policy."""
         return self._mode
+
+    @property
+    def interface_scale(self) -> float:
+        return self._scale
+
+    def set_interface_scale(self, scale: float, *, persist: bool = True) -> None:
+        """Scale Qt controls while leaving the rendered scene resolution alone."""
+        if scale not in (1.0, 1.15, 1.3):
+            raise ValueError("Interface scale must be 1.0, 1.15 or 1.3")
+        self._scale = scale
+        if persist:
+            self._qsettings().setValue("appearance/interfaceScale", scale)
+        self.apply_current_theme(self._installed_app)
+
+    def _scaled_stylesheet(self, text: str) -> str:
+        return re.sub(
+            r"(?<![\w.-])(\d+(?:\.\d+)?)px",
+            lambda match: f"{round(float(match[1]) * self._scale)}px",
+            text,
+        )
+
+    def _scale_widget(self, widget: QWidget) -> None:
+        text = widget.styleSheet()
+        previous = widget.property("_scaleAppliedStyle")
+        source = widget.property("_scaleSourceStyle") if text == previous else text
+        source = source or ""
+        scaled = self._scaled_stylesheet(source)
+        widget.setProperty("_scaleSourceStyle", source)
+        widget.setProperty("_scaleAppliedStyle", scaled)
+        if text != scaled:
+            widget.setStyleSheet(scaled)
+        if isinstance(widget, (QAbstractButton, QAbstractSpinBox, QComboBox, QLabel, QLineEdit)):
+            for axis in ("Width", "Height"):
+                current = [
+                    getattr(widget, f"minimum{axis}")(),
+                    getattr(widget, f"maximum{axis}")(),
+                ]
+                previous = widget.property(f"_scaleApplied{axis}")
+                remembered = widget.property(f"_scaleSource{axis}")
+                source = []
+                for index, bound in enumerate(("min", "max")):
+                    # QStyleSheetStyle marks the bounds it owns. They already include
+                    # scaled QSS padding/borders; scaling their effective value again
+                    # makes existing controls taller than newly created controls.
+                    # The Qt flags are optional boolean properties, not size values.
+                    if widget.property(f"_q_stylesheet_{bound}{axis[0].lower()}") is True:
+                        source.append(None)
+                        continue
+                    original = (
+                        remembered[index]
+                        if previous is not None
+                        and remembered is not None
+                        and current[index] == previous[index]
+                        and remembered[index] is not None
+                        else current[index]
+                    )
+                    source.append(original)
+                    scaled = round(original * self._scale) if original < 16777215 else 16777215
+                    getattr(widget, f"set{'Minimum' if index == 0 else 'Maximum'}{axis}")(scaled)
+                widget.setProperty(f"_scaleSource{axis}", source)
+                widget.setProperty(
+                    f"_scaleApplied{axis}",
+                    [
+                        getattr(widget, f"minimum{axis}")(),
+                        getattr(widget, f"maximum{axis}")(),
+                    ],
+                )
 
     @property
     def current_theme(self) -> ThemeColors:
@@ -629,6 +768,8 @@ class ThemeManager(QObject):
 
     def load_mode(self) -> ThemeMode:
         """Load the persisted mode, defaulting to System."""
+        scale = self._qsettings().value("appearance/interfaceScale", 1.0, type=float)
+        self._scale = scale if scale in (1.0, 1.15, 1.3) else 1.0
         self._mode = normalize_theme_mode(
             self._qsettings().value(SETTINGS_THEME_MODE_KEY, ThemeMode.SYSTEM.value)
         )
@@ -645,6 +786,7 @@ class ThemeManager(QObject):
         app = app or QApplication.instance()
         same_app = app is not None and app is self._installed_app
         previous_mode = self._mode
+        previous_scale = self._scale
         if app is not None and app is not self._installed_app:
             self._installed_app = app
             self._platform_palette = QPalette(app.palette())
@@ -667,6 +809,7 @@ class ThemeManager(QObject):
         if (
             same_app
             and self._mode == previous_mode
+            and self._scale == previous_scale
             and self._application_matches_applied_theme(app)
         ):
             if persist:
@@ -714,7 +857,14 @@ class ThemeManager(QObject):
 
             self._current_theme = theme
             app.setPalette(generate_application_palette(theme))
-            app.setStyleSheet(generate_application_stylesheet(theme))
+            app.setStyleSheet(self._scaled_stylesheet(generate_application_stylesheet(theme)))
+            for widget in app.allWidgets():
+                # Restyling an earlier widget can destroy a later entry in
+                # Qt's snapshot, such as a popup owned by another control.
+                if not isValid(widget):
+                    continue
+                if self._scale != 1.0 or widget.property("_scaleAppliedStyle") is not None:
+                    self._scale_widget(widget)
             self._applied_palette = QPalette(app.palette())
             self._applied_stylesheet = app.styleSheet()
         finally:
@@ -741,7 +891,22 @@ class ThemeManager(QObject):
             return False
 
     def eventFilter(self, obj, event):  # noqa: N802 - Qt API
-        """Reapply System mode when Qt/native palette changes underneath us."""
+        """Style newly created controls and track platform palette changes."""
+        # Some PySide Windows callbacks expose a non-event wrapper. Do not
+        # inspect or forward it through QObject's typed, otherwise no-op filter.
+        if not isinstance(event, QEvent) or not isValid(event):
+            return False
+        if (
+            self._scale != 1.0
+            and isinstance(obj, QWidget)
+            and not self._applying
+            and event.type() in {QEvent.Polish, QEvent.StyleChange}
+        ):
+            self._applying = True
+            try:
+                self._scale_widget(obj)
+            finally:
+                self._applying = False
         if (
             obj is self._installed_app
             and self._mode == ThemeMode.SYSTEM
@@ -754,10 +919,10 @@ class ThemeManager(QObject):
             }
         ):
             if self._application_matches_applied_theme(self._installed_app):
-                return super().eventFilter(obj, event)
+                return False
             self._platform_palette = QPalette(self._installed_app.palette())
             self.apply_current_theme(self._installed_app, persist=False)
-        return super().eventFilter(obj, event)
+        return False
 
 
 def get_theme_manager() -> ThemeManager:

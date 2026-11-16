@@ -43,3 +43,4 @@ class SimulationObjects:
     simulation_config: Optional[Any] = None
     scenario_configuration: Optional[Any] = None
     material_properties: Optional[dict[str, Any]] = None
+    rcs_solver: Any = None

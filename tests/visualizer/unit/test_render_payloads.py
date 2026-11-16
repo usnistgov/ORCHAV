@@ -226,7 +226,11 @@ def test_make_mesh_material_applies_reflectance() -> None:
 
     material = MaterialPayload(reflectance=0.22)
     mat = make_mesh_material(gfx, material)
-    assert mat.reflectivity == pytest.approx(0.22, abs=1e-5)
+    assert isinstance(mat, gfx.MeshPhysicalMaterial)
+    # PBR dielectric reflectance is controlled by IOR, not Basic's environment
+    # reflection multiplier inherited as the unrelated ``reflectivity`` field.
+    assert ((mat.ior - 1) / (mat.ior + 1)) ** 2 == pytest.approx(0.16 * 0.22**2)
+    assert mat.specular_intensity == 1.0
 
 
 def test_make_mesh_material_applies_normal_map_strength(monkeypatch, tmp_path) -> None:
@@ -913,6 +917,10 @@ def test_pygfx_clearcoat_roundtrip_returns_to_standard_material() -> None:
     """clearcoat 0 -> N -> 0 should not leave the mesh on MeshPhysicalMaterial."""
     import pygfx as gfx
 
+    from visualizer.src.backends.pygfx_pbr import pbr_material_classes
+
+    standard_cls, physical_cls, _ = pbr_material_classes(gfx)
+
     r = _make_renderer()
 
     verts = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32)
@@ -930,7 +938,7 @@ def test_pygfx_clearcoat_roundtrip_returns_to_standard_material() -> None:
             metallic=0.0,
         ),
     )
-    assert type(r._objects[name].material) is gfx.MeshStandardMaterial
+    assert type(r._objects[name].material) is standard_cls
 
     assert r.set_named_material(
         name,
@@ -942,7 +950,7 @@ def test_pygfx_clearcoat_roundtrip_returns_to_standard_material() -> None:
             clearcoat_roughness=0.1,
         ),
     )
-    assert type(r._objects[name].material) is gfx.MeshPhysicalMaterial
+    assert type(r._objects[name].material) is physical_cls
 
     assert r.set_named_material(
         name,
@@ -954,7 +962,7 @@ def test_pygfx_clearcoat_roundtrip_returns_to_standard_material() -> None:
             clearcoat_roughness=0.0,
         ),
     )
-    assert type(r._objects[name].material) is gfx.MeshStandardMaterial
+    assert type(r._objects[name].material) is standard_cls
     assert r._objects[name].material.color.r == pytest.approx(color[0], abs=1e-5)
     assert r._objects[name].material.color.g == pytest.approx(color[1], abs=1e-5)
     assert r._objects[name].material.color.b == pytest.approx(color[2], abs=1e-5)

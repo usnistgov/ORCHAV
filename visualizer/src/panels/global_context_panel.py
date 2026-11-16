@@ -17,19 +17,12 @@ from PySide6.QtWidgets import (
 )
 
 from ..renderers.protocol import renderer_capabilities
+from ..widgets.responsive import ResponsiveRow
 from .base import BasePanel
 
 
 class GlobalContextPanel(BasePanel):
     """Own controls whose state affects every visualizer workflow tab."""
-
-    _OPTIONAL_OVERLAYS: tuple[tuple[str, str], ...] = (
-        ("show_coverage", "Coverage"),
-        ("show_beamforming", "Beams"),
-        ("show_rf_xray", "RF X-Ray"),
-        ("show_ground_grid", "Grid"),
-        ("show_camera_minimap", "Minimap"),
-    )
 
     def __init__(self, parent_widget: Any) -> None:
         """Initialize persistent context presentation state."""
@@ -43,8 +36,11 @@ class GlobalContextPanel(BasePanel):
         group.setObjectName("globalContextPanel")
         group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
-        stacked = getattr(self.parent, "_layout_profile", "auto") == "capture-workspace"
-        layout = QVBoxLayout(group) if stacked else QHBoxLayout(group)
+        outer = QVBoxLayout(group)
+        outer.setContentsMargins(0, 0, 0, 0)
+        responsive = ResponsiveRow()
+        outer.addWidget(responsive)
+        layout = responsive.row
         layout.setSpacing(8)
         layout.setContentsMargins(6, 6, 6, 6)
 
@@ -117,12 +113,6 @@ class GlobalContextPanel(BasePanel):
         self.widgets["viewport_hud_cb"] = hud
         layout.addWidget(hud)
 
-        overlay_status = QLabel("Overlays: none")
-        overlay_status.setObjectName("globalOverlayStatus")
-        overlay_status.setProperty("role", "secondary")
-        self.widgets["overlay_status_label"] = overlay_status
-        layout.addWidget(overlay_status)
-
         filter_status = QLabel("Paths filtered")
         filter_status.setObjectName("globalFilterStatus")
         filter_status.setToolTip(
@@ -193,33 +183,6 @@ class GlobalContextPanel(BasePanel):
                     if supports_hud
                     else "The active renderer does not provide a viewport HUD."
                 )
-
-        overlays = [
-            label
-            for field, label in self._OPTIONAL_OVERLAYS
-            if state is not None and bool(getattr(state, field, False))
-        ]
-        if any(
-            state is not None and bool(getattr(state, field, False))
-            for field in ("show_tx_trajectory", "show_rx_trajectory", "show_target_trajectory")
-        ):
-            overlays.append("Trajectories")
-        if state is not None and (
-            bool(getattr(state, "show_aoa_aperture", False))
-            or bool(getattr(state, "show_aod_aperture", False))
-        ):
-            overlays.append("Angular guides")
-
-        overlay_status = self.widgets.get("overlay_status_label")
-        if overlay_status is not None:
-            overlay_status.setText(
-                f"Overlays: {', '.join(overlays)}" if overlays else "Overlays: none"
-            )
-            overlay_status.setToolTip(
-                "Active optional viewport overlays: " + ", ".join(overlays)
-                if overlays
-                else "No optional viewport overlays are active."
-            )
 
         clip_axes = [
             axis.upper()

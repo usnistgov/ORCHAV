@@ -43,6 +43,7 @@ from ...core.propagation import (
     apply_target_scale_overrides,
     category_from_value,
     normalize_live_overrides,
+    resolve_live_actor_name,
 )
 from ...core.runtime import SimulationObjects
 from ..frames.conversion import standard_mpc_frame_from_raw
@@ -80,6 +81,24 @@ LIVE_RAYTRACING_INTEGER_BOUNDS = {
 }
 
 
+def validate_live_grpc_sensing_boundary(simulation_config: Any) -> None:
+    """Reject sensing generation because the live protobuf omits that payload."""
+
+    if isinstance(simulation_config, dict):
+        sensing_config = simulation_config.get("sensing")
+    else:
+        sensing_config = getattr(simulation_config, "sensing", None)
+    if isinstance(sensing_config, dict):
+        sensing_enabled = sensing_config.get("enabled", False) is True
+    else:
+        sensing_enabled = getattr(sensing_config, "enabled", False) is True
+    if sensing_enabled:
+        raise ValueError(
+            "Live gRPC does not transport sensing payloads; sensing generation is "
+            "file/HDF5-only. Use file output or disable sensing."
+        )
+
+
 def _finite_triple(values: Any, *, label: str) -> tuple[float, float, float]:
     """Return an exact finite three-value tuple for a live update."""
     try:
@@ -109,6 +128,12 @@ class GeneratorService(visualizer_pb2_grpc.GeneratorServiceServicer):
         max_retries: int | None = None,
         retry_delay_seconds: float | None = None,
     ):
+        configured_simulation = generator_config.get("simulation_config")
+        if configured_simulation is None:
+            configs = generator_config.get("configs", {})
+            configured_simulation = configs.get("simulation_config")
+        validate_live_grpc_sensing_boundary(configured_simulation)
+
         self.frame_cache = frame_cache
         self.generator_config = generator_config
         self.is_ready = True
@@ -187,17 +212,13 @@ class GeneratorService(visualizer_pb2_grpc.GeneratorServiceServicer):
         if config_key is None:
             return None
 
-        normalized_request = str(requested_name).strip().casefold()
-        for index, config in enumerate(self.configs.get(config_key, ()), start=1):
-            configured_name = self._read_config_value(config, "name") or f"{category}_{index}"
-            aliases = {
-                str(configured_name).casefold(),
-                f"{category}_{index}",
-                f"{category}{index}",
-            }
-            if normalized_request in aliases:
-                return str(configured_name)
-        return None
+        configured_names = [
+            str(self._read_config_value(config, "name") or f"{category}_{index}")
+            for index, config in enumerate(self.configs.get(config_key, ()), start=1)
+        ]
+        return resolve_live_actor_name(
+            cast(LiveActorCategory, category), requested_name, configured_names
+        )
 
     def _claim_controller(self) -> bool:
         """Claim the single mutable live session for one streaming RPC."""
@@ -280,6 +301,8 @@ class GeneratorService(visualizer_pb2_grpc.GeneratorServiceServicer):
             raise RuntimeError("ActorStateService is not available")
         if self.raytracing_service is None:
             raise RuntimeError("RayTracingService is not available")
+
+        validate_live_grpc_sensing_boundary(self._simulation_config())
 
         tx_configs = self.configs["tx_configs"]
         rx_configs = self.configs["rx_configs"]
@@ -699,7 +722,7 @@ class GeneratorService(visualizer_pb2_grpc.GeneratorServiceServicer):
                     )
                     if configured_name is None:
                         raise ValueError(f"Unknown {category.upper()} actor {entry.name or key!r}")
-                    resolved[category][configured_name.casefold()] = LiveActorOverride(
+                    resolved[category][configured_name] = LiveActorOverride(
                         name=configured_name,
                         category=category_key,
                         position=entry.position,
@@ -725,7 +748,7 @@ class GeneratorService(visualizer_pb2_grpc.GeneratorServiceServicer):
                 raise ValueError(f"Unknown {key.upper()} actor {name!r}")
             name = configured_name
             category_key = cast(LiveActorCategory, key)
-            existing = override_state[key].get(name.lower())
+            existing = override_state[key].get(name)
             replacement = LiveActorOverride(
                 name=existing.name if existing is not None else name,
                 category=category_key,
@@ -739,7 +762,7 @@ class GeneratorService(visualizer_pb2_grpc.GeneratorServiceServicer):
             )
             if replacement == existing:
                 return False
-            override_state[key][name.lower()] = replacement
+            override_state[key][name] = replacement
             live_overrides = _serialize_override_state(override_state)
             session_overrides_changed = True
             return True
@@ -1375,7 +1398,17 @@ class GeneratorService(visualizer_pb2_grpc.GeneratorServiceServicer):
                                         node_type,
                                     )
                             else:
-                                node_name = update.object_name or f"{category}_1"
+                                node_name = update.object_name
+                                if not node_name:
+                                    # An unnamed update means the first actor, even
+                                    # if a later actor is literally named tx_1/rx_1.
+                                    actor_configs = self.configs.get(f"{category}_configs", ())
+                                    first_name = (
+                                        self._read_config_value(actor_configs[0], "name")
+                                        if actor_configs
+                                        else None
+                                    )
+                                    node_name = str(first_name or f"{category}_1")
                                 position_tuple = None
                                 orientation_tuple = None
                                 scale_value = None
@@ -1535,12 +1568,12 @@ class GeneratorService(visualizer_pb2_grpc.GeneratorServiceServicer):
                             requested_idx,
                             total_steps,
                         )
-                        if not sent_eof:
-                            sent_eof = True
-                            yield _emit_eof(
-                                total_steps - 1 if total_steps > 0 else requested_idx - 1
-                            )
-                        break
+                        # EOF bounds this recording, not the editable session.
+                        # Acknowledge every explicit out-of-range request so its
+                        # waiter can finish, then accept seeks and parameter edits.
+                        sent_eof = True
+                        yield _emit_eof(total_steps - 1)
+                        continue
 
                     logger.debug("[StreamFrames] explicit frame request: idx=%s", requested_idx)
                     response = _produce_frame(requested_idx)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from visualizer.src.services.camera_scene_query_service import CameraSceneQueryService
 
@@ -103,7 +104,7 @@ def test_entity_position_orientation_prefers_cached_frame_orientation() -> None:
     frame_data = {"targets_metadata": [{"orientation": np.array([9.0, 8.0, 7.0])}]}
     cache_service = SimpleNamespace(get_frame=lambda step: frame_data if step == 3 else None)
     viz = SimpleNamespace(
-        current_step=3,
+        app_state=SimpleNamespace(step=3),
         current_view_model=view_model,
         cache_service=cache_service,
         target_entries=[
@@ -142,7 +143,7 @@ def test_target_camera_pose_uses_stable_identity_when_metadata_order_changes() -
         ]
     }
     viz = SimpleNamespace(
-        current_step=4,
+        app_state=SimpleNamespace(step=4),
         current_view_model=view_model,
         cache_service=SimpleNamespace(get_frame=lambda step: frame_data if step == 4 else None),
         target_entries=[
@@ -194,3 +195,96 @@ def test_sparse_target_focus_selection_keeps_canonical_pov_index() -> None:
     assert position == [7.0, 8.0, 9.0]
     assert orientation == [1.0, 2.0, 3.0]
     assert entity_info == selection
+
+
+def test_motion_direction_matches_target_identity_and_ignores_model_orientation():
+    frames = {
+        0: {
+            "targets_metadata": [
+                {"name": "beta", "current_position": [500, 0, 0]},
+                {"name": "alpha", "current_position": [0, 0, 0]},
+            ]
+        },
+        1: {
+            "targets_metadata": [
+                {"name": "alpha", "current_position": [0, 2, 0]},
+                {"name": "beta", "current_position": [600, 0, 0]},
+            ]
+        },
+    }
+    vm = SimpleNamespace(
+        target_positions=[[0, 2, 0]], target_metadata=[{"name": "alpha", "orientation": [0, 0, 0]}]
+    )
+    viz = SimpleNamespace(
+        app_state=SimpleNamespace(step=1),
+        current_view_model=vm,
+        cache_service=SimpleNamespace(get_frame=frames.get),
+        target_entries=[{"stable_target_id": "alpha"}],
+        target_focus_dropdown=_FakeDropdown(
+            text="Alpha", data={"type": "target", "stable_target_id": "alpha", "index": 0}
+        ),
+    )
+    query = CameraSceneQueryService(viz)
+    np.testing.assert_allclose(query.get_focus_motion_direction(), [0, 2, 0])
+    # Scrub backward to the first frame: physical travel remains +Y.
+    viz.app_state.step = 0
+    vm.target_positions = [[0, 0, 0]]
+    np.testing.assert_allclose(query.get_focus_motion_direction(), [0, 2, 0])
+    frames[1]["targets_metadata"] = [{"name": "beta", "current_position": [600, 0, 0]}]
+    assert query.get_focus_motion_direction() is None
+
+
+@pytest.mark.parametrize("kind", ["tx", "rx", "auto"])
+def test_motion_direction_supports_radios_and_auto_selection(kind):
+    vm = SimpleNamespace(tx_positions=[[2, 0, 0]], rx_positions=[[0, 3, 0]])
+    viz = SimpleNamespace(
+        app_state=SimpleNamespace(step=1),
+        current_view_model=vm,
+        cache_service=SimpleNamespace(
+            get_frame=lambda step: (
+                {"tx_positions": [[0, 0, 0]], "rx_positions": [[0, 0, 0]]} if step == 0 else None
+            )
+        ),
+        target_focus_dropdown=_FakeDropdown(text="Radio", data={"type": kind, "index": 0}),
+    )
+    direction = CameraSceneQueryService(viz).get_focus_motion_direction()
+    np.testing.assert_allclose(direction, [0, 3, 0] if kind == "rx" else [2, 0, 0])
+
+
+def test_motion_projection_reads_only_neighbor_and_keeps_playback_cache_separate(monkeypatch):
+    provider = SimpleNamespace(list_frames=lambda: [4, 8, 12])
+    reads = []
+
+    def load(_provider, step):
+        reads.append(step)
+        return {"rx_positions": [[0, step, 0]]}
+
+    module = "visualizer.src.services.camera_scene_query_service"
+    monkeypatch.setattr(f"{module}.visualizer_frame_provider", lambda viz: provider)
+    monkeypatch.setattr(f"{module}.try_load_packed_trajectory_frame", load)
+    viz = SimpleNamespace(
+        app_state=SimpleNamespace(step=8),
+        current_view_model=SimpleNamespace(rx_positions=[[0, 8, 0]]),
+        target_focus_dropdown=_FakeDropdown(text="RX", data={"type": "rx", "index": 0}),
+    )
+    query = CameraSceneQueryService(viz)
+    for _ in range(2):
+        np.testing.assert_allclose(query.get_focus_motion_direction(), [0, 1, 0])
+    assert reads == [4] and viz.app_state.step == 8
+    provider = SimpleNamespace(list_frames=lambda: [4, 8, 12])
+    query.get_focus_motion_direction()
+    assert reads == [4, 4]  # Another recording cannot reuse a stale position read.
+
+
+def test_stationary_motion_does_not_look_ahead_to_future_turn():
+    frames = {
+        0: {"rx_positions": [[0, 0, 0]]},
+        2: {"rx_positions": [[10, 0, 0]]},
+    }
+    viz = SimpleNamespace(
+        app_state=SimpleNamespace(step=1),
+        current_view_model=SimpleNamespace(rx_positions=[[0, 0, 0]]),
+        cache_service=SimpleNamespace(get_frame=frames.get),
+        target_focus_dropdown=_FakeDropdown(text="RX", data={"type": "rx", "index": 0}),
+    )
+    np.testing.assert_allclose(CameraSceneQueryService(viz).get_focus_motion_direction(), [0, 0, 0])

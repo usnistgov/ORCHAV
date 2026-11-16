@@ -1,24 +1,22 @@
 # Developer Architecture
 
-ORCHAV separates simulation, shared data contracts, and visualization. The
-Generator orchestrates [Sionna RT](https://nvlabs.github.io/sionna/), the
-Shared Data Layer defines the reusable data boundaries, and the Visualizer
-consumes those boundaries without depending on Sionna RT objects.
+The Generator orchestrates propagation solves with NVIDIA
+[Sionna RT](https://nvlabs.github.io/sionna/rt/). It hands the resulting frames
+to the Shared Data Layer so the Visualizer and other consumers can use them
+independently of the ray tracer.
 
-The common propagation-frame contract is
-[`StandardMPCFrame`](../shared/frame_reference.md#frame-contract). Coverage uses
-a separate HDF5 contract. The
-[technical delivery map](../shared/frame_reference.md#technical-delivery-routes)
-owns the detailed storage, transport, provider, and consumer routes. This page
-focuses on implementation ownership and extension seams.
+ORCHAV Sensing spans these components.
+The Generator samples the channel, local frames carry the selected observations
+and products, and the Visualizer displays the results alongside the scene.
 
 ## Component Boundaries
 
 | Component | Responsibility | Stable boundary |
 |-----------|----------------|-----------------|
-| Generator | Adapt validated scenarios into runtime configuration, prepare actors and scenes, invoke Sionna RT path computation, and publish propagation frames or coverage. | `ScenarioConfiguration` and `SimulationConfig` input, then `StandardMPCFrame` or coverage HDF5 output. |
-| Shared Data Layer | Validate scenario models, define frame and coverage contracts, write and read HDF5, encode protobuf messages, and provide common frame access interfaces. | `ScenarioModel`, `StandardMPCFrame`, `FrameSetWriter`, coverage schema, protobuf messages, and `DataProvider`. |
-| Visualizer | Load scenario assets and frame data, derive renderer payloads, coordinate UI state, render results, and export images or video. | Scenario and scene input, frame-provider input, coverage input, and `RendererProtocol`. |
+| Generator | Prepare the scene and actors, solve propagation, and publish frames. | `ScenarioConfiguration`, `SimulationConfig`, and normalized frame records. |
+| Shared Data Layer | Validate scenario and frame contracts, write and retrieve local frames, and encode propagation frames for transport. | `ScenarioModel`, `StandardMPCFrame`, `FrameSetWriter`, and `DataProvider`. Coverage has its own HDF5 schema. |
+| ORCHAV Sensing | Acquire channel observations, process them into detections and tracks, evaluate results, and reprocess saved data. | Resolved acquisition and processing contracts, typed sensing products, and the local frame extension. |
+| Visualizer | Combine scene assets with frame data, display propagation or coverage, and export views. | Frame providers, the coverage reader, and `RendererProtocol`. |
 
 ## Generator Boundary
 
@@ -29,50 +27,23 @@ Scenario loading validates YAML as `ScenarioModel`, resolves paths into
 
 ```mermaid
 flowchart TB
-    YAML["scenario.yaml"] --> Model["ScenarioModel validation"]
-    Model --> Scenario["ScenarioConfiguration"]
-    Scenario --> Runtime["SimulationConfig"]
-    Runtime --> Dispatch["perform_pipeline"]
-    Dispatch --> Context["PipelineContext"]
-    Scenario --> Dispatch
-    Runtime --> Context
-
-    Context --> Actors["ActorStateService"]
-    Context --> Scene["SceneService"]
-    Actors --> Rays["RayTracingService"]
-    Scene --> Rays
-    Context --> Rays
-    Scene --> Coverage["CoverageService"]
-    Context --> Coverage
-
-    Rays --> Raw["Solved frame records"]
-    Raw --> FileOutput["File adapter and frame conversion"]
-    FileOutput --> FileFrame["StandardMPCFrame"]
-    FileFrame --> Writer["FrameSetWriter"]
-    Writer --> FrameSet["Manifest-driven HDF5 frame set"]
-    Raw --> LiveOutput["Live adapter and frame conversion"]
-    LiveOutput --> LiveFrame["StandardMPCFrame"]
-    LiveFrame --> LiveWire["Protobuf over live gRPC"]
-
-    Coverage --> CoverageFile["coverage/coverage_maps.h5"]
+    Config["Scenario and simulation settings"] --> Runtime["Run-scoped actor and scene services"]
+    Runtime --> Solve["Sionna RT path solve"]
+    Solve --> Frame["StandardMPCFrame: actor state and MPCs"]
+    Solve --> Acquire["Optional sensing acquisition and processing"]
+    Frame -->|"propagation only"| Live["Live Generator: protobuf over gRPC"]
+    Frame --> Writer["FrameSetWriter: local HDF5"]
+    Acquire -->|"selected observations and products"| Writer
+    Runtime --> Coverage["Coverage service: separate HDF5 output"]
 ```
 
-Sionna RT scene, path, and tensor objects remain inside the Generator. File
-output normalizes raw solved records before passing frames to
-`FrameSetWriter`. Live output performs the same normalization before protobuf
-encoding and does not pass through HDF5.
+`perform_pipeline` dispatches file generation or a live Generator session.
+In file mode, sensing can use solved complex path coefficients and delays
+while they are still available. The recording configuration selects which
+channel observations, radar products, detections, and tracks to retain.
 
-`perform_pipeline` dispatches the built-in `files` and `live_grpc` Generator
-routes. Remote HDF5 is a consumer-side route over an existing frame set. Local
-What-if Preview is a Visualizer workflow over file-backed scenarios. The
-[Shared Data Layer](../shared/README.md#choose-a-data-mode) owns data-mode
-choice, and
-[Interactive Recomputation](../visualizer/interactive_recomputation.md) owns
-preview and live-edit behavior.
-
-Coverage publication runs beside propagation-frame publication. It has its own
-schema, HDF5 reader, and Visualizer loading path. Coverage values do not travel
-inside `StandardMPCFrame` or through `DataProvider`.
+Remote HDF5 playback serves existing propagation frames through a separate
+read-only service. See [data modes](../shared/README.md#choose-a-data-mode).
 
 ## Shared Data Boundary
 
@@ -93,45 +64,39 @@ Provider ownership is divided by responsibility:
 | Read-only frame-file gRPC service over generated HDF5 | Generator transport adapter |
 | HDF5 layout parsing below `Hdf5Provider` | Shared format reader |
 
-This division keeps the common provider contract independent of UI behavior
-while allowing live playback policy to remain with the Visualizer. A retained
-file format other than HDF5 would need a format reader and a file-provider
-adapter. An external producer that writes the existing HDF5 frame format only
-needs to create `StandardMPCFrame` values and use `FrameSetWriter`.
+## ORCHAV Sensing Boundary
+
+ORCHAV Sensing connects channel acquisition to processing, detection, tracking
+and evaluation. Its numerical processing lives in shared code so generation and
+reprocessing can use it independently of the Visualizer.
+
+| Responsibility | Owner and boundary |
+|---|---|
+| Acquire observations and assign result timing | [`generator/core/sensing/`](../../generator/core/sensing/__init__.py) resolves the acquisition and processing settings. The Generator runs the selected strategy against Sionna RT results and attaches products to the appropriate output frame. |
+| Process and evaluate observations | [`shared/sensing/`](../../shared/sensing/__init__.py) provides signal processing, detection, tracking, evaluation and fusion. Its numerical routines support generation and saved-data workflows. |
+| Describe, save and retrieve results | [`shared/extensions/sensing.py`](../../shared/extensions/sensing.py) defines the frame-extension contract. Shared sensing products declare axes, units and timing, while shared loaders and writers connect them to local HDF5 frames. |
+| Inspect results in the scene | The Visualizer's [`SensingService`](../../visualizer/src/services/sensing_service.py) loads selected products and uses their saved scene binding. Its dashboards and renderer overlays present those results. |
+
+During generation, acquisition can use complex path gains and delays before
+the raw solver result is converted into a propagation frame. The
+[postprocessor](../sensing/reprocessing.md#run-processing) instead starts from saved
+observations and writes a separate result frame set linked to its source.
+[Recording profiles](../sensing/reprocessing.md#choose-a-profile) determine which
+processing choices can be revisited.
+
+The [sensing payload](../shared/frame_reference.md#sensing-payloads) is a local,
+file-backed extension. Live and remote propagation transport does not carry it.
+A result's acquisition time and display scene can differ from the output frame's
+step. Consumers use the saved timing and scene binding described in
+[acquisition modes and timing](../sensing/concepts.md#result-timing).
 
 ## Visualizer Boundary
 
-The Visualizer combines three independent scenario inputs: scene assets,
-propagation frames, and optional coverage. Controllers and `AppState` provide
-the current display intent. They do not depend on a concrete renderer backend.
+The Visualizer loads scene assets through its scene service and retrieves
+propagation frames through a `FrameSource` adapter and `DataProvider`. Coverage uses its own reader and loading path.
 
-```mermaid
-flowchart TB
-    Scenario["Scenario directory and scenario.yaml"] --> Loader["ScenarioLoaderService"]
-
-    Loader --> Source["FrameSource route adapter"]
-    Source --> Provider["DataProvider"]
-    Provider --> Read["StandardMPCFrame or FrameProjection"]
-    Read --> Adapt["Visualizer frame payload"]
-
-    Scenario --> CoverageFile["Optional coverage/coverage_maps.h5"]
-    CoverageFile --> CoverageReader["CoverageHDF5Reader"]
-    CoverageReader --> CoverageService["Visualizer CoverageService"]
-
-    Adapt --> Pipeline["FramePipeline"]
-    CoverageService --> Pipeline
-    Controls["Controllers and AppState"] --> Pipeline
-
-    Loader --> Assets["Scene XML and mesh assets"]
-    Assets --> SceneService["Visualizer SceneService"]
-    Controls --> SceneService
-
-    Pipeline --> ViewModel["ViewModel"]
-    ViewModel --> Packet["FrameRenderPacket"]
-    Packet --> Renderer["RendererProtocol"]
-    SceneService --> Renderer
-    Renderer --> Backends["pygfx/wgpu or Open3D/Filament"]
-```
+For a local sensing run, the dashboard can load selected products on demand and use
+their saved scene binding to display the corresponding actor state.
 
 `FramePipeline` can request a projection directly from a provider.
 `FrameLoaderService` supplies complete-frame caching and fallback loading when
@@ -140,6 +105,24 @@ projects frame-heavy data into `FrameRenderPacket`, and submits the packet
 through `RendererProtocol`. Renderer-specific objects stay inside the backend
 packages. See [Renderers](../visualizer/renderers.md) for supported backend
 behavior.
+
+## Chart rendering
+
+Interactive 2D charts use PyQtGraph and the application's shared theme. These
+chart widgets are separate from the pygfx or Open3D scene renderer. Their
+source calculations and exported PNG/PDF figures are independent of this GUI
+backend. Theme changes restyle existing data rather than rerunning analysis.
+
+Most interactive charts use PyQtGraph. Saved report previews and the 3D
+spectrum surface embed Matplotlib canvases. Standalone figure export also uses
+Matplotlib. These chart backends are independent of the scene renderer.
+
+For implementation entry points, see the
+[3D spectrum surface](../../visualizer/src/sensing/spectrum_surface.py),
+[saved-report preview](../../visualizer/src/sensing/inspection_figure.py) and
+[path-analysis service](../../visualizer/src/experiments/path_analysis.py).
+User-facing selection and interpretation belong in the
+[Path inspection guide](../visualizer/path_inspection.md).
 
 ## Extension Seams
 
@@ -165,6 +148,7 @@ behavior.
 | Area | Start here |
 |------|------------|
 | Generator dispatch and lifecycle | [`generator/core/pipeline/dispatch.py`](../../generator/core/pipeline/dispatch.py), then [`offline_pipeline.py`](../../generator/core/pipeline/offline_pipeline.py) or [`streaming.py`](../../generator/core/pipeline/streaming.py) |
+| Sensing reprocessing | [`shared/sensing/postprocessor.py`](../../shared/sensing/postprocessor.py) |
 | Shared package orientation | [`shared/README.md`](../../shared/README.md) |
 | Frame contract, providers, and writing | [`shared/frames/types.py`](../../shared/frames/types.py), [`provider_base.py`](../../shared/frames/provider_base.py), and [`frame_set_writer.py`](../../shared/frames/frame_set_writer.py) |
 | Visualizer scenario loading | [`visualizer/src/app/scenario_workflow.py`](../../visualizer/src/app/scenario_workflow.py) |

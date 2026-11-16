@@ -33,6 +33,7 @@ from generator import (
 from shared.scenarios import load_scenario_configuration
 from shared.scenarios.actors import (
     ActorsSpec,
+    AlignMotionOrientationSpec,
     DirectoryAssetSpec,
     FixedOrientationSpec,
     LinearMobilitySpec,
@@ -47,8 +48,8 @@ from shared.scenarios.actors import (
 logger = logging.getLogger(__name__)
 
 # Pedestrian path along an Etoile avenue.
-PEDESTRIAN_START = (-21.858, -21.565, 1.6)
-PEDESTRIAN_END = (135.386, -98.332, 1.6)
+PEDESTRIAN_START = (-21.858, -21.565, 0.98)
+PEDESTRIAN_END = (-20.1723, -22.388, 0.98)
 
 # Direction vector of the pedestrian path (normalised)
 _dx = PEDESTRIAN_END[0] - PEDESTRIAN_START[0]
@@ -152,16 +153,17 @@ def main() -> None:
             TargetActorSpec(
                 name="Pedestrian",
                 asset=DirectoryAssetSpec(
-                    path="libraries/targets/nist_human_walking",
-                    pattern="fitted_Image_Psm_01_000*.ply",
+                    path="libraries/targets/digital_twin_update1",
+                    pattern="DT_Pjh_02_*.ply",
                     material_type="glass",
                     scale=1.0,
+                    mesh_end_behavior="hold_last",
                 ),
                 mobility=LinearMobilitySpec(
                     start_m=PEDESTRIAN_START,
                     end_m=PEDESTRIAN_END,
                 ),
-                orientation=FixedOrientationSpec(yaw_deg=180.0),
+                orientation=AlignMotionOrientationSpec(allow_pitch=False),
             ),
         ),
     )

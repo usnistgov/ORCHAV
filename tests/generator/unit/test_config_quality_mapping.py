@@ -1,5 +1,8 @@
 from types import SimpleNamespace
 
+import pytest
+import yaml
+
 from generator.core.configuration import (
     CoverageConfig,
     ReceiverConfig,
@@ -8,6 +11,33 @@ from generator.core.configuration import (
     TransmitterConfig,
     load_simulation_config,
 )
+from generator.core.exceptions import ConfigurationError
+from shared.scenarios import load_scenario_configuration
+from shared.scenarios.loader import load_scenario
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"cfar_type": "cell_averaging"}, "cfar_type"),
+        ({"cfar_edge_policy": "implicit"}, "cfar_edge_policy"),
+        ({"cfar_guard_cells": -1}, "cfar_guard_cells"),
+        ({"cfar_guard_cells": 1.5}, "cfar_guard_cells"),
+        ({"cfar_ref_cells": 0}, "cfar_ref_cells"),
+        ({"cfar_rd_guard_cells_range": True}, "cfar_rd_guard_cells_range"),
+        ({"cfar_rd_ref_cells_doppler": 0}, "cfar_rd_ref_cells_doppler"),
+        ({"cfar_threshold_scale": -1.0}, "cfar_threshold_scale"),
+        ({"cfar_threshold_scale": float("nan")}, "cfar_threshold_scale"),
+        ({"cfar_os_rank": 1.01}, "cfar_os_rank"),
+        ({"cfar_min_snr_db": float("inf")}, "cfar_min_snr_db"),
+        ({"pre_cfar_doppler_dc_guard_bins": -1}, "pre_cfar_doppler_dc_guard_bins"),
+        ({"noise_enabled": True}, "noise_snr_db is required"),
+        ({"noise_enabled": 1}, "noise_enabled must be boolean"),
+    ],
+)
+def test_sensing_config_rejects_ambiguous_detector_parameters(overrides, message):
+    with pytest.raises(ConfigurationError, match=message):
+        SensingConfig(**overrides)
 
 
 def test_get_coverage_quality_settings_maps_rays_to_samples():
@@ -61,7 +91,35 @@ def test_load_simulation_config_missing_scenario_fields_preserve_defaults():
     assert cfg.debug_level == "WARNING"
     assert cfg.file_format == "hdf5"
     assert cfg.output_mode == "local"
+    assert cfg.export_path_metrics is True
     assert cfg.sensing.enabled is False
+
+
+@pytest.mark.parametrize(
+    ("settings", "expected"),
+    [({}, True), ({"export_path_metrics": True}, True), ({"export_path_metrics": False}, False)],
+)
+def test_path_metric_choice_survives_yaml_to_runtime_configuration(tmp_path, settings, expected):
+    scenario_yaml = tmp_path / "scenario.yaml"
+    scenario_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 2,
+                "scene": {"source": "sionna", "id": "etoile"},
+                "timeline": {"steps": 1, "duration_s": 0.0},
+                "raytracing": {"enabled": True, **settings},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    schema = load_scenario(scenario_yaml)
+    scenario = load_scenario_configuration(scenario_yaml, project_root=tmp_path)
+    config = load_simulation_config(scenario)
+
+    assert schema.raytracing.export_path_metrics is expected
+    assert scenario.raytracing["export_path_metrics"] is expected
+    assert config.export_path_metrics is expected
 
 
 def test_load_simulation_config_applies_explicit_falsy_values_and_empty_collections():
@@ -186,7 +244,6 @@ def test_load_simulation_config_maps_sensing_yaml_fields():
     sensing = {
         "enabled": True,
         "bandwidth": 80e6,
-        "chirps_per_frame": 64,
         "prf_hz": 1500.0,
         "range_mode": "monostatic",
         "fft_size_range": 128,
@@ -242,7 +299,6 @@ def test_load_simulation_config_maps_sensing_yaml_fields():
     actual = cfg.sensing
 
     assert actual.bandwidth == 80e6
-    assert actual.chirps_per_frame == 64
     assert actual.prf_hz == 1500.0
     assert actual.range_mode == "monostatic"
     assert actual.fft_size_range == 128
@@ -291,3 +347,14 @@ def test_load_simulation_config_maps_sensing_yaml_fields():
     assert actual.aoa_az_max_deg == 45.0
     assert actual.aoa_el_min_deg == -20.0
     assert actual.aoa_el_max_deg == 20.0
+
+
+def test_load_simulation_config_enables_typed_detection_stage_products() -> None:
+    scenario = SimpleNamespace(
+        raytracing={},
+        sensing={"enabled": True, "persist_detection_stage_artifacts": True},
+    )
+
+    config = load_simulation_config(scenario)
+
+    assert config.sensing.persist_detection_stage_artifacts is True

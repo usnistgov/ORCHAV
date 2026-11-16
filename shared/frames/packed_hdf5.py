@@ -10,11 +10,14 @@ extension groups are not materialized.
 
 from __future__ import annotations
 
+import hashlib
+import sys
 from collections import OrderedDict
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
+from math import prod
 from pathlib import Path
 from threading import Condition, RLock
 from typing import Any, cast
@@ -31,7 +34,7 @@ from .contracts import (
     FrameReadRequest,
     PathMetric,
 )
-from .json_codec import loads_frame_json
+from .json_codec import dumps_frame_json, loads_frame_json
 from .manifest import FrameChunkManifest, FrameSetManifest, load_frame_manifest
 from .packed import FrameProjection, ProjectedMPCFrame
 from .types import StandardMPCFrame
@@ -56,6 +59,9 @@ _METRIC_FRAME_FIELDS: dict[PathMetric, str] = {
 
 _FULL_FRAME_REQUEST = FrameReadRequest.full()
 _MISSING_HDF5_OBJECT = object()
+# Bound read-ahead independently of the writer's configurable chunk size.
+_PROJECTION_BATCH_ROWS = 64
+_PROJECTION_BATCH_CACHE_BYTES = 8 * 1024 * 1024
 
 
 class PackedHDF5Error(ValueError):
@@ -143,6 +149,94 @@ def _dataset(
     return node
 
 
+class _BatchDataset:
+    """Selection facade that reuses one bounded, contiguous dataset slice."""
+
+    def __init__(self, batch: "_ProjectionReadBatch", path: str) -> None:
+        self._batch = batch
+        self._path = path
+
+    def __getitem__(self, selection: int | slice) -> Any:
+        return self._batch.read(self._path, selection)
+
+
+class _ProjectionReadBatch:
+    """Read requested columns together without changing per-frame validation.
+
+    Only columns reached by the ordinary projection reader are loaded. Numeric
+    slices exceeding the remaining budget fall back to individual selections.
+    Variable-length JSON has no known decoded size before I/O: its bounded row
+    slice is retained only if it fits, otherwise subsequent reads stay scalar.
+    Large numeric sensing products always use their existing selective reader.
+    """
+
+    def __init__(self, h5: _CachedHDF5File, start: int, stop: int) -> None:
+        self._h5 = h5
+        self._start = start
+        self._stop = stop
+        self._columns: dict[str, tuple[int, np.ndarray]] = {}
+        self._uncached: set[str] = set()
+        self.cache_bytes = 0
+
+    def dataset(self, path: str) -> _BatchDataset:
+        return _BatchDataset(self, path)
+
+    def _bounds(self, path: str) -> tuple[int, int]:
+        if path == "index/frame_target_offsets":
+            return self._start, self._stop + 1
+        if path.startswith("frames/") or path == "index/frame_pair_path_offsets":
+            return self._start, self._stop
+        if path.startswith("targets/"):
+            offsets = self.read("index/frame_target_offsets", slice(self._start, self._stop + 1))
+            return int(offsets[0]), int(offsets[-1])
+        if path.startswith(("paths/", "bounces/")):
+            offsets = self.read("index/frame_pair_path_offsets", slice(self._start, self._stop))
+            start, stop = int(offsets[0, 0]), int(offsets[-1, -1])
+            if path == "paths/bounce_offsets":
+                return start, stop + 1
+            if path.startswith("bounces/"):
+                bounce_offsets = self.read("paths/bounce_offsets", slice(start, stop + 1))
+                return int(bounce_offsets[0]), int(bounce_offsets[-1])
+            return start, stop
+        raise ValueError(f"No projection batch bounds for {path}")
+
+    def read(self, path: str, selection: int | slice) -> Any:
+        column = self._columns.get(path)
+        dataset = _dataset(self._h5, path)
+        if column is None and path not in self._uncached:
+            start, stop = self._bounds(path)
+            estimate = (stop - start) * prod(dataset.shape[1:]) * dataset.dtype.itemsize
+            remaining = _PROJECTION_BATCH_CACHE_BYTES - self.cache_bytes
+            if estimate <= remaining:
+                values = np.asarray(dataset[start:stop])
+                size = values.nbytes
+                if values.dtype.hasobject:
+                    size += sum(sys.getsizeof(value) for value in values.flat)
+                if size <= remaining:
+                    values.setflags(write=False)
+                    column = self._columns[path] = (start, values)
+                    self.cache_bytes += size
+                else:
+                    self._uncached.add(path)
+                    # Reuse this just-read selection before dropping an
+                    # oversized JSON block; never retain it in the cache.
+                    return self._select(values, start, selection)
+            else:
+                self._uncached.add(path)
+        if column is None:
+            return dataset[selection]
+        return self._select(column[1], column[0], selection)
+
+    @staticmethod
+    def _select(values: np.ndarray, start: int, selection: int | slice) -> Any:
+        if isinstance(selection, slice):
+            result = values[slice(selection.start - start, selection.stop - start, selection.step)]
+        else:
+            result = values[selection - start]
+        # Returned frame arrays must not expose the private read-ahead buffer.
+        return result.copy() if isinstance(result, np.ndarray) else result
+
+
 def _decode_string(value: Any) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8")
@@ -219,7 +313,7 @@ def _cached_static_strings(
     )
 
 
-def _decode_json_cell(dataset: h5py.Dataset, row: Any, *, default: Any) -> Any:
+def _decode_json_cell(dataset: h5py.Dataset | _BatchDataset, row: Any, *, default: Any) -> Any:
     raw = dataset[row]
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
@@ -230,8 +324,81 @@ def _decode_json_cell(dataset: h5py.Dataset, row: Any, *, default: Any) -> Any:
     return loads_frame_json(cast(str, raw))
 
 
+def _load_static_sensing_config(
+    h5: h5py.File | _CachedHDF5File,
+) -> Mapping[str, Any] | None:
+    """Verify static sensing identity without reading numerical product arrays.
+
+    The writer hashes exact config JSON, fixed-product shape/dtype metadata,
+    and the CIR storage dtype/rank. A zero-width CIR shape table denotes an
+    absent CIR layout, including its placeholder values dataset.
+    """
+    raw_config = _decode_string(_dataset(h5, "static/sensing_config_json")[()])
+    config = loads_frame_json(raw_config)
+    if config is not None:
+        if not isinstance(config, Mapping):
+            raise PackedHDF5Error("static/sensing_config_json must contain a JSON object or null")
+        for key in {"config", "config_resolved"} & set(config):
+            if not isinstance(config[key], Mapping):
+                raise PackedHDF5Error(f"static/sensing_config_json.{key} must be a JSON object")
+    chunk_file = Path(h5.filename).name
+    fixed = _required_group(h5, "sensing/fixed", chunk_file=chunk_file)
+    fixed_layout = {}
+    for product in sorted(fixed.keys()):
+        data = _dataset(h5, f"sensing/fixed/{product}/data")
+        fixed_layout[product] = {"shape": list(data.shape[1:]), "dtype": data.dtype.str}
+    shapes = _dataset(h5, "sensing/ragged/cir/shapes")
+    if shapes.ndim != 2:
+        raise PackedHDF5Error("sensing/ragged/cir/shapes must be a rank-two dataset")
+    rank = shapes.shape[1] or None
+    cir_values = _dataset(h5, "sensing/ragged/cir/values")
+    if rank is None and cir_values.shape != (0,):
+        raise PackedHDF5Error("An absent CIR layout must have an empty values dataset")
+    payload = {
+        "fixed": fixed_layout,
+        "cir": {
+            "storage_dtype": cir_values.dtype.str if rank is not None else None,
+            "rank": rank,
+        },
+        "static_config": raw_config if config is not None else None,
+    }
+    actual = hashlib.sha256(dumps_frame_json(payload).encode("utf-8")).hexdigest()
+    stored = _string_attribute(h5, "sensing_layout_id", chunk_file=chunk_file)
+    if actual != stored:
+        raise PackedHDF5Error(
+            f"{chunk_file} sensing_layout_id does not match its static sensing payload"
+        )
+    return dict(config) if config is not None else None
+
+
+def _merge_static_sensing_config(
+    sensing: dict[str, Any] | None,
+    config: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Merge verified static metadata without allowing per-frame overrides."""
+    if config is None:
+        return sensing
+    if sensing is None:
+        sensing = {}
+    static_keys = {"config", "config_resolved", "target_catalog"} & set(config)
+    bundle = (
+        {key: config[key] for key in static_keys}
+        if static_keys
+        else {"config": config, "config_resolved": config}
+    )
+    for key, value in bundle.items():
+        if not isinstance(value, Mapping):
+            raise PackedHDF5Error(f"static/sensing_config_json.{key} must be a JSON object")
+        if key in sensing and dumps_frame_json(sensing[key]) != dumps_frame_json(value):
+            raise PackedHDF5Error(
+                f"Per-frame sensing.{key} conflicts with verified static metadata"
+            )
+        sensing[key] = deepcopy(value)
+    return sensing
+
+
 def _decode_json_optional_mapping_cell(
-    dataset: h5py.Dataset,
+    dataset: h5py.Dataset | _BatchDataset,
     row: Any,
     *,
     label: str,
@@ -247,7 +414,7 @@ def _decode_json_optional_mapping_cell(
 
 
 def _decode_target_metadata_cell(
-    dataset: h5py.Dataset,
+    dataset: h5py.Dataset | _BatchDataset,
     target_row: int,
     *,
     chunk_file: str,
@@ -274,7 +441,12 @@ class _HandleEntry:
 
 
 class HDF5HandleLRU:
-    """Ref-counted, bounded LRU of read-only HDF5 file handles."""
+    """Ref-counted, bounded LRU of read-only HDF5 file handles.
+
+    Closing rejects new leases immediately. Already accepted reads retain their
+    handles until their last lease exits, so cancellation never invalidates an
+    HDF5 object in a worker or blocks the GUI waiting for disk I/O.
+    """
 
     def __init__(self, max_open: int = 4) -> None:
         if max_open <= 0:
@@ -329,17 +501,21 @@ class HDF5HandleLRU:
         finally:
             with self._condition:
                 entry.leases -= 1
-                self._entries.move_to_end(resolved)
+                if self._closed and entry.leases == 0:
+                    self._entries.pop(resolved)
+                    entry.handle.close()
+                else:
+                    self._entries.move_to_end(resolved)
                 self._condition.notify_all()
 
     def close(self) -> None:
+        """Retire the pool, closing active handles when their reads finish."""
         with self._condition:
-            if any(entry.leases for entry in self._entries.values()):
-                raise RuntimeError("Cannot close HDF5 handle pool while reads are active")
-            for entry in self._entries.values():
-                entry.handle.close()
-            self._entries.clear()
             self._closed = True
+            for path, entry in tuple(self._entries.items()):
+                if entry.leases == 0:
+                    self._entries.pop(path)
+                    entry.handle.close()
             self._condition.notify_all()
 
 
@@ -376,6 +552,11 @@ class PackedHDF5Reader:
     def has_frame(self, step: int) -> bool:
         return int(step) in self._locations
 
+    def frame_source_path(self, step: int) -> Path | None:
+        """Return the manifest-bound chunk for a frame without opening it."""
+        location = self._locations.get(int(step))
+        return None if location is None else self.frames_dir / location[0].file
+
     def close(self) -> None:
         self._handles.close()
 
@@ -398,7 +579,7 @@ class PackedHDF5Reader:
         steps: Sequence[int],
         request: FrameReadRequest,
     ) -> Iterator[FrameProjection]:
-        """Yield projections in caller order with coalesced contiguous path reads."""
+        """Yield projections in caller order with bounded contiguous read-ahead."""
         locations: list[tuple[int, FrameChunkManifest, int]] = []
         for raw_step in steps:
             step = int(raw_step)
@@ -412,7 +593,14 @@ class PackedHDF5Reader:
         while cursor < len(locations):
             chunk = locations[cursor][1]
             run_end = cursor + 1
-            while run_end < len(locations) and locations[run_end][1].file == chunk.file:
+            while (
+                run_end < len(locations)
+                and locations[run_end][1].file == chunk.file
+                and (
+                    self._can_coalesce_path_projection(request)
+                    or run_end - cursor < _PROJECTION_BATCH_ROWS
+                )
+            ):
                 run_end += 1
 
             run = locations[cursor:run_end]
@@ -433,8 +621,13 @@ class PackedHDF5Reader:
                         )
                     )
                 else:
+                    batch = (
+                        _ProjectionReadBatch(h5, run[0][2], run[-1][2] + 1)
+                        if len(run) > 1 and consecutive_rows
+                        else None
+                    )
                     projections = tuple(
-                        self._read_projection(h5, chunk, row, step, request)
+                        self._read_projection(h5, chunk, row, step, request, batch=batch)
                         for step, _chunk, row in run
                     )
             # Do not hold the per-file h5py lock while callers process a
@@ -637,6 +830,7 @@ class PackedHDF5Reader:
                 row,
                 int(step),
                 _FULL_FRAME_REQUEST,
+                validate_sensing=False,
             )
 
         return StandardMPCFrame(**fields)
@@ -781,8 +975,20 @@ class PackedHDF5Reader:
         row: int,
         step: int,
         request: FrameReadRequest,
+        *,
+        validate_sensing: bool = True,
+        batch: _ProjectionReadBatch | None = None,
     ) -> tuple[dict[str, Any], frozenset[str], bool]:
-        """Read exactly the compact fields selected by ``request``."""
+        """Read exactly the compact fields selected by ``request``.
+
+        A complete generic frame load transports the optional sensing mapping
+        without interpreting its independently versioned schema. Explicit
+        sensing projections validate that schema before returning it.
+        """
+
+        def dataset(path: str) -> h5py.Dataset | _BatchDataset:
+            return batch.dataset(path) if batch is not None else _dataset(h5, path)
+
         components = request.components
         kwargs: dict[str, Any] = {"frame_index": step}
         path_start = path_end = bounce_start = bounce_end = 0
@@ -798,17 +1004,13 @@ class PackedHDF5Reader:
 
         if FrameComponent.DEVICES in components:
             kwargs.update(
-                tx_positions=np.asarray(
-                    _dataset(h5, "frames/tx_position_m")[row], dtype=np.float64
-                ),
-                rx_positions=np.asarray(
-                    _dataset(h5, "frames/rx_position_m")[row], dtype=np.float64
-                ),
+                tx_positions=np.asarray(dataset("frames/tx_position_m")[row], dtype=np.float64),
+                rx_positions=np.asarray(dataset("frames/rx_position_m")[row], dtype=np.float64),
                 tx_orientations=np.asarray(
-                    _dataset(h5, "frames/tx_orientation_rad")[row], dtype=np.float64
+                    dataset("frames/tx_orientation_rad")[row], dtype=np.float64
                 ),
                 rx_orientations=np.asarray(
-                    _dataset(h5, "frames/rx_orientation_rad")[row], dtype=np.float64
+                    dataset("frames/rx_orientation_rad")[row], dtype=np.float64
                 ),
                 tx_names=_cached_static_strings(h5, "static/tx_names"),
                 rx_names=_cached_static_strings(h5, "static/rx_names"),
@@ -816,7 +1018,7 @@ class PackedHDF5Reader:
 
         if FrameComponent.PATH_TOPOLOGY in components:
             absolute_pair_offsets = np.asarray(
-                _dataset(h5, "index/frame_pair_path_offsets")[row],
+                dataset("index/frame_pair_path_offsets")[row],
                 dtype=np.int64,
             )
             path_start = int(absolute_pair_offsets[0])
@@ -828,7 +1030,7 @@ class PackedHDF5Reader:
             )
         if FrameComponent.PATH_BOUNCE_TOPOLOGY in components:
             absolute_bounce_offsets = np.asarray(
-                _dataset(h5, "paths/bounce_offsets")[path_start : path_end + 1],
+                dataset("paths/bounce_offsets")[path_start : path_end + 1],
                 dtype=np.int64,
             )
             if absolute_bounce_offsets.size == 0:
@@ -841,20 +1043,20 @@ class PackedHDF5Reader:
 
         if FrameComponent.PATH_GEOMETRY in components:
             kwargs["bounce_xyz_m"] = np.asarray(
-                _dataset(h5, "bounces/xyz_m")[bounce_start:bounce_end],
+                dataset("bounces/xyz_m")[bounce_start:bounce_end],
                 dtype=np.float32,
             )
 
         if FrameComponent.PATH_INTERACTIONS in components:
             kwargs["interactions"] = np.asarray(
-                _dataset(h5, "bounces/interaction")[bounce_start:bounce_end],
+                dataset("bounces/interaction")[bounce_start:bounce_end],
                 dtype=np.uint8,
             )
 
         if FrameComponent.PATH_MATERIALS in components:
             kwargs.update(
                 material_ids=np.asarray(
-                    _dataset(h5, "bounces/material_id")[bounce_start:bounce_end],
+                    dataset("bounces/material_id")[bounce_start:bounce_end],
                     dtype=np.uint16,
                 ),
                 material_names=_cached_static_strings(h5, "static/materials/name"),
@@ -866,29 +1068,29 @@ class PackedHDF5Reader:
 
         if FrameComponent.PATH_METRICS in components:
             kwargs["metric_valid_bits"] = np.asarray(
-                _dataset(h5, "paths/metric_valid_bits")[path_start:path_end],
+                dataset("paths/metric_valid_bits")[path_start:path_end],
                 dtype=np.uint8,
             )
             for metric in request.metrics:
                 dataset_name = _METRIC_DATASETS[metric]
                 field_name = _METRIC_FRAME_FIELDS[metric]
                 kwargs[field_name] = np.asarray(
-                    _dataset(h5, f"paths/{dataset_name}")[path_start:path_end],
+                    dataset(f"paths/{dataset_name}")[path_start:path_end],
                     dtype=np.float32,
                 )
 
         if FrameComponent.TARGETS in components:
             target_interval = np.asarray(
-                _dataset(h5, "index/frame_target_offsets")[row : row + 2],
+                dataset("index/frame_target_offsets")[row : row + 2],
                 dtype=np.int64,
             )
             target_start = int(target_interval[0])
             target_end = int(target_interval[1])
             positions = np.asarray(
-                _dataset(h5, "targets/position_m")[target_start:target_end],
+                dataset("targets/position_m")[target_start:target_end],
                 dtype=np.float64,
             )
-            metadata_ds = _dataset(h5, "targets/metadata_json")
+            metadata_ds = dataset("targets/metadata_json")
             metadata = tuple(
                 _decode_target_metadata_cell(
                     metadata_ds,
@@ -905,20 +1107,20 @@ class PackedHDF5Reader:
 
         if FrameComponent.PROVENANCE in components:
             source = _decode_json_optional_mapping_cell(
-                _dataset(h5, "frames/source_json"),
+                dataset("frames/source_json"),
                 row,
                 label="frames/source_json",
             )
-            timestamp = float(_dataset(h5, "frames/timestamp_s")[row])
+            timestamp = float(dataset("frames/timestamp_s")[row])
             kwargs.update(
                 provenance=source,
                 timestamp_s=timestamp if np.isfinite(timestamp) else None,
-                recomputed_from_stored_positions=bool(_dataset(h5, "frames/recomputed")[row]),
+                recomputed_from_stored_positions=bool(dataset("frames/recomputed")[row]),
             )
 
         if FrameComponent.BEAMFORMING in components:
             kwargs["beamforming"] = _decode_json_optional_mapping_cell(
-                _dataset(h5, "frames/beamforming_json"),
+                dataset("frames/beamforming_json"),
                 row,
                 label="frames/beamforming_json",
             )
@@ -927,41 +1129,61 @@ class PackedHDF5Reader:
         all_sensing_products_loaded = False
         if FrameComponent.SENSING in components:
             sensing = _decode_json_optional_mapping_cell(
-                _dataset(h5, "frames/sensing_metadata_json"),
+                dataset("frames/sensing_metadata_json"),
                 row,
                 label="frames/sensing_metadata_json",
             )
             cached_config = self._static_sensing_config(h5)
-            if cached_config is not None:
-                if sensing is None:
-                    sensing = {}
-                # The cached mapping is private and treated as immutable. Copy
-                # before merging so each returned frame owns its metadata.
-                config = deepcopy(cached_config)
-                # The writer stores the exact config/config_resolved keys as
-                # one static bundle. Accepting an unwrapped mapping as well
-                # keeps hand-authored test chunks straightforward.
-                config_keys = {"config", "config_resolved"} & set(config)
-                if config_keys:
-                    for key in config_keys:
-                        value = config[key]
-                        assert isinstance(value, Mapping)
-                        sensing.setdefault(key, dict(value))
-                else:
-                    sensing.setdefault("config", dict(config))
-                    sensing.setdefault("config_resolved", dict(config))
+            sensing = _merge_static_sensing_config(sensing, cached_config)
             available_products = self._available_sensing_products(h5)
             if request.all_sensing_products:
                 selected_products = available_products
                 all_sensing_products_loaded = True
             else:
                 selected_products = set(request.sensing_products)
+                # A typed numeric product is unusable without its exact axis
+                # coordinates.  Resolve that dependency from persisted v4
+                # descriptors instead of making each consumer guess companion
+                # dataset names.
+                descriptors = sensing.get("products") if isinstance(sensing, Mapping) else None
+                if isinstance(descriptors, Mapping):
+                    for product in tuple(selected_products):
+                        descriptor = descriptors.get(product)
+                        axes = descriptor.get("axes") if isinstance(descriptor, Mapping) else None
+                        if not isinstance(axes, list):
+                            continue
+                        for axis in axes:
+                            if not isinstance(axis, Mapping):
+                                continue
+                            coordinate_key = axis.get("coordinate_key")
+                            if isinstance(coordinate_key, str):
+                                selected_products.add(coordinate_key)
+                            alternate_keys = axis.get("alternate_coordinate_keys")
+                            if isinstance(alternate_keys, list):
+                                selected_products.update(
+                                    key for key in alternate_keys if isinstance(key, str)
+                                )
             for product in selected_products:
                 value = self._read_sensing_product(h5, product, row)
                 if value is not None:
                     if sensing is None:
                         sensing = {}
                     sensing[product] = value
+            if sensing is not None and validate_sensing:
+                from shared.extensions.sensing import assert_sensing_contract
+
+                assert_sensing_contract(
+                    {"sensing": sensing},
+                    require_schema_version=True,
+                )
+            elif sensing is not None:
+                from shared.extensions.sensing import (
+                    SENSING_SCHEMA_VERSION,
+                    assert_processing_recipe_identity,
+                )
+
+                if sensing.get("schema_version") == SENSING_SCHEMA_VERSION:
+                    assert_processing_recipe_identity(sensing)
             kwargs["sensing"] = sensing
             loaded_sensing_products = frozenset(selected_products)
 
@@ -974,9 +1196,11 @@ class PackedHDF5Reader:
         row: int,
         step: int,
         request: FrameReadRequest,
+        *,
+        batch: _ProjectionReadBatch | None = None,
     ) -> FrameProjection:
         fields, loaded_sensing_products, all_sensing_products_loaded = self._read_frame_fields(
-            h5, chunk, row, step, request
+            h5, chunk, row, step, request, batch=batch
         )
         return FrameProjection(
             frame=ProjectedMPCFrame(**fields),
@@ -990,26 +1214,11 @@ class PackedHDF5Reader:
     def _static_sensing_config(
         h5: _CachedHDF5File,
     ) -> Mapping[str, Any] | None:
-        def load() -> Mapping[str, Any] | None:
-            dataset = h5.get("static/sensing_config_json")
-            if not isinstance(dataset, h5py.Dataset):
-                return None
-            config = _decode_json_cell(dataset, (), default=None)
-            if config is None:
-                return None
-            if not isinstance(config, Mapping):
-                raise PackedHDF5Error(
-                    "static/sensing_config_json must contain a JSON object or null"
-                )
-            config_keys = {"config", "config_resolved"} & set(config)
-            for key in config_keys:
-                if not isinstance(config[key], Mapping):
-                    raise PackedHDF5Error(f"static/sensing_config_json.{key} must be a JSON object")
-            return dict(config)
-
         return cast(
             Mapping[str, Any] | None,
-            h5.static_value("json:static/sensing_config_json", load),
+            h5.static_value(
+                "json:static/sensing_config_json", lambda: _load_static_sensing_config(h5)
+            ),
         )
 
     @staticmethod
@@ -1603,13 +1812,15 @@ def validate_packed_chunk(
         for row in range(frame_count):
             _decode_json_optional_mapping_cell(dataset, row, label=f"{path}[{row}]")
 
-    static_config = h5.get("static/sensing_config_json")
-    if isinstance(static_config, h5py.Dataset):
-        config = _decode_json_cell(static_config, (), default=None)
-        if config is not None and not isinstance(config, Mapping):
-            raise PackedHDF5Error(
-                f"{chunk.file} /static/sensing_config_json must be an object or null"
-            )
+    config = _load_static_sensing_config(h5)
+    from shared.extensions.sensing import SENSING_SCHEMA_VERSION, assert_processing_recipe_identity
+
+    metadata = _dataset(h5, "frames/sensing_metadata_json")
+    for row in range(frame_count):
+        sensing = _decode_json_optional_mapping_cell(metadata, row, label=metadata.name)
+        sensing = _merge_static_sensing_config(sensing, config)
+        if sensing is not None and sensing.get("schema_version") == SENSING_SCHEMA_VERSION:
+            assert_processing_recipe_identity(sensing)
 
     fixed_sensing = h5.get("sensing/fixed")
     if not isinstance(fixed_sensing, h5py.Group):

@@ -8,13 +8,18 @@ depending on the installed pygfx feature set.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
+from weakref import WeakSet
 
 import numpy as np
 
+from ...backends.pygfx_pbr import pbr_material_classes
+from ...lighting.assets import cached_environment, environment_catalog, ibl_cache_dir
 from .canvas import _env_flag
 
 logger = logging.getLogger(__name__)
@@ -35,6 +40,7 @@ def _supports_scene_environment(gfx: Any) -> bool:
 # IBL (Image-Based Lighting) manager
 
 IBL_FACE_SIZE_DEFAULT = 512
+IBL_CACHE_VERSION = "linear_v2"
 
 
 class PygfxIBLManager:
@@ -55,7 +61,9 @@ class PygfxIBLManager:
         self._current_name: str = "default"
         self._current_intensity: float = 1.0
         self._background: Optional[Any] = None
-        self._tracked_materials: list[Any] = []
+        # Lighting observes live materials; it must not own removed scenes or
+        # replaced materials and their GPU buffers across scenario switches.
+        self._tracked_materials: WeakSet[Any] = WeakSet()
         self._scene: Optional[Any] = None
         self._use_scene_environment: bool = _env_flag(
             "ORCHAV_PYGFX_USE_SCENE_ENVIRONMENT", False
@@ -90,6 +98,12 @@ class PygfxIBLManager:
         cubemap convention whose vertical orientation is incompatible with the
         Khronos-correct face mapping, so they are fallback candidates only.
         """
+        asset = environment_catalog().get(name)
+        if asset is not None:
+            return cached_environment(asset)
+        direct = Path(name)
+        if direct.suffix.lower() == ".hdr" and direct.is_file():
+            return direct
         candidates = [
             self._ibl_dir / f"{name}.hdr",
             self._ibl_dir / f"{name}_4k.hdr",
@@ -104,9 +118,23 @@ class PygfxIBLManager:
         return None
 
     def _cache_path(self, name: str) -> Path:
-        """Return the derived cubemap cache path for one IBL name."""
-        safe_name = name.replace("/", "_").replace("\\", "_")
-        return self._ibl_dir / ".pygfx_cache" / f"{safe_name}_face{self._face_size}_rgba.npy"
+        """Cache outside the checkout, keyed by source identity and preparation."""
+        asset = environment_catalog().get(name)
+        if asset is not None:
+            identity = asset.cache_key
+        else:
+            path = self._resolve_hdr_path(name) or self._ibl_dir / name
+            try:
+                stat = path.stat()
+                identity = f"{path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}:{stat.st_ctime_ns}"
+            except OSError:
+                identity = str(path.resolve())
+            identity = hashlib.sha256(identity.encode()).hexdigest()[:32]
+        return (
+            ibl_cache_dir()
+            / "cubemaps"
+            / f"{identity}_face{self._face_size}_{IBL_CACHE_VERSION}_rgba.npy"
+        )
 
     def _load_cached_cubemap(self, name: str) -> Optional[np.ndarray]:
         """Load a validated cubemap cache produced by this manager."""
@@ -140,15 +168,19 @@ class PygfxIBLManager:
     def _write_cubemap_cache(self, name: str, cubemap: np.ndarray) -> None:
         """Persist a converted cubemap cache without making IBL loading depend on it."""
         path = self._cache_path(name)
+        temporary = None
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = path.with_suffix(".tmp")
-            with open(tmp_path, "wb") as fh:
-                np.save(fh, np.asarray(cubemap, dtype=np.float16), allow_pickle=False)
-            tmp_path.replace(path)
+            with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as fh:
+                temporary = Path(fh.name)
+                np.save(fh, np.asarray(cubemap, dtype=np.float32), allow_pickle=False)
+            temporary.replace(path)
             logger.info("IBL '%s': wrote pygfx cubemap cache %s", name, path.name)
         except OSError as exc:
             logger.debug("IBL '%s': could not write pygfx cache %s: %s", name, path, exc)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
     # HDR loading (cv2 → pure-Python RGBE fallback)
 
@@ -160,6 +192,11 @@ class PygfxIBLManager:
         with optional new-style run-length encoding.
         """
         with open(path, "rb") as f:
+            signature = f.readline().strip()
+            if signature.startswith(b"version https://git-lfs.github.com/"):
+                raise ValueError("This file is a Git LFS pointer, not a downloaded HDR image")
+            if signature not in (b"#?RADIANCE", b"#?RGBE"):
+                raise ValueError("Not a Radiance HDR image")
             # --- header ---
             while True:
                 line = f.readline()
@@ -262,7 +299,7 @@ class PygfxIBLManager:
         """Convert an equirectangular HDR image to a 6-face cubemap.
 
         Args:
-            equirect: ``(H, W, C)`` float32 equirectangular image (Z-up rotated).
+            equirect: ``(H, W, C)`` standard equirectangular image (top is zenith).
             face_size: Pixel resolution of each cubemap face.
 
         Returns:
@@ -344,6 +381,13 @@ class PygfxIBLManager:
             self._current_name = name
             return self._texture_cache[name]
 
+        asset = environment_catalog().get(name)
+        if asset is not None and cached_environment(asset) is None:
+            logger.warning(
+                "IBL '%s' is not installed; use Rendering > Lighting to download it", name
+            )
+            return None
+
         cubemap = self._load_cached_cubemap(name)
         hdr_path: Optional[Path] = None
         source_name: str
@@ -358,6 +402,12 @@ class PygfxIBLManager:
             equirect = self._load_hdr(hdr_path, name)
             if equirect is None:
                 return None
+
+            if asset is not None:
+                # Panoramas are already zenith-up. Only rotate their azimuth;
+                # this keeps the visible sun aligned with the lighting recipe.
+                shift = round(asset.yaw_degrees / 360 * equirect.shape[1])
+                equirect = np.roll(equirect, shift, axis=1) * asset.radiance_scale
 
             cubemap = self._equirect_to_cubemap(equirect, self._face_size)
             source_name = hdr_path.name
@@ -384,6 +434,7 @@ class PygfxIBLManager:
             dim=2,
             size=(self._face_size, self._face_size, 6),
             generate_mipmaps=True,
+            colorspace="physical",
         )
 
         self._texture_cache[name] = texture
@@ -472,7 +523,8 @@ class PygfxIBLManager:
         self._remove_background(scene)
 
         try:
-            bg_mat = gfx.BackgroundSkyboxMaterial(map=texture)
+            _, _, skybox_cls = pbr_material_classes(gfx)
+            bg_mat = skybox_cls(map=texture)
             self._background = gfx.Background(None, bg_mat)
             if scene is not None:
                 scene.add(self._background)
@@ -484,7 +536,16 @@ class PygfxIBLManager:
 
     def apply_to_material(self, material: Any) -> None:
         """Apply IBL-related material state for the active environment."""
-        if self._texture_cache.get(self._current_name) is None or material is None:
+        if material is None:
+            return
+        # Paper/color-inspection materials must preserve albedo. MeshBasicMaterial
+        # can still reflect an env_map despite having no direct-light shader.
+        # Use exact type: the lit material classes inherit from MeshBasicMaterial.
+        if type(material) is getattr(self._gfx, "MeshBasicMaterial", None):
+            material.env_map = None
+            self._tracked_materials.discard(material)
+            return
+        if self._texture_cache.get(self._current_name) is None:
             return
         try:
             if hasattr(material, "env_map"):
@@ -495,8 +556,7 @@ class PygfxIBLManager:
                 material.env_map_intensity = self._current_intensity
         except (AttributeError, RuntimeError):
             pass
-        if material not in self._tracked_materials:
-            self._tracked_materials.append(material)
+        self._tracked_materials.add(material)
 
     def set_intensity(self, value: float) -> None:
         """Update ``env_map_intensity`` on all tracked materials."""
@@ -527,7 +587,4 @@ class PygfxIBLManager:
 
     def cleanup_material(self, material: Any) -> None:
         """Remove a material from the tracked list."""
-        try:
-            self._tracked_materials.remove(material)
-        except ValueError:
-            pass
+        self._tracked_materials.discard(material)

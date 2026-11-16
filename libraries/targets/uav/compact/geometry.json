@@ -1,0 +1,237 @@
+{
+  "schema_version": 1,
+  "authorship": "Original procedural ORCHAV geometry",
+  "units": "m",
+  "axes": [
+    "forward x",
+    "left y",
+    "up z"
+  ],
+  "origin": "geometric envelope centre; not a measured centre of mass",
+  "envelope_xyz_m": [
+    0.3,
+    0.4,
+    0.2
+  ],
+  "dimension_reference": "TR 38.765 V20.0.0 Annex A UAV size example; author-assigned XYZ convention",
+  "bounds_m": [
+    [
+      -0.15,
+      -0.2,
+      -0.1
+    ],
+    [
+      0.15,
+      0.2,
+      0.10000000000000002
+    ]
+  ],
+  "vertices": 584,
+  "triangles": 1060,
+  "sha256": "97c4e67a66c0b16768b8baa0363f70adeb9e6f7209662154809ac4a11457e836",
+  "parts": [
+    {
+      "name": "fuselage",
+      "first_face": 0,
+      "face_count": 224
+    },
+    {
+      "name": "battery",
+      "first_face": 224,
+      "face_count": 12
+    },
+    {
+      "name": "camera",
+      "first_face": 236,
+      "face_count": 120
+    },
+    {
+      "name": "arm_0",
+      "first_face": 356,
+      "face_count": 12
+    },
+    {
+      "name": "motor_0",
+      "first_face": 368,
+      "face_count": 64
+    },
+    {
+      "name": "shaft_0",
+      "first_face": 432,
+      "face_count": 64
+    },
+    {
+      "name": "rotor_0",
+      "first_face": 496,
+      "face_count": 12
+    },
+    {
+      "name": "leg_0",
+      "first_face": 508,
+      "face_count": 12
+    },
+    {
+      "name": "foot_0",
+      "first_face": 520,
+      "face_count": 12
+    },
+    {
+      "name": "arm_1",
+      "first_face": 532,
+      "face_count": 12
+    },
+    {
+      "name": "motor_1",
+      "first_face": 544,
+      "face_count": 64
+    },
+    {
+      "name": "shaft_1",
+      "first_face": 608,
+      "face_count": 64
+    },
+    {
+      "name": "rotor_1",
+      "first_face": 672,
+      "face_count": 12
+    },
+    {
+      "name": "leg_1",
+      "first_face": 684,
+      "face_count": 12
+    },
+    {
+      "name": "foot_1",
+      "first_face": 696,
+      "face_count": 12
+    },
+    {
+      "name": "arm_2",
+      "first_face": 708,
+      "face_count": 12
+    },
+    {
+      "name": "motor_2",
+      "first_face": 720,
+      "face_count": 64
+    },
+    {
+      "name": "shaft_2",
+      "first_face": 784,
+      "face_count": 64
+    },
+    {
+      "name": "rotor_2",
+      "first_face": 848,
+      "face_count": 12
+    },
+    {
+      "name": "leg_2",
+      "first_face": 860,
+      "face_count": 12
+    },
+    {
+      "name": "foot_2",
+      "first_face": 872,
+      "face_count": 12
+    },
+    {
+      "name": "arm_3",
+      "first_face": 884,
+      "face_count": 12
+    },
+    {
+      "name": "motor_3",
+      "first_face": 896,
+      "face_count": 64
+    },
+    {
+      "name": "shaft_3",
+      "first_face": 960,
+      "face_count": 64
+    },
+    {
+      "name": "rotor_3",
+      "first_face": 1024,
+      "face_count": 12
+    },
+    {
+      "name": "leg_3",
+      "first_face": 1036,
+      "face_count": 12
+    },
+    {
+      "name": "foot_3",
+      "first_face": 1048,
+      "face_count": 12
+    }
+  ],
+  "rotors": [
+    {
+      "part": "rotor_0",
+      "pivot_m": [
+        -0.09899999999999999,
+        -0.14900000000000002,
+        0.0985
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "radius_m": 0.051000000000000004,
+      "fixed_phase_rad": 0,
+      "nominal_rotation_sign": 1
+    },
+    {
+      "part": "rotor_1",
+      "pivot_m": [
+        -0.09899999999999999,
+        0.14900000000000002,
+        0.0985
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "radius_m": 0.051000000000000004,
+      "fixed_phase_rad": 1.5707963267948966,
+      "nominal_rotation_sign": -1
+    },
+    {
+      "part": "rotor_2",
+      "pivot_m": [
+        0.09899999999999999,
+        -0.14900000000000002,
+        0.0985
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "radius_m": 0.051000000000000004,
+      "fixed_phase_rad": 1.5707963267948966,
+      "nominal_rotation_sign": -1
+    },
+    {
+      "part": "rotor_3",
+      "pivot_m": [
+        0.09899999999999999,
+        0.14900000000000002,
+        0.0985
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "radius_m": 0.051000000000000004,
+      "fixed_phase_rad": 0,
+      "nominal_rotation_sign": 1
+    }
+  ],
+  "motion": "rigid; rotors fixed",
+  "rf_assumption": "Scenario-assigned material; no calibrated RCS or blade micro-motion"
+}

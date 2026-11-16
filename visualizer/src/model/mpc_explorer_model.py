@@ -588,6 +588,8 @@ class MpcExplorerTableModel(QAbstractTableModel):
             numeric = float(value)
             if not np.isfinite(numeric):
                 return "--"
+            if column is MpcExplorerColumn.RELATIVE_POWER:
+                return f"{numeric:.5g}"
             decimals = {
                 MpcExplorerColumn.PATH_LOSS: 2,
                 MpcExplorerColumn.DELAY: 3,
@@ -599,7 +601,6 @@ class MpcExplorerTableModel(QAbstractTableModel):
                 MpcExplorerColumn.STRETCH_RATIO: 3,
                 MpcExplorerColumn.EXCESS_DELAY: 3,
                 MpcExplorerColumn.RELATIVE_PATH_LOSS: 2,
-                MpcExplorerColumn.RELATIVE_POWER: 5,
             }.get(column, 3)
             return f"{numeric:.{decimals}f}"
         if isinstance(value, (int, np.integer)):

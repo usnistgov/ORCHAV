@@ -103,3 +103,46 @@ def test_pygfx_benchmark_telemetry_reports_counter_deltas():
     assert stats["benchmark_present_attempts"] == 3
     assert stats["benchmark_present_successes"] == 2
     assert stats["benchmark_redraw_requests"] == 4
+
+
+def test_lighting_observes_live_materials_without_retaining_removed_ones(tmp_path):
+    import gc
+    import weakref
+
+    import pygfx as gfx
+
+    manager = PygfxIBLManager(gfx, tmp_path)
+    manager._texture_cache[manager._current_name] = object()
+    manager._use_scene_environment = True
+    survivor = gfx.MeshStandardMaterial()
+    manager.apply_to_material(survivor)
+    refs = []
+    for _ in range(20):
+        material = gfx.MeshStandardMaterial()
+        manager.apply_to_material(material)
+        refs.append(weakref.ref(material))
+        del material
+    gc.collect()
+    assert all(ref() is None for ref in refs)
+    assert len(manager._tracked_materials) == 1
+    manager.set_intensity(0.42)
+    assert survivor.env_map_intensity == pytest.approx(0.42)
+    manager.cleanup_material(survivor)
+    assert not manager._tracked_materials
+
+
+def test_unlit_material_does_not_receive_environment_reflections(tmp_path):
+    import pygfx as gfx
+
+    manager = PygfxIBLManager(gfx, tmp_path)
+    manager._texture_cache["default"] = object()
+    manager._current_environment_map = lambda: gfx.TextureMap(
+        gfx.Texture(np.ones((6, 2, 2, 4), np.float32), dim=2, size=(2, 2, 6))
+    )
+    unlit = gfx.MeshBasicMaterial()
+    lit = gfx.MeshStandardMaterial()
+    manager.apply_to_material(unlit)
+    manager.apply_to_material(lit)
+    assert unlit.env_map is None
+    assert lit.env_map is not None
+    assert unlit not in manager._tracked_materials

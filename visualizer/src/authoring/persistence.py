@@ -9,7 +9,7 @@ import shutil
 import tempfile
 from collections.abc import Iterable
 from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping
@@ -28,7 +28,9 @@ from shared.scenarios.actors import (
     MobilitySpec,
     OrientationSpec,
     StandaloneMobilitySpec,
+    TargetActorSpec,
     TargetAssetSpec,
+    TimelineSpec,
 )
 from shared.scenarios.yaml import validate_scenario_data
 
@@ -37,6 +39,7 @@ from .compiler import (
     IssueSeverity,
     ScenarioCompiler,
     ValidationIssue,
+    canonical_scenario_mapping,
 )
 from .dependencies import ScenarioDependencyCollector
 from .document import DocumentOwnership, ScenarioDocument
@@ -551,6 +554,7 @@ def _facet_capabilities(
     ]
     for actor in actor_values:
         base = source_paths[actor.name]
+        animated = actor.target is not None and actor.target.source == "animated_asset"
         opaque_paths = opaque_references.get(actor.name, ())
         capabilities.append(
             FacetCapability(
@@ -571,11 +575,15 @@ def _facet_capabilities(
             FacetCapability(
                 "mobility",
                 f"{base}.mobility",
-                editable=mobility.editable,
+                editable=mobility.editable and not animated,
                 reason=(
-                    ""
-                    if mobility.editable
-                    else f"Mobility model {actor.mobility.type!r} is preserved read-only."
+                    "Motion is owned by the imported animated asset."
+                    if animated
+                    else (
+                        ""
+                        if mobility.editable
+                        else f"Mobility model {actor.mobility.type!r} is preserved read-only."
+                    )
                 ),
                 subject_id=actor.id,
             )
@@ -585,11 +593,15 @@ def _facet_capabilities(
             FacetCapability(
                 "orientation",
                 f"{base}.orientation",
-                editable=orientation.editable,
+                editable=orientation.editable and not animated,
                 reason=(
-                    ""
-                    if orientation.editable
-                    else f"Orientation model {actor.orientation.type!r} is preserved read-only."
+                    "Orientation is owned by the imported animated asset."
+                    if animated
+                    else (
+                        ""
+                        if orientation.editable
+                        else f"Orientation model {actor.orientation.type!r} is preserved read-only."
+                    )
                 ),
                 subject_id=actor.id,
             )
@@ -635,6 +647,7 @@ def scenario_from_mapping(
     mapping: Mapping[str, Any],
     *,
     source_directory: Path | None = None,
+    collect_dependencies: bool = True,
 ) -> AuthoringScenario:
     """Convert a structurally compatible mapping into immutable domain values."""
     document_id = uuid4()
@@ -699,8 +712,7 @@ def scenario_from_mapping(
     if not isinstance(timeline_mapping, Mapping):
         raise _ScenarioParseError("timeline", "Timeline settings are required.")
     try:
-        steps = int(timeline_mapping["steps"])
-        duration_s = float(timeline_mapping["duration_s"])
+        clock = TimelineSpec.model_validate(timeline_mapping)
     except (KeyError, TypeError, ValueError) as exc:
         raise _ScenarioParseError("timeline", f"Invalid timeline settings: {exc}") from exc
 
@@ -708,17 +720,32 @@ def scenario_from_mapping(
     for role, entry, path in specs:
         name = str(entry["name"])
         target: TargetAsset | None = None
+        native_fields: dict[str, Any] = {}
         if role is ActorRole.TARGET:
-            asset = entry.get("asset")
-            if not isinstance(asset, Mapping):
-                raise _ScenarioParseError(f"{path}.asset", "Target asset must be a mapping.")
-            try:
-                target = TargetAsset.from_spec(_TARGET_ASSET_ADAPTER.validate_python(dict(asset)))
-            except (TypeError, ValueError, ValidationError) as exc:
-                raise _ScenarioParseError(
-                    f"{path}.asset",
-                    f"Invalid target asset: {exc}",
-                ) from exc
+            if entry.get("representation", "mesh_material") != "mesh_material":
+                try:
+                    native = TargetActorSpec.model_validate(dict(entry))
+                except ValidationError as exc:
+                    raise _validation_parse_error(path, exc) from exc
+                native_fields = {
+                    "representation": native.representation,
+                    "geometry": native.geometry,
+                    "constant_rcs": native.constant_rcs,
+                    "tr38901": native.tr38901,
+                }
+            else:
+                asset = entry.get("asset")
+                if not isinstance(asset, Mapping):
+                    raise _ScenarioParseError(f"{path}.asset", "Target asset must be a mapping.")
+                try:
+                    target = TargetAsset.from_spec(
+                        _TARGET_ASSET_ADAPTER.validate_python(dict(asset))
+                    )
+                except (TypeError, ValueError, ValidationError) as exc:
+                    raise _ScenarioParseError(
+                        f"{path}.asset",
+                        f"Invalid target asset: {exc}",
+                    ) from exc
         authoring_actors.append(
             AuthoringActor(
                 id=name_to_id[name],
@@ -737,6 +764,7 @@ def scenario_from_mapping(
                     name_to_id,
                 ),
                 target=target,
+                **native_fields,
             )
         )
 
@@ -748,8 +776,9 @@ def scenario_from_mapping(
     quality = raytracing.get("quality") or {}
     try:
         timeline = TimelineSettings(
-            steps=steps,
-            duration_s=duration_s,
+            steps=clock.steps,
+            duration_s=clock.duration_s,
+            sample_rate_hz=clock.sample_rate_hz,
             quality=QualityPreset(quality.get("preset") or DEFAULT_QUALITY_PRESET),
             export_path_metrics=_as_bool(
                 raytracing.get("export_path_metrics"),
@@ -761,7 +790,7 @@ def scenario_from_mapping(
         raise _ScenarioParseError("timeline", f"Invalid timeline settings: {exc}") from exc
     dependencies = (
         ScenarioDependencyCollector().collect(mapping, resource_root)
-        if resource_root is not None
+        if resource_root is not None and collect_dependencies
         else ()
     )
     return AuthoringScenario(
@@ -837,16 +866,24 @@ def load_for_authoring(
             mapping,
             source_path,
         )
+    # Recorded viewer profiles never save or relocate authoring inputs. Their
+    # frame reader resolves only displayed assets, without scanning all meshes.
+    header = source_path.read_text(encoding="utf-8").splitlines()[:8]
+    marker = (mapping.get("visualizer") or {}).get("scenario_builder") or {}
+    recorded = marker.get("pose_source") == "recorded" or any(
+        line.startswith("#") and "saved frames own target poses" in line.lower() for line in header
+    )
     try:
         scenario = scenario_from_mapping(
             mapping,
             source_directory=source_path.parent,
+            collect_dependencies=not recorded,
         )
-    except _ScenarioParseError as exc:
+    except (ValueError, TypeError) as exc:
         issue = ValidationIssue(
             IssueSeverity.ERROR,
             "compatibility.parse",
-            exc.path,
+            exc.path if isinstance(exc, _ScenarioParseError) else "scenario",
             str(exc),
         )
         return AuthoringLoadResult(
@@ -859,6 +896,20 @@ def load_for_authoring(
         )
     disposition = report.disposition
     issues = report.issues
+    # Older viewer profiles declare pose ownership in their leading comment.
+    # Retain that explicit declaration without rewriting the source YAML.
+    if recorded:
+        scenario = replace(scenario, recorded_poses=True)
+        disposition = LoadDisposition.READ_ONLY
+        issues = (
+            *issues,
+            ValidationIssue(
+                IssueSeverity.WARNING,
+                "compatibility.recorded_poses",
+                "actors",
+                "Saved frames own these poses. Inspect playback here; use the acquisition inputs to author new motion.",
+            ),
+        )
     if disposition is LoadDisposition.OWNED_EDITABLE and source_path.name != "scenario.yaml":
         disposition = LoadDisposition.READ_ONLY
         issues = (
@@ -876,6 +927,14 @@ def load_for_authoring(
         if disposition is LoadDisposition.OWNED_EDITABLE
         else None
     )
+    if recorded:
+        document = ScenarioDocument(
+            scenario,
+            path=source_path,
+            ownership=DocumentOwnership.READ_ONLY,
+            undo_stack=undo_stack,
+            saved=True,
+        )
     return AuthoringLoadResult(
         disposition,
         issues,
@@ -1184,14 +1243,19 @@ def save_document(
         )
         if project_library_issues:
             raise ScenarioSaveError(project_library_issues)
+    scenario = ScenarioDependencyCollector(project_root).refresh_scene(
+        document.scenario,
+        canonical_scenario_mapping(document.scenario).get("scene"),
+        target.parent,
+    )
     guard = compile_lock if compile_lock is not None else nullcontext()
     with guard:
-        result = active_compiler.compile(document.scenario, scenario_directory=target.parent)
+        result = active_compiler.compile(scenario, scenario_directory=target.parent)
     blocking = tuple(issue for issue in result.issues if issue.severity is IssueSeverity.ERROR)
     if blocking:
         raise ScenarioSaveError(blocking)
     resource_transaction = _stage_document_resources(
-        document.scenario,
+        scenario,
         target.parent,
         allow_owned_destination_update=saving_owned_in_place,
     )
@@ -1210,5 +1274,5 @@ def save_document(
         resource_transaction.cleanup()
         raise
     resource_transaction.cleanup()
-    document.mark_saved(target)
+    document.mark_saved(target, dependencies=scenario.dependencies)
     return target

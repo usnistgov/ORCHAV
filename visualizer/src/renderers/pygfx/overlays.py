@@ -10,6 +10,7 @@ toggles.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from html import escape
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -25,16 +26,17 @@ from ...coverage.analysis import (
     serving_tx_color_hex,
     serving_tx_labels,
 )
-from ...extensions import runtime_status_chips
+from ...extensions import refresh_runtime_hud, runtime_status_chips
 from ...services.mpc_interaction_style_service import mpc_interaction_legend_entries
 from ...services.viewport_hud_service import (
+    AnalysisLegend,
     build_path_filter_summary,
     build_trajectory_hud_legend,
     viewport_hud_policy,
 )
+from ...state import normalize_viewport_hud_style
 from ...utils.colors import ensure_viridis_lut
 from .camera import SceneBounds
-from .canvas import _env_flag
 from .mpc import INTERACTION_MARKER_SPECS, UNKNOWN_INTERACTION_MARKER_SPEC
 
 if TYPE_CHECKING:
@@ -43,6 +45,17 @@ if TYPE_CHECKING:
 __all__ = ["PygfxOverlayMixin"]
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class _MpcLegendState:
+    """Bounded color-key metadata retained between sparse acquisition frames."""
+
+    key: tuple[Any, ...]
+    has_geometry: bool = False
+    has_markers: bool = False
+    mpc_line_itype_codes: tuple[int, ...] = ()
+    colorbar: tuple[str, tuple[float, float]] | None = None
 
 
 class PygfxOverlayMixin:
@@ -62,10 +75,7 @@ class PygfxOverlayMixin:
         if self._container is None:
             return
         self._tooltip_label = QLabel(self._container)
-        self._tooltip_label.setStyleSheet(
-            "background: rgba(30,30,30,220); color: white; padding: 6px 10px; "
-            "border-radius: 4px; font-size: 12px;"
-        )
+        self._tooltip_label.setStyleSheet(self._hud_overlay_stylesheet("annotation"))
         self._tooltip_label.setVisible(False)
         self._tooltip_label.setAttribute(Qt.WA_TransparentForMouseEvents)
         self._tooltip_label.raise_()
@@ -81,10 +91,14 @@ class PygfxOverlayMixin:
 
     def _hud_role_enabled(self, role: str) -> bool:
         """Return whether one overlay role is enabled by the current policy."""
+        if role == "attribution":
+            return True
         policy = self._viewport_hud_policy()
         if not policy.enabled:
             return False
-        if role == "chips":
+        if role == "guide":
+            return True
+        if role in {"time", "chips"}:
             return policy.show_status
         if role in {"filters", "filter_chips"}:
             return policy.show_filters
@@ -96,6 +110,8 @@ class PygfxOverlayMixin:
         """Hide every renderer-owned HUD widget in one bounded pass."""
         changed = False
         for overlay_id, spec in self._hud_overlay_specs.items():
+            if spec.get("role") == "attribution":
+                continue
             if not bool(spec.get("visible", False)):
                 continue
             spec["visible"] = False
@@ -135,19 +151,57 @@ class PygfxOverlayMixin:
             return
         self._hud_suppressed = False
         self._hide_policy_disabled_hud_overlays()
+        self.set_simulation_time_label(getattr(self, "_simulation_time_text", ""))
         self._update_mpc_hud_overlays(self.last_frame_packet)
         self._update_trajectory_hud_overlay()
         self._refresh_feature_hud_overlays()
         if not policy.show_annotations:
             self._hide_tooltip()
+        elif getattr(self, "_tooltip_label", None) is not None:
+            self._tooltip_label.setStyleSheet(self._hud_overlay_stylesheet("annotation"))
         self.request_redraw()
 
     def _refresh_feature_hud_overlays(self) -> None:
         """Reconcile feature-owned legends after a global HUD policy change."""
+        sync_compass = getattr(self, "_sync_compass", None)
+        if callable(sync_compass):
+            sync_compass()
         self._sync_marker_legend_from_state(self.last_frame_packet)
+        self._refresh_analysis_legend()
         refresh_rf_xray = getattr(self, "_refresh_rf_xray_hud_overlay", None)
         if callable(refresh_rf_xray):
             refresh_rf_xray()
+        refresh_runtime_hud(self)
+
+    def set_analysis_legend(self, legend: AnalysisLegend | None) -> None:
+        """Keep analysis content separate from canvas-relative HUD widgets."""
+        self._analysis_legend = legend
+        self._refresh_analysis_legend()
+
+    def _refresh_analysis_legend(self) -> None:
+        legend = getattr(self, "_analysis_legend", None)
+        if legend is None:
+            self._clear_hud_overlay("analysis_legend")
+            return
+        html = f"<b>{escape(legend.title)}</b><br>"
+        if legend.colorbar_range is not None:
+            from matplotlib import colormaps
+
+            lut = colormaps[legend.colorbar_colormap](np.linspace(0, 1, 256))[:, :3]
+            html += self._colorbar_overlay_html(
+                legend.colorbar_label, legend.colorbar_range, lut=lut
+            )
+        for label, color in legend.swatches:
+            html += f"<span style='color:{escape(color)};'>&#9632;</span> " f"{escape(label)}<br>"
+        html += "<br>".join(escape(line) for line in legend.lines)
+        self._set_hud_overlay(
+            "analysis_legend",
+            html=html,
+            visible=True,
+            corner="top_left",
+            role="legend",
+            priority=30,
+        )
 
     def _ensure_minimap_gpu_overlay(self, width: int, height: int) -> None:
         """Create screen-space minimap chrome and markers on the pygfx GPU path."""
@@ -452,7 +506,10 @@ class PygfxOverlayMixin:
         self._minimap_viewport.rect = rect
         self._ensure_minimap_gpu_overlay(rect[2], rect[3])
         self._update_minimap_gpu_overlay_state(rect[2], rect[3])
-        self._minimap_viewport.render(self._scene, self._minimap_camera, flush=False)
+        from .target_views import without_main_view_annotations
+
+        with without_main_view_annotations(self, guides_only=True):
+            self._minimap_viewport.render(self._scene, self._minimap_camera, flush=False)
         self._minimap_viewport.render(
             self._minimap_overlay_scene,
             self._minimap_overlay_camera,
@@ -465,14 +522,29 @@ class PygfxOverlayMixin:
         self._minimap_enabled = bool(visible)
         self.request_redraw()
 
-    @staticmethod
-    def _hud_overlay_stylesheet(role: str) -> str:
-        """Return stylesheet policy for HUD chips vs legend panels."""
-        if role in {"chips", "filter_chips"}:
-            return "background: transparent; color: white; font-size: 12px;"
+    def _hud_style(self) -> str:
+        """Read the appearance choice independently of HUD content detail."""
+        state = getattr(getattr(self, "visualizer", None), "app_state", None)
+        return normalize_viewport_hud_style(getattr(state, "viewport_hud_style", "classic"))
+
+    def _hud_overlay_stylesheet(self, role: str) -> str:
+        """Style legends, status and hover with the selected callout palette."""
+        style = self._hud_style()
+        padding = "5px 8px" if role in {"chips", "filter_chips", "annotation"} else "8px 10px"
+        if style == "card":
+            return (
+                "background: rgba(250,252,255,245); color: #203b6b; "
+                "border: 1px solid rgba(32,59,107,85); border-left: 3px solid #203b6b; "
+                f"padding: {padding}; border-radius: 7px; font-size: 12px;"
+            )
+        if style == "minimal":
+            return (
+                "background: rgba(19,32,55,205); color: #f5f7fc; border: none; "
+                "padding: 4px 6px; border-radius: 2px; font-size: 12px;"
+            )
         return (
-            "background: rgba(20,20,20,215); color: white; padding: 8px 10px; "
-            "border-radius: 6px; font-size: 12px;"
+            "background: rgba(20,20,20,215); color: white; border: none; "
+            f"padding: {padding}; border-radius: 6px; font-size: 12px;"
         )
 
     def _ensure_hud_overlay_label(self, overlay_id: str, role: str) -> Any:
@@ -501,6 +573,37 @@ class PygfxOverlayMixin:
         if callable(request_redraw):
             request_redraw()
 
+    def set_map_attribution(self, text: str) -> bool:
+        """Keep map credits visible, including when the ordinary HUD is hidden."""
+        self._set_hud_overlay(
+            "map_attribution",
+            html=escape(text),
+            visible=bool(text),
+            role="attribution",
+            corner="top_left",
+            priority=-1000,
+        )
+        return True
+
+    def set_hud_overlay(
+        self,
+        overlay_id: str,
+        *,
+        html: str,
+        visible: bool,
+        role: str,
+        corner: str,
+        priority: int,
+    ) -> None:
+        """Replace one renderer-owned overlay under the current HUD policy."""
+        self._set_hud_overlay(
+            overlay_id, html=html, visible=visible, role=role, corner=corner, priority=priority
+        )
+
+    def clear_hud_overlay(self, overlay_id: str) -> None:
+        """Hide one renderer-owned overlay while retaining its layout widget."""
+        self._clear_hud_overlay(overlay_id)
+
     def _set_hud_overlay(
         self,
         overlay_id: str,
@@ -520,6 +623,7 @@ class PygfxOverlayMixin:
             return
         normalized = {
             "role": role,
+            "style": self._hud_style(),
             "corner": corner,
             "priority": int(priority),
             "visible": bool(visible),
@@ -535,7 +639,9 @@ class PygfxOverlayMixin:
                 self._request_hud_background_redraw()
             return
 
-        role_changed = previous is None or previous.get("role") != role
+        role_changed = previous is None or any(
+            previous.get(key) != normalized[key] for key in ("role", "style")
+        )
         html_changed = previous is None or previous.get("html") != normalized["html"]
         visible_changed = previous is None or previous.get("visible") != normalized["visible"]
         layout_changed = previous is None or any(
@@ -667,7 +773,7 @@ class PygfxOverlayMixin:
     def _semantic_mpc_legend_html(
         self,
         color_mode: str,
-        packet: Optional[FrameRenderPacket] = None,
+        packet: FrameRenderPacket | _MpcLegendState | None = None,
     ) -> str:
         """Return categorical MPC legend HTML for the current color mode."""
         mpc_core = getattr(self.visualizer, "mpc_core", None)
@@ -754,7 +860,7 @@ class PygfxOverlayMixin:
     def _semantic_mpc_legend_cache_signature(
         self,
         color_mode: str,
-        packet: Optional[FrameRenderPacket] = None,
+        packet: FrameRenderPacket | _MpcLegendState | None = None,
     ) -> tuple[Any, ...]:
         """Return a stable key for semantic legend mode and palette content."""
         mpc_core = getattr(self.visualizer, "mpc_core", None)
@@ -843,12 +949,17 @@ class PygfxOverlayMixin:
         gradient = self._colorbar_gradient_html(lut)
         if not gradient:
             return ""
+        # Fixed decimals erase small linear RF values. Use significant figures
+        # outside the ordinary range, retaining familiar ticks for dB and time.
+        min_label, max_label = (
+            f"{value:.3g}" if 0 < abs(value) < 0.01 or abs(value) >= 1e5 else f"{value:.2f}"
+            for value in (min_val, max_val)
+        )
         return (
             f"<div style='font-weight:600; margin-bottom:4px;'>{escape(str(label))}</div>"
-            f"<div style='line-height:1;'>{gradient}</div>"
-            "<table cellspacing='0' cellpadding='0' width='100%'>"
-            f"<tr><td>{min_val:.2f}</td><td align='right'>{max_val:.2f}</td></tr>"
-            "</table>"
+            # Inline endpoints follow the actual glyph bar width. A full-width
+            # tick table drifts apart when a longer title widens the HUD label.
+            f"<div>{min_label}&nbsp;{gradient}&nbsp;{max_label}</div>"
         )
 
     def _coverage_colorbar_gradient_html(self, metric_name: Any) -> str:
@@ -962,7 +1073,7 @@ class PygfxOverlayMixin:
             no_data_fraction = 0.0
         if no_data_fraction > 0.0:
             no_data_row = (
-                "<div style='margin-top:4px; color:#d9d9d9; font-style:italic;'>"
+                "<div style='margin-top:4px; font-style:italic;'>"
                 f"No data (transparent / hidden): {no_data_fraction * 100.0:.1f}%"
                 "</div>"
             )
@@ -979,38 +1090,50 @@ class PygfxOverlayMixin:
         )
 
     def _status_chip_html(self, packet: Optional[FrameRenderPacket] = None) -> str:
-        """HTML payload for top-left status chips."""
+        """Show interpretation cues, leaving routine settings in their panels."""
         chips: list[str] = []
-        app_state = getattr(self.visualizer, "app_state", None)
-        if self._aa_mode != "off":
-            chips.append(f"AA: {self._aa_mode.upper()}")
         if self._clipping_planes:
             chips.append("Cutaway")
-        if self._ground_grid_visible:
-            chips.append("Grid")
-        if self._depth_pass_enabled:
-            chips.append("Depth EXP")
-        if _env_flag("ORCHAV_PYGFX_ENABLE_EDL", False):
-            chips.append("EDL EXP")
         chips.extend(runtime_status_chips(self, packet))
-        if bool(getattr(app_state, "show_mpc_type_markers", False)):
-            chips.append("Interaction Markers")
-        if bool(app_state is not None and app_state.mpc_visibility.effective_paths):
-            frame_packet = packet if packet is not None else self.last_frame_packet
-            if frame_packet is not None:
-                if len(frame_packet.mpc_lines) == 0 and len(frame_packet.mpc_points) == 0:
-                    chips.append("MPC: none")
         if not chips:
             return ""
-        chip_html = "".join(
-            (
-                "<span style='background: rgba(20,20,20,215); color: white; "
-                "border-radius: 10px; padding: 3px 8px; margin-right: 6px;'>"
-                f"{label}</span>"
-            )
-            for label in chips
-        )
+        chip_html = " &nbsp;·&nbsp; ".join(escape(label) for label in chips)
         return f"<div>{chip_html}</div>"
+
+    def set_simulation_time_label(self, text: str) -> None:
+        """Show known physical time under Status; clear it when unavailable."""
+        self._simulation_time_text = text
+        if not text or not self._hud_role_enabled("time"):
+            self._clear_hud_overlay("simulation_time")
+            return
+        label = self._hud_overlay_labels.get("simulation_time")
+        spec = self._hud_overlay_specs.get("simulation_time")
+        if (
+            label is not None
+            and spec is not None
+            and spec.get("visible")
+            and spec.get("style") == self._hud_style()
+            and self._hud_role_enabled("time")
+        ):
+            if spec.get("html") != text:
+                # A fixed-width clock needs no HUD-wide layout or hide/show
+                # transaction on every frame. QLabel repaints its opaque box.
+                spec["html"] = text
+                label.setText(text)
+            return
+        self._set_hud_overlay(
+            "simulation_time",
+            html=text,
+            visible=True,
+            role="time",
+            corner="top_left",
+            priority=0,
+        )
+        label = self._hud_overlay_labels.get("simulation_time")
+        if label is not None:
+            label.setMinimumWidth(260)
+            label.adjustSize()
+            self._reposition_hud_overlays()
 
     def _update_status_chip_overlay(
         self,
@@ -1088,12 +1211,8 @@ class PygfxOverlayMixin:
         self._update_filter_hud_overlay()
         self._update_coverage_hud_overlay(packet)
         self._sync_marker_legend_from_state(packet)
-        if packet is None:
-            self._clear_hud_overlay("mpc_semantic_legend")
-            self._clear_hud_overlay("mpc_colorbar")
-            self._update_trajectory_hud_overlay()
-            return
-        if len(packet.mpc_lines) == 0 and len(packet.mpc_points) == 0:
+        legend_state = getattr(self, "_mpc_legend_state", None)
+        if legend_state is None or not legend_state.has_geometry:
             self._clear_hud_overlay("mpc_semantic_legend")
             self._clear_hud_overlay("mpc_colorbar")
             self._update_trajectory_hud_overlay()
@@ -1104,12 +1223,12 @@ class PygfxOverlayMixin:
 
         semantic_html = ""
         if policy.show_legends:
-            semantic_key = self._semantic_mpc_legend_cache_signature(color_mode, packet)
+            semantic_key = self._semantic_mpc_legend_cache_signature(color_mode, legend_state)
             if semantic_key != self._semantic_legend_cache_key:
                 self._semantic_legend_cache_key = semantic_key
                 self._semantic_legend_cache_html = self._semantic_mpc_legend_html(
                     color_mode,
-                    packet,
+                    legend_state,
                 )
             semantic_html = self._semantic_legend_cache_html
         if semantic_html:
@@ -1124,7 +1243,7 @@ class PygfxOverlayMixin:
         else:
             self._clear_hud_overlay("mpc_semantic_legend")
 
-        colorbar = packet.colorbar
+        colorbar = legend_state.colorbar
         if policy.show_legends and colorbar is not None and color_mode in ("delay", "path_loss"):
             label, value_range = colorbar
             html = self._colorbar_overlay_html(str(label), value_range)
@@ -1174,11 +1293,7 @@ class PygfxOverlayMixin:
             role = "filters"
         else:
             text = escape(summary.compact_text)
-            html = (
-                "<div><span style='background: rgba(20,20,20,215); color: white; "
-                "border-radius: 10px; padding: 3px 8px;'>"
-                f"{text}</span></div>"
-            )
+            html = f"<div>{text}</div>"
             role = "filter_chips"
         self._set_hud_overlay(
             "path_filters",
@@ -1244,11 +1359,6 @@ class PygfxOverlayMixin:
         )
         role = "filters"
         if not policy.detailed:
-            content = (
-                "<div style='background: rgba(20,20,20,215); color: white; "
-                "border-radius: 8px; padding: 5px 8px;'>"
-                f"{content}</div>"
-            )
             role = "filter_chips"
         self._set_hud_overlay(
             "material_filter_swatches",
@@ -1314,12 +1424,79 @@ class PygfxOverlayMixin:
         self,
         packet: Optional[FrameRenderPacket],
     ) -> None:
-        """Keep marker-legend intent stable across sparse animation frames."""
+        """Keep color keys stable across sparse frames, scoped to the active source."""
         state = getattr(getattr(self, "visualizer", None), "app_state", None)
         visibility = getattr(state, "mpc_visibility", None)
+        paths_visible = bool(getattr(visibility, "effective_paths", True))
         bounce_points_visible = bool(getattr(visibility, "effective_bounce_points", True))
+        legend_state = None
+        if packet is not None and (paths_visible or bounce_points_visible):
+            visualizer = self.visualizer
+            allowed_materials = getattr(visualizer, "mpc_allowed_materials", None)
+            key = (
+                getattr(self, "_session_generation", 0),
+                getattr(visualizer, "_mpc_presented_source_epoch", 0),
+                id(getattr(visualizer, "frame_source", None)),
+                getattr(state, "color_mode", ""),
+                paths_visible,
+                bounce_points_visible,
+                getattr(state, "selected_tx", None),
+                getattr(state, "selected_rx", None),
+                tuple(sorted(getattr(state, "mpc_allowed_orders", ()))),
+                tuple(sorted(getattr(state, "mpc_allowed_types", ()))),
+                getattr(state, "topk_render_enabled", False),
+                getattr(state, "topk_render_max_paths", None),
+                tuple(
+                    getattr(state, field, None)
+                    for field in (
+                        "delay_filter_min_ns",
+                        "delay_filter_max_ns",
+                        "power_filter_min_db",
+                        "power_filter_max_db",
+                        "aoa_az_filter_min_deg",
+                        "aoa_az_filter_max_deg",
+                        "aoa_el_filter_min_deg",
+                        "aoa_el_filter_max_deg",
+                        "aod_az_filter_min_deg",
+                        "aod_az_filter_max_deg",
+                        "aod_el_filter_min_deg",
+                        "aod_el_filter_max_deg",
+                    )
+                ),
+                None if allowed_materials is None else tuple(sorted(allowed_materials)),
+                getattr(visualizer, "mpc_material_filter_scope", "segment"),
+            )
+            legend_state = getattr(self, "_mpc_legend_state", None)
+            if legend_state is None or legend_state.key != key:
+                legend_state = _MpcLegendState(key)
+            bounce_points = getattr(packet, "mpc_bounce_points", None)
+            has_markers = bool(
+                bounce_points_visible and bounce_points is not None and len(bounce_points)
+            )
+            if (paths_visible and len(getattr(packet, "mpc_lines", ()))) or has_markers:
+                legend_state.has_geometry = True
+                legend_state.has_markers |= has_markers
+                legend_state.mpc_line_itype_codes = tuple(
+                    getattr(packet, "mpc_line_itype_codes", ())
+                )
+                if (
+                    has_markers
+                    and getattr(state, "color_mode", "") == "mpc_type"
+                    and not legend_state.mpc_line_itype_codes
+                ):
+                    bounce_types = getattr(packet, "mpc_bounce_itypes", None)
+                    if bounce_types is not None:
+                        legend_state.mpc_line_itype_codes = tuple(
+                            int(value) for value in np.unique(bounce_types)
+                        )
+                legend_state.colorbar = getattr(packet, "colorbar", None)
+            # Retain only the color key, never a packet, arrays or geometry.
+            # Empty CPI-intermediate rows must not replace a real scalar scale
+            # with their fallback bounds, or make categorical legends blink.
+        self._mpc_legend_state = legend_state
         requested = bool(
-            packet is not None
+            legend_state is not None
+            and legend_state.has_markers
             and getattr(state, "show_mpc_type_markers", False)
             and bounce_points_visible
         )

@@ -9,7 +9,9 @@ mi = pytest.importorskip("mitsuba")
 if not hasattr(mi, "variants") or "llvm_ad_mono_polarized" not in mi.variants():
     pytest.skip("Usable Mitsuba runtime required", allow_module_level=True)
 try:
-    mi.set_variant("llvm_ad_mono_polarized")
+    # Switching variants here invalidates Sionna types imported during collection.
+    if mi.variant() is None:
+        mi.set_variant("llvm_ad_mono_polarized")
 except Exception as exc:
     pytest.skip(f"Usable Mitsuba runtime required: {exc}", allow_module_level=True)
 
@@ -165,6 +167,10 @@ def test_create_target_uses_configured_start_mesh(tmp_path: Path, monkeypatch) -
     scene = _FakeScene()
 
     monkeypatch.setattr("generator.core.target.manager.SceneObject", _FakeSceneObject)
+    monkeypatch.setattr(
+        "generator.core.target.manager.MeshPoseReference",
+        lambda _target: SimpleNamespace(restore=lambda _candidate: None),
+    )
 
     def _fake_create_material(self) -> None:
         self.target_material = _FakeMaterial()

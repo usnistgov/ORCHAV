@@ -12,9 +12,89 @@ from visualizer.src.authoring.compilation_scheduler import (
     AuthoringCompilationScheduler,
     CompilationFailure,
 )
+from visualizer.src.authoring.compiler import ScenarioCompiler, ScenePreviewResult
 from visualizer.src.authoring.domain import AuthoringScenario, SceneReference
 
 SCENARIO_DIRECTORY = Path(__file__).resolve().parent
+
+
+def test_discarded_recording_releases_its_reader(scheduler_factory):
+    from types import SimpleNamespace
+
+    from visualizer.src.authoring.compilation_scheduler import _CompilationOutcome
+    from visualizer.src.authoring.compiler import CompilationResult
+
+    closed = []
+    result = CompilationResult(
+        {}, "", (), {}, recording=SimpleNamespace(close=lambda: closed.append(True))
+    )
+    scheduler = scheduler_factory(ScenarioCompiler)
+    scheduler.invalidate(2)
+    scheduler._offer_outcome(_CompilationOutcome(token=1, result=result))
+    assert closed == [True]
+
+
+def test_scene_and_progress_arrive_before_actors_finish(qtbot, scheduler_factory):
+    release = threading.Event()
+    delivered = []
+    ready = []
+
+    class StagedCompiler(ScenarioCompiler):
+        def compile(
+            self,
+            scenario,
+            *,
+            scenario_directory=None,
+            scene_ready=None,
+            progress=None,
+            preview_only=False,
+        ):
+            scene_ready(ScenePreviewResult(scenario, scenario_directory, ()))
+            progress("Preparing animation")
+            assert release.wait(2)
+            return "complete"
+
+    scheduler = scheduler_factory(StagedCompiler)
+    scheduler.scene_ready.connect(lambda token, result: delivered.append((token, "scene")))
+    scheduler.progress_changed.connect(lambda token, message: delivered.append((token, message)))
+    scheduler.succeeded.connect(lambda token, result: ready.append(result))
+    try:
+        scheduler.request(_scenario("first"), SCENARIO_DIRECTORY, 1)
+        qtbot.waitUntil(lambda: len(delivered) == 2)
+        assert delivered == [(1, "scene"), (1, "Preparing animation")]
+        assert ready == []
+    finally:
+        release.set()
+    qtbot.waitUntil(lambda: ready == ["complete"])
+
+
+def test_queued_preview_and_progress_are_discarded_after_invalidation(qapp, scheduler_factory):
+    emitted = threading.Event()
+    delivered = []
+
+    class StagedCompiler(ScenarioCompiler):
+        def compile(
+            self,
+            scenario,
+            *,
+            scenario_directory=None,
+            scene_ready=None,
+            progress=None,
+            preview_only=False,
+        ):
+            scene_ready(ScenePreviewResult(scenario, scenario_directory, ()))
+            progress("Old animation")
+            emitted.set()
+            return "old"
+
+    scheduler = scheduler_factory(StagedCompiler)
+    scheduler.scene_ready.connect(lambda *args: delivered.append(args))
+    scheduler.progress_changed.connect(lambda *args: delivered.append(args))
+    scheduler.request(_scenario("first"), SCENARIO_DIRECTORY, 1)
+    assert emitted.wait(2)
+    scheduler.invalidate(2)
+    qapp.processEvents()
+    assert delivered == []
 
 
 def _scenario(name: str) -> AuthoringScenario:
@@ -27,6 +107,32 @@ def _wait_without_qt(predicate, timeout: float = 2.0) -> None:
         if time.monotonic() >= deadline:
             raise AssertionError("timed out waiting for worker state")
         time.sleep(0.005)
+
+
+@pytest.fixture
+def scheduler_factory(qapp):
+    """Keep unparented test QObjects owned until their daemon worker exits.
+
+    Production schedulers have a workspace QObject parent. Closing is deliberately
+    non-blocking; a test must not drop its last owner reference while the worker
+    still holds a bound-method reference and queued Qt outcomes are outstanding.
+    """
+    schedulers = []
+    existing_threads = set(threading.enumerate())
+
+    def create(*args, **kwargs):
+        scheduler = AuthoringCompilationScheduler(*args, **kwargs)
+        schedulers.append(scheduler)
+        return scheduler
+
+    yield create
+    for scheduler in schedulers:
+        scheduler.close()
+    for worker in threading.enumerate():
+        if worker not in existing_threads and worker.name == "orchav-authoring-compiler":
+            worker.join(timeout=2.0)
+            assert not worker.is_alive(), "test-owned compilation worker did not stop"
+    qapp.processEvents()
 
 
 class _BlockingCompiler:
@@ -82,7 +188,9 @@ class _SecondCallBlockingCompiler:
         return scenario.scene.id
 
 
-def test_request_returns_immediately_and_delivers_on_owner_thread(qapp, qtbot) -> None:
+def test_request_returns_immediately_and_delivers_on_owner_thread(
+    qapp, qtbot, scheduler_factory
+) -> None:
     compiler = _BlockingCompiler()
     factory_thread_ids: list[int] = []
 
@@ -90,7 +198,7 @@ def test_request_returns_immediately_and_delivers_on_owner_thread(qapp, qtbot) -
         factory_thread_ids.append(threading.get_ident())
         return compiler
 
-    scheduler = AuthoringCompilationScheduler(compiler_factory)
+    scheduler = scheduler_factory(compiler_factory)
     owner_thread_id = threading.get_ident()
     delivered: list[tuple[int, str, int]] = []
     scheduler.succeeded.connect(
@@ -118,10 +226,10 @@ def test_request_returns_immediately_and_delivers_on_owner_thread(qapp, qtbot) -
     scheduler.close()
 
 
-def test_compile_lock_is_held_for_the_entire_worker_compile(qapp) -> None:
+def test_compile_lock_is_held_for_the_entire_worker_compile(qapp, scheduler_factory) -> None:
     compiler = _BlockingCompiler()
     compile_lock = threading.Lock()
-    scheduler = AuthoringCompilationScheduler(
+    scheduler = scheduler_factory(
         lambda: compiler,
         compile_lock=compile_lock,
     )
@@ -138,9 +246,11 @@ def test_compile_lock_is_held_for_the_entire_worker_compile(qapp) -> None:
     scheduler.close()
 
 
-def test_pending_requests_coalesce_and_only_newest_result_is_published(qapp, qtbot) -> None:
+def test_pending_requests_coalesce_and_only_newest_result_is_published(
+    qapp, qtbot, scheduler_factory
+) -> None:
     compiler = _FirstCallBlockingCompiler()
-    scheduler = AuthoringCompilationScheduler(lambda: compiler)
+    scheduler = scheduler_factory(lambda: compiler)
     delivered: list[tuple[int, str]] = []
     scheduler.succeeded.connect(lambda token, result: delivered.append((token, result)))
 
@@ -156,9 +266,11 @@ def test_pending_requests_coalesce_and_only_newest_result_is_published(qapp, qtb
     scheduler.close()
 
 
-def test_outcome_that_becomes_stale_in_qt_queue_is_not_published(qapp, qtbot) -> None:
+def test_outcome_that_becomes_stale_in_qt_queue_is_not_published(
+    qapp, qtbot, scheduler_factory
+) -> None:
     compiler = _SecondCallBlockingCompiler()
-    scheduler = AuthoringCompilationScheduler(lambda: compiler)
+    scheduler = scheduler_factory(lambda: compiler)
     delivered: list[tuple[int, str]] = []
     scheduler.succeeded.connect(lambda token, result: delivered.append((token, result)))
 
@@ -177,9 +289,11 @@ def test_outcome_that_becomes_stale_in_qt_queue_is_not_published(qapp, qtbot) ->
     scheduler.close()
 
 
-def test_invalidate_drops_pending_and_suppresses_active_result(qapp, qtbot) -> None:
+def test_invalidate_drops_pending_and_suppresses_active_result(
+    qapp, qtbot, scheduler_factory
+) -> None:
     compiler = _FirstCallBlockingCompiler()
-    scheduler = AuthoringCompilationScheduler(lambda: compiler)
+    scheduler = scheduler_factory(lambda: compiler)
     delivered: list[tuple[int, str]] = []
     scheduler.succeeded.connect(lambda token, result: delivered.append((token, result)))
 
@@ -203,12 +317,12 @@ def test_invalidate_drops_pending_and_suppresses_active_result(qapp, qtbot) -> N
     scheduler.close()
 
 
-def test_latest_failure_is_delivered_on_owner_thread(qapp, qtbot) -> None:
+def test_latest_failure_is_delivered_on_owner_thread(qapp, qtbot, scheduler_factory) -> None:
     class _FailingCompiler:
         def compile(self, scenario, *, scenario_directory=None):
             raise RuntimeError("compile exploded")
 
-    scheduler = AuthoringCompilationScheduler(_FailingCompiler)
+    scheduler = scheduler_factory(_FailingCompiler)
     owner_thread_id = threading.get_ident()
     failures: list[tuple[int, CompilationFailure, int]] = []
     successes: list[object] = []
@@ -228,9 +342,9 @@ def test_latest_failure_is_delivered_on_owner_thread(qapp, qtbot) -> None:
     scheduler.close()
 
 
-def test_close_drops_pending_and_active_outcomes_safely(qapp) -> None:
+def test_close_drops_pending_and_active_outcomes_safely(qapp, scheduler_factory) -> None:
     compiler = _BlockingCompiler()
-    scheduler = AuthoringCompilationScheduler(lambda: compiler)
+    scheduler = scheduler_factory(lambda: compiler)
     delivered: list[object] = []
     scheduler.succeeded.connect(lambda _token, result: delivered.append(result))
     scheduler.failed.connect(lambda _token, failure: delivered.append(failure))
@@ -249,9 +363,9 @@ def test_close_drops_pending_and_active_outcomes_safely(qapp) -> None:
     assert delivered == []
 
 
-def test_request_tokens_must_be_strictly_increasing(qapp) -> None:
+def test_request_tokens_must_be_strictly_increasing(qapp, scheduler_factory) -> None:
     compiler = _BlockingCompiler()
-    scheduler = AuthoringCompilationScheduler(lambda: compiler)
+    scheduler = scheduler_factory(lambda: compiler)
     assert scheduler.request(_scenario("first"), SCENARIO_DIRECTORY, 50) is True
 
     with pytest.raises(ValueError, match="greater than the previous token"):
@@ -260,3 +374,33 @@ def test_request_tokens_must_be_strictly_increasing(qapp) -> None:
     scheduler.close()
     compiler.release.set()
     assert compiler.finished.wait(timeout=1.0)
+
+
+def test_closed_scheduler_survives_parent_deletion_during_active_compile(
+    qapp, scheduler_factory
+) -> None:
+    from PySide6.QtCore import QCoreApplication, QEvent, QObject
+    from shiboken6 import isValid
+
+    owner = QObject()
+    compiler = _BlockingCompiler()
+    scheduler = scheduler_factory(lambda: compiler, parent=owner)
+    delivered = []
+    scheduler.succeeded.connect(lambda *outcome: delivered.append(outcome))
+    scheduler.failed.connect(lambda *outcome: delivered.append(outcome))
+    assert scheduler.request(_scenario("active"), SCENARIO_DIRECTORY, 60)
+    assert compiler.started.wait(timeout=1.0)
+
+    started = time.monotonic()
+    scheduler.close()
+    assert time.monotonic() - started < 1.0
+    assert not compiler.finished.is_set()
+    owner.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert not isValid(scheduler)
+
+    compiler.release.set()
+    assert compiler.finished.wait(timeout=1.0)
+    _wait_without_qt(lambda: not scheduler._worker_started)
+    qapp.processEvents()
+    assert delivered == []

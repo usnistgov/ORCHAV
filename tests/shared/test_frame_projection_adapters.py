@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -9,6 +10,12 @@ import numpy as np
 import pytest
 
 import shared.frames.providers as providers_module
+from shared.extensions.sensing import (
+    SENSING_SCHEMA_VERSION,
+    build_sensing_temporal_contract,
+    canonical_sensing_hash,
+    finalize_sensing_v4_publication,
+)
 from shared.frames.adapters import project_standard_mpc_frame
 from shared.frames.base import FormatHandler
 from shared.frames.contracts import (
@@ -22,6 +29,150 @@ from shared.frames.packed import FrameProjection, ProjectedMPCFrame
 from shared.frames.provider_base import DataProvider
 from shared.frames.providers import FileProvider, Hdf5Provider
 from shared.frames.types import StandardMPCFrame
+from shared.sensing.products import (
+    add_product_spec,
+    catalog_axis,
+    dense_axis,
+    materialize_product_specs,
+)
+
+_SENSING_GENERATION_ID = "3cbf17f9-a8a7-45aa-a3d4-88060ab5ee84"
+
+
+def _projection_execution_config() -> dict:
+    """Return the complete analytic-oracle envelope used by this fixture."""
+
+    return {
+        "contract_version": 1,
+        "fft_size_range": 3,
+        "fft_size_doppler": 2,
+        "sampling_frequency": 1.0e9,
+        "prf_hz": 1000.0,
+        "carrier_freq_hz": 60e9,
+        "range_mode": "bistatic",
+        "processing_mode": "analytic_path_doppler_oracle",
+        "processing_recipe": {
+            "window_range": "rectangular",
+            "window_doppler": "rectangular",
+        },
+        "acquisition": {
+            "sample_source": "analytic_path_snapshot",
+            "rt_solve_stride_scene_steps": 1,
+            "cpi_length_samples": 1,
+            "cpi_hop_samples": 1,
+            "overlap_samples": 0,
+            "partial_window_policy": "retain_unprocessed",
+            "phase_contract": "analytic_path_snapshot_phase",
+        },
+        "processing": {
+            "mode": "analytic_path_doppler_oracle",
+            "strategy": "analytic_path_doppler_oracle",
+            "fft_size_doppler": 2,
+            "result_stride_samples": 1,
+            "product_semantics": "analytic_path_doppler_projection",
+            "evidence_status": "projection_fixture",
+        },
+        "topology": {
+            "pair_count": 1,
+            "pair_index": 0,
+            "tx_device_count": 1,
+            "rx_device_count": 1,
+            "tx_elements": 1,
+            "rx_elements": 1,
+            "rx_array_processing": "siso",
+        },
+    }
+
+
+def _sensing_payload() -> dict:
+    config_resolved = _projection_execution_config()
+    temporal = build_sensing_temporal_contract(
+        clock_id=_SENSING_GENERATION_ID,
+        acquisition_id="87ae54d5-bcfa-4a42-b919-1e838878204f",
+        acquisition_config_id=canonical_sensing_hash(config_resolved),
+        pair_id=canonical_sensing_hash({"tx_sensor_id": "beta", "rx_sensor_id": "gamma"}),
+        tx_sensor_id="beta",
+        rx_sensor_id="gamma",
+        samples=[
+            {
+                "sample_index": 0,
+                "sample_time_s": 1.25,
+                "valid": True,
+                "phase_coherent": True,
+                "source": {
+                    "source_generation_id": _SENSING_GENERATION_ID,
+                    "scene_frame_id": 7,
+                    "sample_offset": 0,
+                },
+            }
+        ],
+        processing_run_id=_SENSING_GENERATION_ID,
+        processing_recipe_id=canonical_sensing_hash(config_resolved["processing_recipe"]),
+        reference_time_s=1.25,
+        reference_time_policy="sample_time",
+        display_scene_frame_id=7,
+        display_policy="exact",
+        display_reason="Single-frame projection fixture.",
+    )
+    sensing = {
+        "schema_version": SENSING_SCHEMA_VERSION,
+        "processing_strategy": "analytic_path_doppler_oracle",
+        "temporal": temporal,
+        "config_resolved": config_resolved,
+        "config": deepcopy(config_resolved),
+        "range_axis_m": np.asarray([1.0, 2.0, 3.0], dtype=np.float64),
+        "doppler_axis_hz": np.asarray([-1.0, 1.0], dtype=np.float64),
+        "delay_axis_s": np.asarray([0.0, 1e-9], dtype=np.float64),
+        "range_doppler_by_pair": np.arange(6, dtype=np.float32).reshape(1, 2, 3),
+        "cir_by_pair": np.asarray([[1 + 2j, 3 + 4j]], dtype=np.complex64),
+    }
+    pair_axis = catalog_axis("pair", size=1, catalog_key="pair_axis")
+    add_product_spec(
+        sensing,
+        data_key="range_doppler_by_pair",
+        kind="range_doppler",
+        axes=(
+            pair_axis,
+            dense_axis(
+                "doppler_frequency",
+                size=2,
+                unit="Hz",
+                coordinate_key="doppler_axis_hz",
+                reference_frame="scenario_clock",
+            ),
+            dense_axis(
+                "range",
+                size=3,
+                unit="m",
+                coordinate_key="range_axis_m",
+                coordinate_semantics="bistatic_path_length",
+                reference_frame="tx_target_rx_path",
+            ),
+        ),
+        representation="power_linear",
+        unit="1",
+    )
+    add_product_spec(
+        sensing,
+        data_key="cir_by_pair",
+        kind="impulse_response",
+        axes=(
+            pair_axis,
+            dense_axis(
+                "delay",
+                size=2,
+                unit="s",
+                coordinate_key="delay_axis_s",
+                coordinate_semantics="propagation_delay",
+                reference_frame="tx_to_rx",
+            ),
+        ),
+        representation="complex_voltage",
+        unit="1",
+    )
+    materialize_product_specs(sensing)
+    finalize_sensing_v4_publication(sensing)
+    return sensing
 
 
 def _standard_frame() -> StandardMPCFrame:
@@ -74,11 +225,7 @@ def _standard_frame() -> StandardMPCFrame:
         target_positions_m=np.asarray([[8.0, 9.0, 1.5]], dtype=np.float64),
         targets_metadata=({"name": "walker", "speed_mps": 1.2},),
         beamforming={"method": "mvdr", "enabled": True},
-        sensing={
-            "config": {"carrier_hz": 60e9},
-            "rd_map": np.arange(6, dtype=np.float32).reshape(2, 3),
-            "cir": np.asarray([1 + 2j, 3 + 4j], dtype=np.complex64),
-        },
+        sensing=_sensing_payload(),
         provenance={"provider": "unit-test", "frame_idx": 7},
         recomputed_from_stored_positions=True,
     )
@@ -129,27 +276,35 @@ def test_projection_selects_sensing_products_and_keeps_metadata() -> None:
     frame = _standard_frame()
     request = FrameReadRequest(
         components=frozenset({FrameComponent.SENSING}),
-        sensing_products=frozenset({"rd_map", "missing"}),
+        sensing_products=frozenset({"range_doppler_by_pair", "missing"}),
     )
 
     projection = project_standard_mpc_frame(frame, request)
 
-    assert projection.loaded_sensing_products == frozenset({"rd_map", "missing"})
+    assert projection.loaded_sensing_products == frozenset({"range_doppler_by_pair", "missing"})
     assert projection.all_sensing_products_loaded is False
     assert projection.frame.sensing is not None
-    assert projection.frame.sensing["config"] == {"carrier_hz": 60e9}
+    assert projection.frame.sensing["config"] == _projection_execution_config()
     np.testing.assert_array_equal(
-        projection.frame.sensing["rd_map"],
-        np.arange(6, dtype=np.float32).reshape(2, 3),
+        projection.frame.sensing["range_doppler_by_pair"],
+        np.arange(6, dtype=np.float32).reshape(1, 2, 3),
     )
-    assert "cir" not in projection.frame.sensing
+    assert "cir_by_pair" not in projection.frame.sensing
 
     full_sensing = project_standard_mpc_frame(
         frame,
         FrameReadRequest(components=frozenset({FrameComponent.SENSING})),
     )
     assert full_sensing.all_sensing_products_loaded is True
-    assert full_sensing.loaded_sensing_products == frozenset({"rd_map", "cir"})
+    assert full_sensing.loaded_sensing_products == frozenset(
+        {
+            "cir_by_pair",
+            "delay_axis_s",
+            "doppler_axis_hz",
+            "range_axis_m",
+            "range_doppler_by_pair",
+        }
+    )
 
 
 def test_projection_records_requested_sensing_products_as_absent() -> None:

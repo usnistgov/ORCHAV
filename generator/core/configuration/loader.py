@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional
 from shared.extensions.sensing import resolve_sensing_config
 from shared.grpc_transport import format_grpc_endpoint, parse_grpc_endpoint
 from shared.logging import get_logger
+from shared.scenarios.sensing_groups import normalize_scenario_sensing
 
 from .defaults import (
     DEFAULT_FILE_FORMAT,
@@ -44,6 +45,14 @@ def load_simulation_config(
     if scenario_configuration is not None:
         rt_cfg = _as_mapping(getattr(scenario_configuration, "raytracing", {}) or {})
         sensing_cfg = _as_mapping(getattr(scenario_configuration, "sensing", {}) or {})
+        authored = normalize_scenario_sensing(
+            {
+                "sensing": sensing_cfg,
+                "raytracing": rt_cfg,
+                "view_defaults": getattr(scenario_configuration, "view_defaults", None),
+            }
+        )
+        sensing_cfg, rt_cfg = authored["sensing"], authored["raytracing"]
 
         _apply_file_output(cfg, scenario_configuration)
         _apply_scene(cfg, scenario_configuration)
@@ -58,6 +67,34 @@ def load_simulation_config(
 
     _apply_overrides(cfg, overrides)
     return cfg
+
+
+def resolve_sensing_document(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Expand a scenario template before a Python launcher changes its recipe.
+
+    Launchers can keep using flat field overrides. Returning complete sensing
+    values also preserves their direct access to settings omitted in short YAML.
+    The input is not mutated and no scene or propagation work is performed.
+    """
+    from dataclasses import asdict
+    from types import SimpleNamespace
+
+    result = normalize_scenario_sensing(data)
+    if not isinstance(result.get("sensing"), Mapping):
+        return result
+    result["sensing"] = asdict(load_simulation_config(SimpleNamespace(**result)).sensing)
+    if result["sensing"].get("recording_profile") is None:
+        result["sensing"].pop("recording_profile", None)
+        result["sensing"].pop("recording_display", None)
+    else:
+        # The resolved named profile owns retention. Avoid reintroducing a
+        # conflicting legacy flag when scripted launchers reload this document.
+        result["sensing"].pop("raw_payload_policy", None)
+    # The flat result now owns the view hints, so a later launcher override must
+    # not conflict with a second authored copy in view_defaults.
+    if isinstance(result.get("view_defaults"), dict):
+        result["view_defaults"].pop("sensing", None)
+    return result
 
 
 def _copy_base_config(base: Optional[SimulationConfig]) -> SimulationConfig:
@@ -134,6 +171,8 @@ def _apply_timeline(cfg: SimulationConfig, scenario_configuration: Any) -> None:
         return
     steps = getattr(timeline, "steps", None)
     duration_s = getattr(timeline, "duration_s", None)
+    rate = getattr(timeline, "sample_rate_hz", None)
+    cfg.scene_sample_rate_hz = None if rate is None else float(rate)
     if steps is not None:
         cfg.num_steps = int(steps)
     if duration_s is not None:
@@ -211,24 +250,31 @@ def _apply_sensing(
     cfg.sensing.range_mode = str(resolved_sensing["range_mode"])
 
     _assign_if_present(cfg.sensing, "bandwidth", sensing_cfg, transform=float)
-    _assign_if_present(cfg.sensing, "chirps_per_frame", sensing_cfg, transform=int)
     _assign_if_present(cfg.sensing, "prf_hz", sensing_cfg, transform=float)
     _assign_if_present(cfg.sensing, "range_mode", sensing_cfg, transform=str)
     _assign_if_present(cfg.sensing, "fft_size_range", sensing_cfg, transform=int)
     _assign_if_present(cfg.sensing, "fft_size_doppler", sensing_cfg, transform=int)
+    # Preserve the exact input type so validation rejects Boolean/fractional hops.
+    _assign_if_present(cfg.sensing, "cpi_hop_samples", sensing_cfg)
 
     for field_name in (
         "window_range",
         "window_doppler",
         "cfar_type",
+        "cfar_edge_policy",
+        "array_detection_mode",
         "raw_payload_policy",
+        "recording_profile",
         "tracker_type",
+        "track_confirmation_mode",
         "processing_mode",
+        "coherent_clutter_mode",
     ):
         _assign_if_present(cfg.sensing, field_name, sensing_cfg, transform=str)
 
     for field_name in (
         "cfar_guard_cells",
+        "beam_angle_oversampling",
         "cfar_ref_cells",
         "cfar_rd_guard_cells_range",
         "cfar_rd_guard_cells_doppler",
@@ -247,6 +293,14 @@ def _apply_sensing(
         "cfar_threshold_scale",
         "cfar_os_rank",
         "cfar_min_snr_db",
+        "cfar_max_dynamic_range_db",
+        "cluster_range_gate_m",
+        "cluster_velocity_gate_m_s",
+        "ghost_filter_velocity_gate_m_s",
+        "ghost_filter_azimuth_gate_deg",
+        "track_association_azimuth_gate_deg",
+        "track_association_position_gate_m",
+        "track_acceleration_psd_m2_s3",
         "min_detection_range_m",
         "max_detection_range_m",
         "track_association_range_gate_m",
@@ -268,6 +322,7 @@ def _apply_sensing(
         "output_range_profile",
         "output_detections",
         "persist_detection_stage_artifacts",
+        "persist_tracking_diagnostics",
         "clutter_removal_enabled",
         "noise_enabled",
         "aoa_filter_enabled",
@@ -279,6 +334,15 @@ def _apply_sensing(
 
     _assign_if_present(cfg.sensing, "display_range_xlim", sensing_cfg, transform=list)
     _assign_if_present(cfg.sensing, "display_velocity_ylim", sensing_cfg, transform=list)
+    _assign_if_present(cfg.sensing, "range_response", sensing_cfg)
+    _assign_if_present(cfg.sensing, "recording_display", sensing_cfg)
+
+    for field_name in (
+        "jpda_max_joint_nodes",
+        "jpda_birth_confirmation_frames",
+        "jpda_birth_separation_chi2",
+    ):
+        _assign_if_present(cfg.sensing, field_name, sensing_cfg)
 
     cfg.sensing.__post_init__()
 

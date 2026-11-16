@@ -1,10 +1,27 @@
 cff-version: 1.2.0
-message: "If you use ORCHAV, please cite the project."
+message: "To cite ORCHAV, use the SIMULTECH 2026 paper below. For ORCHAV Sensing, also cite the ISAC paper listed in the README."
 title: "ORCHAV"
-version: "0.1.0"
-date-released: 2026-09-01
+version: "0.2.0"
+date-released: "2026-11-16"
 repository-code: "https://github.com/usnistgov/ORCHAV"
-license: "GPL-2.0-only"
+license: "GPL-3.0-only"
 authors:
   - name: "ORCHAV Team"
     email: "tanguy.ropitault@nist.gov"
+preferred-citation:
+  type: conference-paper
+  title: "ORCHAV: Connecting Ray-Traced Wireless Simulation and Interactive Propagation Analysis"
+  authors:
+    - family-names: "Ropitault"
+      given-names: "Tanguy"
+    - family-names: "Caromi"
+      given-names: "Raied"
+    - family-names: "Golmie"
+      given-names: "Nada"
+  collection-title: "Proceedings of SIMULTECH 2026"
+  publisher:
+    name: "SciTePress"
+  doi: "10.5220/0014911600004094"
+  start: 39
+  end: 51
+  year: 2026

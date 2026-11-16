@@ -1,15 +1,24 @@
 """Actor-state preparation service for generator pipelines.
 
 ``ActorStateService`` turns parsed TX/RX configs and target managers into an
-``ActorStateManager`` plus cached per-step arrays. It does not write positions
-or orientations into Sionna objects.  Propagation reads per-step state from the
-manager later and applies it to the live scene just before solving a frame.
+``ActorStateManager`` plus cached per-step arrays. Coverage explicitly applies
+its initial snapshot; propagation applies the same indexed state before each
+frame solve. Neither operation advances the prepared timeline.
 """
 
+from typing import TYPE_CHECKING
+
 from ..configuration import ReceiverConfig, SimulationConfig, TransmitterConfig
+from ..propagation.actor_state_application import (
+    apply_target_state_to_scene,
+    apply_transceiver_state_to_scene,
+)
 from ..scenario_actors.state import ActorStateCache, ActorStateManager
 from ..target import TargetConfig, TargetManager
 from .base import BaseService
+
+if TYPE_CHECKING:
+    from .scene_service import SceneService
 
 
 class ActorStateService(BaseService):
@@ -82,10 +91,42 @@ class ActorStateService(BaseService):
             duration,
             motion_mode,
             mesh_update_interval_s=mesh_interval,
+            sample_rate_hz=getattr(self.simulation_config, "scene_sample_rate_hz", None),
         )
 
         cache = self.actor_state_manager.prepare_cached()
         return self.actor_state_manager, cache
+
+    def apply_initial_state(self, scene_service: "SceneService") -> None:
+        """Apply canonical time-zero pose before coverage and topology output.
+
+        Read the prepared cache without advancing mobility or rebuilding it.
+        The same target application boundary as frame propagation preserves
+        animated-body alignment and absolute mesh-frame ownership.
+        """
+        manager = self.actor_state_manager
+        if manager is None:
+            raise ValueError("Actor state must be prepared before initial application")
+        state = manager.state_at_step(0)
+        velocities = manager.compute_velocities(0)
+        apply_transceiver_state_to_scene(
+            scene_service.tx_list, state.tx_positions, state.tx_orientations, velocities.tx
+        )
+        apply_transceiver_state_to_scene(
+            scene_service.rx_list, state.rx_positions, state.rx_orientations, velocities.rx
+        )
+        apply_target_state_to_scene(
+            scene_service.target_managers,
+            state.target_positions,
+            state.target_orientations,
+            0,
+            step_velocities=velocities.target,
+            simulation_config=self.simulation_config,
+        )
+        # A mesh-backed target may replace its live object during application.
+        scene_service.target_objects = [
+            target.target_object for target in scene_service.target_managers
+        ]
 
     def cleanup(self) -> None:
         """Release the cached actor-state manager after a pipeline run."""

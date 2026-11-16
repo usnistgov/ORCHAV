@@ -1,0 +1,105 @@
+# Rigid Human Mesh
+# =====================
+# Uses one bundled reconstructed human surface as a rigid moving target. The
+# following animated-target tutorial adds articulated motion separately.
+
+schema_version: 2
+scene:
+  id: empty/empty.xml
+data:
+  files:
+    chunk_size: 64
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 28.0e9
+  antenna:
+    rx:
+      num_cols: 16
+  quality:
+    preset: low
+    custom:
+      diffuse_reflection: true
+      samples_per_src: 120000
+      max_depth: 2
+  materials:
+    itu_glass_Human:
+      scattering_coefficient: 0.8
+      scattering_pattern: lambertian
+timeline:
+  steps: 384
+  duration_s: 0.384
+
+actors:
+  tx:
+  - name: RadarTX
+    mobility:
+      type: stationary
+      position_m: [0.0, 0.0, 1.2]
+  rx:
+  - name: RadarRX
+    mobility:
+      type: stationary
+      position_m: [0.0, 0.0, 1.2]
+  targets:
+  - name: Human
+    asset:
+      source: directory
+      path: libraries/targets/digital_twin_update1
+      pattern: DT_Pjh_02_00001.ply
+      switch_meshes: false
+    mobility:
+      type: linear
+      start_m: [5.6, 0.8, 0.98]
+      end_m: [4.9, 0.8, 0.98]
+    orientation:
+      type: align_motion
+      allow_pitch: false
+sensing:
+  enabled: true
+  preset: coherent_hann
+  acquisition:
+    bandwidth_hz: 500000000.0
+    frequency_samples: 128
+    sample_rate_hz: 1000.0
+    samples_per_cpi: 64
+  processing:
+    range:
+      interpretation: monostatic
+      fft_size: 128
+    clutter:
+      coherent_mode: none
+      history_window: 16
+  detection:
+    cfar:
+      threshold_scale: 2.0
+      range_doppler:
+        reference_range_cells: 6
+    exclusions:
+      doppler_dc_bins: 2
+    filters:
+      minimum_snr_db: 3.0
+      minimum_range_m: 1.0
+      maximum_range_m: 8.0
+  tracking:
+    enabled: true
+    type: kalman
+    max_missed_updates: 2
+    output_tentative: true
+    association:
+      range_gate_m: 1.0
+      velocity_gate_m_s: 1.0
+  recording:
+    profile: maps
+view_defaults:
+  camera_view: isometric
+  camera_dist: 12.0
+  mpc_visibility:
+    enabled: true
+    paths: true
+    bounce_points: true
+  color_mode: path_loss
+generator_summary:
+  enabled: true
+  create: [topology, speed, sensing]
+  sensing:
+    figures: [range_profile, range_doppler, doppler, angles, detection, tracking]

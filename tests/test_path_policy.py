@@ -47,6 +47,42 @@ def test_find_project_root_prefers_repository_root_over_scenarios_dir(tmp_path: 
     assert resolved == repo_root.resolve()
 
 
+def test_filesystem_root_generic_directories_do_not_claim_standalone(tmp_path, monkeypatch):
+    find_project_root = _load_path_policy_module().find_project_root
+    filesystem_root = Path(tmp_path.anchor)
+    real_is_dir, real_is_file, real_exists = Path.is_dir, Path.is_file, Path.exists
+
+    def fake_is_dir(path):
+        if path.parent == filesystem_root and path.name in {"libraries", "scenarios"}:
+            return True
+        return real_is_dir(path)
+
+    def fake_is_file(path):
+        if path == filesystem_root / "pyproject.toml":
+            return False
+        return real_is_file(path)
+
+    def fake_exists(path):
+        if path == filesystem_root / ".git":
+            return False
+        return real_exists(path)
+
+    monkeypatch.setattr(Path, "is_dir", fake_is_dir)
+    monkeypatch.setattr(Path, "is_file", fake_is_file)
+    monkeypatch.setattr(Path, "exists", fake_exists)
+    standalone = tmp_path / "standalone"
+    standalone.mkdir()
+    assert find_project_root(standalone) == standalone.resolve()
+
+    # An actual project at the filesystem root can still be identified.
+    monkeypatch.setattr(
+        Path,
+        "is_file",
+        lambda path: True if path == filesystem_root / "pyproject.toml" else fake_is_file(path),
+    )
+    assert find_project_root(standalone) == filesystem_root
+
+
 def test_find_project_root_without_git_uses_strongest_marker_match(tmp_path: Path) -> None:
     find_project_root = _load_path_policy_module().find_project_root
     repo_root = tmp_path / "repo"

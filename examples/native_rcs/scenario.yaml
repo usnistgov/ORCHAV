@@ -1,0 +1,67 @@
+schema_version: 2
+scene:
+  source: local
+  id: scene.xml
+timeline:
+  steps: 32
+  duration_s: 0.031
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 3500000000.0
+  bandwidth_hz: 100000000.0
+  cir_time_steps: 16
+  cir_sampling_frequency_hz: 1000.0
+  quality:
+    preset: ultra-low
+    custom:
+      max_depth: 1
+      samples_per_src: 32
+      max_num_paths_per_src: 1000
+      diffuse_reflection: false
+      specular_reflection: false
+      refraction: false
+  rcs:
+    channel: combined
+    max_depth: 1
+    samples_per_sp: 32
+    buffer_size_per_sp: 1000
+    specular_reflection: false
+    refraction: false
+    seed: 42
+actors:
+  tx:
+    - name: radar_tx
+      mobility: {type: stationary, position_m: [0, 0, 1]}
+  rx:
+    - name: radar_rx
+      mobility: {type: stationary, position_m: [0, 0, 1]}
+  targets:
+    - name: approaching_control
+      representation: constant_rcs
+      geometry: {type: box, length_m: 0.3, width_m: 0.3, height_m: 0.3}
+      constant_rcs: {sigma_m2: 1.0, xpr_db: null}
+      mobility:
+        type: linear
+        start_m: [40, 0, 1]
+        end_m: [39.907, 0, 1]
+sensing:
+  enabled: true
+  processing_mode: coherent_cpi
+  range_mode: monostatic
+  bandwidth: 100000000.0
+  prf_hz: 1000.0
+  fft_size_range: 64
+  fft_size_doppler: 16
+  window_range: boxcar
+  window_doppler: boxcar
+  range_response:
+    model: cfr_ifft
+    num_frequency_bins: 64
+    frequency_window: boxcar
+  raw_payload_policy: always
+  noise_enabled: false
+  output_detections: true
+  persist_detection_stage_artifacts: true
+  persist_tracking_diagnostics: true
+generator_summary:
+  enabled: false

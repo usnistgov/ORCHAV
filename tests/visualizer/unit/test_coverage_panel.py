@@ -67,13 +67,13 @@ def test_panel_defaults_are_grouped_accessible_and_fully_opaque():
     panel, group = _build_panel()
 
     subgroup_titles = {child.title() for child in group.findChildren(QGroupBox)}
-    assert {"Layer", "Analysis", "Height playback"} <= subgroup_titles
+    assert {"Data", "Analysis", "Height playback"} <= subgroup_titles
     assert panel.widgets["coverage_opacity"].value() == 100
     assert panel.widgets["opacity_label"].text() == "100%"
     assert panel.widgets["coverage_height_speed_label"].text() == "0.67 s"
     for key in (
         "coverage_metric_combo",
-        "coverage_serving_tx_toggle",
+        "coverage_tx_combo",
         "coverage_height_combo",
         "coverage_interpolation",
         "coverage_opacity",
@@ -82,6 +82,46 @@ def test_panel_defaults_are_grouped_accessible_and_fully_opaque():
     ):
         assert panel.widgets[key].accessibleName()
 
+    group.deleteLater()
+
+
+def test_threshold_and_contour_details_follow_toggle_and_state_restore():
+    panel, group = _build_panel()
+    panel.update_coverage_status(True, _scalar_metadata())
+    widgets = panel.widgets
+    assert widgets["coverage_threshold_controls"].isHidden()
+    assert widgets["coverage_threshold_mask_toggle"].isHidden()
+    assert widgets["coverage_isoline_controls"].isHidden()
+    widgets["coverage_threshold_toggle"].setChecked(True)
+    widgets["coverage_isolines_toggle"].setChecked(True)
+    assert not widgets["coverage_threshold_controls"].isHidden()
+    assert not widgets["coverage_threshold_mask_toggle"].isHidden()
+    assert not widgets["coverage_isoline_controls"].isHidden()
+
+    panel.set_analysis_state(
+        threshold_enabled=False,
+        threshold_value=95.0,
+        mask_enabled=False,
+        isolines_enabled=False,
+        isoline_count=8,
+        interpolation="none",
+    )
+    assert widgets["coverage_threshold_controls"].isHidden()
+    assert widgets["coverage_isoline_controls"].isHidden()
+    assert widgets["coverage_threshold_value"].value() == 95.0
+    assert widgets["coverage_isoline_count"].value() == 8
+    group.deleteLater()
+
+
+def test_unsupported_metric_hides_analysis_subcontrols_after_active_metric():
+    panel, group = _build_panel()
+    panel.update_coverage_status(True, _scalar_metadata())
+    panel.widgets["coverage_threshold_toggle"].setChecked(True)
+    panel.widgets["coverage_isolines_toggle"].setChecked(True)
+    panel.update_coverage_status(True, _scalar_metadata("serving_tx"))
+    assert panel.widgets["coverage_threshold_controls"].isHidden()
+    assert panel.widgets["coverage_threshold_mask_toggle"].isHidden()
+    assert panel.widgets["coverage_isoline_controls"].isHidden()
     group.deleteLater()
 
 
@@ -128,88 +168,41 @@ def test_metric_families_switch_between_serving_and_selected_transmitter():
     panel.set_metrics(metrics, "best_path_loss_db")
     metric_combo = panel.widgets["coverage_metric_combo"]
     tx_combo = panel.widgets["coverage_tx_combo"]
-    serving_toggle = panel.widgets["coverage_serving_tx_toggle"]
-
-    assert [metric_combo.itemData(index) for index in range(metric_combo.count())] == [
-        "path_gain_linear",
-        "path_gain_db",
-        "path_loss_db",
-        "rss_dbm",
-        "sinr_db",
-        "serving_tx",
-    ]
-    assert not serving_toggle.isHidden()
-    assert serving_toggle.isChecked()
-    assert tx_combo.isHidden()
-
-    serving_toggle.setChecked(False)
+    assert "coverage_serving_tx_toggle" not in panel.widgets
     assert not tx_combo.isHidden()
+    assert tx_combo.currentData() == "best_path_loss_db"
+    assert tx_combo.itemText(0) == "Serving transmitter (strongest received power)"
+    assert [tx_combo.itemText(i) for i in range(1, tx_combo.count())] == ["West", "East"]
+    tx_combo.setCurrentIndex(tx_combo.findText("West"))
     assert recorder.metrics[-1] == "path_loss_db/West"
-
-    tx_combo.setCurrentIndex(1)
+    tx_combo.setCurrentIndex(tx_combo.findText("East"))
     assert recorder.metrics[-1] == "path_loss_db/East"
-
-    metric_combo.setCurrentIndex(metric_combo.findData("rss_dbm"))
-    assert not serving_toggle.isChecked()
-    assert not tx_combo.isHidden()
-    assert tx_combo.currentText() == "East"
-    assert recorder.metrics[-1] == "rss_dbm/East"
-
-    metric_combo.setCurrentIndex(metric_combo.findData("sinr_db"))
-    assert not serving_toggle.isChecked()
-    assert tx_combo.currentText() == "East"
-    assert recorder.metrics[-1] == "sinr_db/East"
-
-    metric_combo.setCurrentIndex(metric_combo.findData("path_gain_linear"))
-    assert not serving_toggle.isHidden()
-    assert not serving_toggle.isChecked()
-    assert not tx_combo.isHidden()
-    assert [tx_combo.itemText(index) for index in range(tx_combo.count())] == [
-        "West",
-        "East",
-    ]
-    assert tx_combo.currentText() == "East"
-    assert recorder.metrics[-1] == "path_gain_linear/East"
-
+    for family in ("rss_dbm", "sinr_db", "path_gain_linear"):
+        metric_combo.setCurrentIndex(metric_combo.findData(family))
+        assert tx_combo.currentText() == "East"
+        assert recorder.metrics[-1] == family + "/East"
     metric_combo.setCurrentIndex(metric_combo.findData("path_gain_db"))
-    assert serving_toggle.isHidden()
-    assert not tx_combo.isHidden()
     assert tx_combo.count() == 1
     assert recorder.metrics[-1] == "path_gain_db/West"
-
     metric_combo.setCurrentIndex(metric_combo.findData("path_loss_db"))
-    assert not serving_toggle.isChecked()
     assert tx_combo.currentText() == "East"
-    assert recorder.metrics[-1] == "path_loss_db/East"
-
-    serving_toggle.setChecked(True)
-    assert tx_combo.isHidden()
+    tx_combo.setCurrentIndex(tx_combo.findData("best_path_loss_db"))
     assert recorder.metrics[-1] == "best_path_loss_db"
-
-    metric_combo.setCurrentIndex(metric_combo.findData("path_gain_linear"))
-    assert recorder.metrics[-1] == "serving_path_gain_linear"
-
-    metric_combo.setCurrentIndex(metric_combo.findData("rss_dbm"))
-    assert serving_toggle.isChecked()
-    assert tx_combo.isHidden()
-    assert recorder.metrics[-1] == "best_rss_dbm"
-
+    for family, serving in (
+        ("path_gain_linear", "serving_path_gain_linear"),
+        ("rss_dbm", "best_rss_dbm"),
+    ):
+        metric_combo.setCurrentIndex(metric_combo.findData(family))
+        assert tx_combo.currentData() == serving
+        assert recorder.metrics[-1] == serving
     metric_combo.setCurrentIndex(metric_combo.findData("serving_tx"))
-    assert serving_toggle.isHidden()
     assert tx_combo.isHidden()
     assert recorder.metrics[-1] == "serving_tx"
-
     metric_combo.setCurrentIndex(metric_combo.findData("sinr_db"))
-    assert serving_toggle.isChecked()
     assert recorder.metrics[-1] == "sinr_db"
-
     panel.reset_view_state()
     panel.set_metrics(metrics, "path_loss_db/East")
-    assert metric_combo.currentData() == "path_loss_db"
-    assert not serving_toggle.isChecked()
-    assert not tx_combo.isHidden()
     assert tx_combo.currentData() == "path_loss_db/East"
-
     group.deleteLater()
 
 
@@ -233,10 +226,8 @@ def test_single_tx_metric_hides_selector_and_labels_logarithmic_color_scale():
 
     metric_combo = panel.widgets["coverage_metric_combo"]
     tx_combo = panel.widgets["coverage_tx_combo"]
-    serving_toggle = panel.widgets["coverage_serving_tx_toggle"]
     assert tx_combo.count() == 1
     assert tx_combo.isHidden()
-    assert serving_toggle.isHidden()
     assert panel.widgets["coverage_legend_title"].text() == "Scale (logarithmic):"
     assert "(logarithmic)" in panel.widgets["coverage_legend_gradient"].toolTip()
 
@@ -257,11 +248,9 @@ def test_multi_tx_count_keeps_serving_mode_when_one_selected_variant_is_advertis
         tx_count=2,
     )
 
-    serving_toggle = panel.widgets["coverage_serving_tx_toggle"]
     tx_combo = panel.widgets["coverage_tx_combo"]
-    assert not serving_toggle.isHidden()
-    assert serving_toggle.isChecked()
-    serving_toggle.setChecked(False)
+    assert tx_combo.currentData() == "sinr_db"
+    tx_combo.setCurrentIndex(tx_combo.findData("sinr_db/West"))
     assert not tx_combo.isHidden()
     assert tx_combo.currentData() == "sinr_db/West"
     assert recorder.metrics[-1] == "sinr_db/West"
@@ -330,7 +319,7 @@ def test_categorical_legend_keeps_overflow_marker_visible_at_narrow_width():
 
 
 @pytest.mark.parametrize("metric", ["path_gain_linear/TX1", "rss_w/TX1"])
-def test_tiny_linear_thresholds_remain_editable_in_scientific_notation(metric):
+def test_tiny_linear_thresholds_use_fine_decibel_steps(metric):
     panel, group = _build_panel()
     metadata = {
         "metric_name": metric,
@@ -347,9 +336,11 @@ def test_tiny_linear_thresholds_remain_editable_in_scientific_notation(metric):
     spin.setValue(5.0e-21)
 
     assert np.isclose(spin.value(), 5.0e-21, rtol=1.0e-12, atol=1.0e-30)
-    assert 0.0 < spin.singleStep() < 1.0e-20
-    assert "e" in spin.cleanText().lower()
-    assert float(spin.cleanText()) == pytest.approx(5.0e-21)
+    assert spin.singleStep() == 0.5
+    offset = 30 if metric.startswith("rss_w") else 0
+    assert float(spin.cleanText()) == pytest.approx(10 * np.log10(5e-21) + offset, abs=0.05)
+    spin.stepUp()
+    assert spin.value() == pytest.approx(5e-21 * 10**0.05, rel=1e-9, abs=1e-30)
 
     group.deleteLater()
 

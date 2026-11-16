@@ -51,6 +51,87 @@ visibility replace the corresponding initial values. Start with `--no-resume`
 when checking the YAML defaults themselves. See [Workspace
 Snapshots](workspace_snapshots.md) for the complete restore behavior.
 
+An explicit `camera_pose` takes precedence over the named view. It sets only
+the initial camera. Orbit, pan, zoom and the Camera panel remain available.
+Optional `playback` settings control display cadence, independently of the
+scenario's sampling rate. Playback starts paused. Sensing-only navigation uses x1
+over saved results and retains the authored stride for full-timeline navigation
+when **Play sensing frames only** is cleared.
+
+```yaml
+view_defaults:
+  camera_pose:
+    eye: [-6, -129, 16]
+    lookat: [-38, -55, 9]
+    up: [0, 0, 1]
+    fov: 60
+  playback: {mode: fixed_fps, fps: 25, stride: 32}
+  appearance_recipe: appearance.json
+```
+
+`appearance_recipe` references a local version-1
+[appearance recipe](appearance.md#customize-and-save-a-look), resolved using the scenario path
+policy. It uses the same material, texture, lighting and shadow controls as
+the normal pygfx UI. It does not download sky assets, and an explicit
+`--disable-textures` remains authoritative. Other renderers retain their own
+appearance. For initial sensing overlays, use the `view_defaults.sensing` fields
+in the [YAML reference](../reference/scenario_yaml.md#visualizer-defaults). Their
+meaning follows the [sensing panel](sensing_dashboard.md). They do not change
+detection or tracking.
+
+### Authored Demo Tours
+
+`view_defaults.demo_tour` makes **Scenario camera tour** available in the pygfx
+[Demo panel](presentation_tools.md#demo-mode). It does not start automatically.
+Views use the existing [camera sequence](camera.md) format. Coordinates are in
+scene metres, and shot `hold` and `move` values are seconds.
+
+```yaml
+view_defaults:
+  demo_tour:
+    label: Plaza tour
+    views:
+      overview:
+        pose: {eye: [-5, -142, 42], lookat: [-36, -59, 10], up: [0, 0, 1], fov: 56}
+      street:
+        pose: {eye: [-14, -98, 6], lookat: [-36, -45, 11], up: [0, 0, 1], fov: 65}
+    shots:
+      - {view: overview, hold: 5, move: 0}
+      - {view: street, hold: 5, move: 4}
+```
+
+The first view is applied immediately. Later shots travel to their named view
+before holding it. If the sequence does not end at its first view, a four-second
+return transition closes the loop. Each timing must be finite and between
+0 and 120 seconds. Tours accept 2–32 named views and 2–64 authored shots.
+
+Optional `actor` selectors use the camera service's saved-view identity format. Their
+`pose` coordinates are offsets from that actor's current recorded position.
+Omit `actor` for fixed scene views. Camera movement never interpolates scientific
+frame data. Takeover leaves the camera at its current position and restores the
+user's named views, sequence and camera history. The separate **Exhibition
+layout** option is selected interactively in Demo.
+
+### Authored Dusk Lighting
+
+`view_defaults.dusk` makes **Scenario blue hour** available in Rendering and
+enables **Blue hour** and **Sunset cycle** in Demo's **Scenario lighting**
+selector. Opening a scenario does not enable it. The recipe accepts a `label`,
+`facade_lights`, `targets` and `window_accents`.
+
+Each facade light has world-space `position` and `lookat` coordinates in metres,
+an RGB `color` in [0, 1], `intensity`, `distance` in metres and `angle_deg`.
+Each target entry uses its render `object_id`, a target-local `light`, and an
+optional emission palette (`palette_slots` and `emissive_slots`). Target-local
+coordinates follow the recorded mesh transform. At most six shadowless local
+lights are permitted, with at most four facade lights and four targets.
+
+The included [Paris recipe](../../scenarios/showcases/paris_opera_multitarget/scripts/dusk_look.py)
+shows the complete configuration. Its window accents require the matching
+Haussmann atlas. Other facade textures remain unchanged. See
+[presentation controls](presentation_tools.md#authored-scenario-lighting) for
+selecting and cycling authored lighting.
+
 ### MPC Visibility
 
 `mpc_visibility.enabled` is the master MPC-layer switch. `paths` and
@@ -76,6 +157,25 @@ static meshes, or set it to `false` to disable batching. See
 
 Exact `view_defaults` fields are listed in the
 [Scenario YAML Reference](../reference/scenario_yaml.md#visualizer-defaults).
+
+### Visual Material Profiles
+
+Use `view_defaults.visual_profiles` to give a target a visual preset independently
+of its radio material:
+
+```yaml
+view_defaults:
+  visual_profiles:
+    - match:
+        name: Cube
+        type: target
+      preset: Matte
+```
+
+Names use case-insensitive regular expressions with full-name matching. The first
+matching valid rule wins. Keep other rules when adding a profile. This changes
+appearance only, not geometry, ray tracing or saved sensing results. Global
+[scene appearance](appearance.md) are separate from these per-object rules.
 
 ## Component-Specific Settings
 
@@ -130,7 +230,7 @@ overrides the corresponding default.
 
 ## Related Settings
 
-| Task | Primary reference |
+| Goal | Primary reference |
 |------|-------------------|
 | Choose local files, Live Generator, or Remote HDF5 | [Shared Data Layer](../shared/README.md) |
 | Choose or tune a renderer backend | [Renderers](renderers.md) |

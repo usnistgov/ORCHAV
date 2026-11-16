@@ -11,9 +11,6 @@ referenced scenario and obtains frames through its configured
 or remote frame server must still be available when that provider requires
 one.
 
-In short, `scenario.yaml` defines the scenario and a workspace snapshot records
-how that scenario was being viewed.
-
 ## What A Snapshot Keeps
 
 | Saved workspace state | Rebuilt, reloaded, or reset |
@@ -23,10 +20,12 @@ how that scenario was being viewed.
 | Selected TX/RX, node colors, and custom labels | Scene, target, coverage, and MPC geometry are rebuilt from the scenario and frame |
 | MPC visibility, coloring, filters, and render limits | A Live Generator or remote frame server is not started |
 | Global and per-entry visibility and label choices | Temporary object selections and highlights are reset |
-| Trajectory, coverage, aperture, and supported display controls | Runtime material edits, lighting, IBL, shadows, and renderer resources are reset |
+| Trajectory, coverage, aperture, and supported display controls | Runtime per-material edits and renderer resources are reset |
+| Global pygfx appearance, lighting, sky choice and shadow settings | Sky/texture assets are referenced, not embedded; Open3D lighting is not retained |
 
-[Scenario defaults](scenario_defaults.md) and saved material presets are the
-durable way to define appearance. Playback resumes at the saved frame but does
+[Scenario defaults](scenario_defaults.md), saved material presets and pygfx
+[appearance recipes](appearance.md) provide reusable looks.
+Playback resumes at the saved frame but does
 not start automatically.
 
 ## Save, Open, And Resume
@@ -46,6 +45,12 @@ Snapshots are stored under `~/.orchav/sessions/`. They are local, versioned
 files. The Visualizer rejects an unsupported snapshot format or a snapshot
 whose referenced scenario no longer exists before changing the current
 workspace.
+
+For texture maps at startup, the precedence is **explicit CLI flag → saved
+workspace setting → launch default**. Use `--enable-textures` to resume with
+textures enabled while retaining the saved camera and other appearance
+settings. Later GUI changes and manually opened snapshots apply their texture
+choice, unless `--disable-textures` locks maps off.
 
 ## Practical Rules
 

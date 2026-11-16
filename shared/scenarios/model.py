@@ -26,7 +26,7 @@ from shared.scenarios.actors import (
     StationaryMobilitySpec,
     TimelineSpec,
 )
-from shared.scenarios.defaults import DEFAULT_COVERAGE_TX_MODE
+from shared.scenarios.defaults import DEFAULT_COVERAGE_TX_MODE, DEFAULT_EXPORT_PATH_METRICS
 from shared.scenarios.extensions import registered_scene_source_keys
 from shared.scenarios.frame_paths import (
     DEFAULT_FRAMES_DIRECTORY,
@@ -34,6 +34,8 @@ from shared.scenarios.frame_paths import (
     validate_frames_directory,
     validate_frames_pattern,
 )
+from shared.scenarios.sensing_groups import normalize_scenario_sensing, normalize_sensing_groups
+from shared.sensing.range_response import RangeResponseConfig
 
 # ---------------------------------------------------------------------------
 # Quality preset names (from generator/core/configuration/presets.py QUALITY_PRESETS)
@@ -290,16 +292,60 @@ class SceneMaterialsModel(BaseStrictModel):
     )
 
 
+class NativeRcsSolverModel(BaseStrictModel):
+    """Native target solver settings, independent of background ray budgets."""
+
+    channel: Literal["combined", "target_only", "background_only"] = Field(
+        default="combined",
+        description="Combined detector input or an explicitly target-only/background-only diagnostic.",
+    )
+    max_depth: int = Field(
+        default=3,
+        ge=1,
+        strict=True,
+        description="Maximum native path depth including the sensing interaction.",
+    )
+    samples_per_sp: int = Field(
+        default=100000,
+        ge=1,
+        strict=True,
+        description="Native ray samples per scattering point, independent of background samples.",
+    )
+    buffer_size_per_sp: int = Field(
+        default=100000,
+        ge=1,
+        strict=True,
+        description="Native candidate-path capacity per scattering point.",
+    )
+    los: bool = Field(default=True, description="Allow unobstructed target propagation legs.")
+    specular_reflection: bool = Field(
+        default=True, description="Allow specular environment interactions on native target paths."
+    )
+    refraction: bool = Field(
+        default=True, description="Allow supported environment refraction on native target paths."
+    )
+    seed: int = Field(
+        default=42,
+        ge=0,
+        strict=True,
+        description="RCSSolver seed, including enabled direction-keyed model draws.",
+    )
+
+
 class RayTracingModel(BaseStrictModel):
     """Ray-tracing settings independent of the scenario timeline and actors."""
 
     enabled: bool = Field(default=False, description="Enable Generator-side ray tracing.")
+    rcs: Optional[NativeRcsSolverModel] = Field(
+        default=None,
+        description="Native RCS solver and diagnostic channel selection for RCS targets.",
+    )
     view: Optional[str] = Field(
         default=None,
         description="Summary/camera view hint such as `top`, `side`, `front`, or `isometric`.",
     )
     export_path_metrics: bool = Field(
-        default=False,
+        default=DEFAULT_EXPORT_PATH_METRICS,
         description="Store per-path delay, path loss, AoA, and AoD metrics in generated frames.",
     )
     quality: Optional[RayTracingQualityModel] = Field(
@@ -354,6 +400,7 @@ class RayTracingModel(BaseStrictModel):
     cir_time_steps: Optional[int] = Field(
         default=None,
         ge=1,
+        strict=True,
         description="Number of Sionna-native CIR time samples per ray-tracing call.",
     )
     cir_sampling_frequency_hz: Optional[float] = Field(
@@ -719,6 +766,113 @@ class CoverageModel(BaseStrictModel):
 
 
 # ---------------------------------------------------------------------------
+# Sensing
+# ---------------------------------------------------------------------------
+class SensingModel(BaseStrictModel):
+    """Settings validated for an installed sensing-capable extension."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_groups(cls, value: Any) -> Any:
+        return normalize_sensing_groups(value)
+
+    enabled: bool = False
+    bandwidth: Optional[float] = Field(default=None, gt=0)
+    prf_hz: Optional[float] = Field(default=None, gt=0)
+    fft_size_range: Optional[int] = Field(default=None, ge=1, strict=True)
+    fft_size_doppler: Optional[int] = Field(default=None, ge=1, strict=True)
+    cpi_hop_samples: Optional[int] = Field(default=None, ge=1, strict=True)
+    window_range: Optional[str] = None
+    window_doppler: Optional[str] = None
+    range_response: Optional[RangeResponseConfig] = None
+    cfar_type: Optional[str] = None
+    cfar_edge_policy: Optional[Literal["full_window", "truncate"]] = None
+    cfar_guard_cells: Optional[int] = None
+    cfar_ref_cells: Optional[int] = None
+    cfar_threshold_scale: Optional[float] = None
+    cfar_os_rank: Optional[float] = None
+    cfar_rd_guard_cells_range: Optional[int] = None
+    cfar_rd_guard_cells_doppler: Optional[int] = None
+    cfar_rd_ref_cells_range: Optional[int] = None
+    cfar_rd_ref_cells_doppler: Optional[int] = None
+    output_range_doppler: Optional[bool] = None
+    output_range_profile: Optional[bool] = None
+    output_detections: Optional[bool] = None
+    range_mode: Optional[Literal["bistatic", "monostatic"]] = None
+    clutter_removal_enabled: Optional[bool] = None
+    clutter_removal_window: Optional[int] = None
+    coherent_clutter_mode: Optional[Literal["none", "legacy", "windowed_mean"]] = None
+    processing_mode: Optional[
+        Literal[
+            "auto",
+            "coherent_cpi",
+            "sequential_stft",
+            "analytic_path_doppler_oracle",
+        ]
+    ] = None
+    raw_payload_policy: Optional[str] = None
+    recording_profile: Optional[Literal["results", "maps", "reprocessing", "full"]] = None
+    recording_display: Optional[dict[str, Any]] = None
+    cfar_min_snr_db: Optional[float] = None
+    cfar_max_dynamic_range_db: Optional[float] = Field(
+        default=None, ge=0, allow_inf_nan=False, strict=True
+    )
+    array_detection_mode: Optional[Literal["rd", "beam_scan"]] = None
+    beam_angle_oversampling: Optional[int] = Field(default=None, ge=1, le=16, strict=True)
+    cluster_range_gate_m: Optional[float] = Field(default=None, gt=0)
+    cluster_velocity_gate_m_s: Optional[float] = Field(default=None, gt=0)
+    ghost_filter_velocity_gate_m_s: Optional[float] = Field(default=None, gt=0)
+    ghost_filter_azimuth_gate_deg: Optional[float] = Field(default=None, gt=0)
+    track_association_azimuth_gate_deg: Optional[float] = Field(default=None, gt=0)
+    persist_detection_stage_artifacts: Optional[bool] = None
+    persist_tracking_diagnostics: Optional[bool] = None
+    min_detection_range_m: Optional[float] = None
+    max_detection_range_m: Optional[float] = None
+    pre_cfar_doppler_edge_guard_bins: Optional[int] = None
+    pre_cfar_doppler_dc_guard_bins: Optional[int] = None
+    track_confirmation_enabled: Optional[bool] = None
+    track_confirmation_m: Optional[int] = None
+    track_confirmation_n: Optional[int] = None
+    track_confirmation_mode: Optional[Literal["latched", "continuous"]] = None
+    track_max_missed_frames: Optional[int] = None
+    track_association_range_gate_m: Optional[float] = None
+    track_association_velocity_gate_m_s: Optional[float] = None
+    track_output_tentative: Optional[bool] = None
+    tracker_type: Optional[Literal["m_of_n", "kalman", "jpdaf", "cartesian", "cartesian3d"]] = None
+    jpda_max_joint_nodes: Optional[int] = Field(default=None, ge=1, strict=True)
+    jpda_birth_confirmation_frames: Optional[int] = Field(default=None, ge=2, strict=True)
+    jpda_birth_separation_chi2: Optional[float] = Field(
+        default=None, ge=0, strict=True, allow_inf_nan=False
+    )
+    track_association_position_gate_m: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        strict=True,
+        description="Receiver-local Euclidean association gate for Cartesian trackers (m); omitted uses 2 m.",
+    )
+    track_acceleration_psd_m2_s3: Optional[float] = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        strict=True,
+        description="Per-axis Cartesian acceleration-noise power spectral density (m²/s³); omitted uses 1.",
+    )
+    eval_association_range_gate_m: Optional[float] = None
+    eval_association_velocity_gate_m_s: Optional[float] = None
+    display_range_xlim: Optional[List[float]] = None
+    display_velocity_ylim: Optional[List[float]] = None
+    noise_enabled: Optional[bool] = None
+    noise_snr_db: Optional[float] = None
+    rng_seed: Optional[int] = None
+    aoa_filter_enabled: Optional[bool] = None
+    aoa_az_min_deg: Optional[float] = None
+    aoa_az_max_deg: Optional[float] = None
+    aoa_el_min_deg: Optional[float] = None
+    aoa_el_max_deg: Optional[float] = None
+
+
+# ---------------------------------------------------------------------------
 # Data
 # ---------------------------------------------------------------------------
 class FilesConfigModel(BaseStrictModel):
@@ -890,8 +1044,291 @@ class MpcVisibilityDefaultsModel(BaseStrictModel):
     )
 
 
+class SensingViewModel(BaseStrictModel):
+    """Initial plot bounds and scene overlays; never part of the numerical recipe."""
+
+    range_xlim: Optional[List[float]] = Field(
+        default=None, description="Initial range-axis bounds in metres."
+    )
+    velocity_ylim: Optional[List[float]] = Field(
+        default=None, description="Initial radial-velocity-axis bounds in m/s."
+    )
+    show_detections: Optional[bool] = Field(
+        default=None, description="Initially show saved sensing overlays in the scene."
+    )
+    scene_mode: Optional[Literal["detections", "tracks", "evidence", "full"]] = Field(
+        default=None, description="Initial saved sensing scene layer selection."
+    )
+    show_track_labels: Optional[bool] = Field(
+        default=None, description="Show labels for visible estimated tracks."
+    )
+    show_truth: Optional[bool] = Field(
+        default=None, description="Show optional ground-truth overlays for inspection."
+    )
+    show_velocity_arrows: Optional[bool] = Field(
+        default=None, description="Show available saved Cartesian track velocity arrows."
+    )
+    full_history: Optional[bool] = Field(
+        default=None, description="Use the complete recorded history for visible trails."
+    )
+    history_frames: Optional[int] = Field(
+        default=None, ge=1, description="Saved-result count in trails when full_history is false."
+    )
+    pin_freshest: Optional[bool] = Field(
+        default=None,
+        description="Hold an eligible prior sensing result between recorded result epochs.",
+    )
+
+    @field_validator("range_xlim", "velocity_ylim")
+    @classmethod
+    def validate_limits(cls, value: Optional[List[float]]) -> Optional[List[float]]:
+        import math
+
+        if value is not None and (
+            len(value) != 2 or not all(math.isfinite(x) for x in value) or value[0] >= value[1]
+        ):
+            raise ValueError("view limits need two finite, increasing values")
+        return value
+
+
+class SensingSummaryModel(BaseStrictModel):
+    """Export choices, independent of acquisition, detection and recording."""
+
+    figures: List[
+        Literal[
+            "acquisition",
+            "range_profile",
+            "range_doppler",
+            "doppler",
+            "truth",
+            "detection",
+            "angles",
+            "tracking",
+            "tracking_xy",
+            "tracking_xyz",
+            "tracking_cartesian",
+        ]
+    ] = Field(
+        default_factory=lambda: [
+            "range_profile",
+            "range_doppler",
+            "doppler",
+            "truth",
+            "detection",
+            "angles",
+        ]
+    )
+    range_doppler_views: List[Literal["zoom_to_data", "full"]] = Field(
+        default_factory=lambda: ["zoom_to_data", "full"]
+    )
+    range_profile_views: List[Literal["zoom_to_data", "full"]] = Field(
+        default_factory=lambda: ["zoom_to_data", "full"]
+    )
+    history_time_axis: Literal["scene_frame", "time"] = "scene_frame"
+    inspection_figures: List[Literal["detection_stages", "tracking_decisions"]] = Field(
+        default_factory=list
+    )
+
+
+class CameraPoseModel(BaseStrictModel):
+    """Initial free camera pose, independent of recorded actor positions."""
+
+    eye: List[float] = Field(
+        min_length=3, max_length=3, description="Camera position [x, y, z] in metres."
+    )
+    lookat: List[float] = Field(
+        min_length=3, max_length=3, description="Camera focus [x, y, z] in metres."
+    )
+    up: List[float] = Field(
+        default_factory=lambda: [0.0, 0.0, 1.0],
+        min_length=3,
+        max_length=3,
+        description="Camera up direction; must not be parallel to the viewing direction.",
+    )
+    fov: float = Field(default=60.0, gt=0, lt=180, description="Camera field of view in degrees.")
+
+    @model_validator(mode="after")
+    def validate_basis(self):
+        import math
+
+        if not all(math.isfinite(x) for x in (*self.eye, *self.lookat, *self.up, self.fov)):
+            raise ValueError("camera pose requires finite coordinates and field of view")
+        direction = [b - a for a, b in zip(self.eye, self.lookat)]
+        cross = [
+            direction[1] * self.up[2] - direction[2] * self.up[1],
+            direction[2] * self.up[0] - direction[0] * self.up[2],
+            direction[0] * self.up[1] - direction[1] * self.up[0],
+        ]
+        if sum(x * x for x in cross) <= 1e-20:
+            raise ValueError("camera eye/lookat/up must define a nondegenerate view")
+        return self
+
+
+class PlaybackViewModel(BaseStrictModel):
+    """Initial playback cadence; never changes recorded sampling or timestamps."""
+
+    mode: Literal["real_time", "fixed_fps", "maximum"] = Field(
+        default="fixed_fps", description="Initial playback cadence policy; playback starts paused."
+    )
+    fps: int = Field(
+        default=25,
+        ge=1,
+        le=240,
+        description="Requested display updates per second in fixed_fps mode.",
+    )
+    stride: int = Field(
+        default=1, ge=1, description="Recorded scene samples advanced per playback update."
+    )
+
+
+class DemoTourViewModel(BaseStrictModel):
+    """One presentation camera, optionally translated with a saved actor identity."""
+
+    pose: CameraPoseModel
+    actor: Optional[Dict[str, Any]] = None
+
+    @field_validator("actor")
+    @classmethod
+    def validate_actor(cls, value):
+        if value is not None:
+            if value.get("type") not in {"tx", "rx", "target"}:
+                raise ValueError("demo camera actor must be tx, rx or target")
+            if value["type"] in {"tx", "rx"} and (
+                type(value.get("index")) is not int or value["index"] < 0
+            ):
+                raise ValueError("demo radio actor needs a nonnegative index")
+        return value
+
+
+class DemoTourShotModel(BaseStrictModel):
+    """Travel to a named camera, then hold it; durations are seconds."""
+
+    view: str = Field(min_length=1)
+    hold: float = Field(ge=0, le=120, allow_inf_nan=False)
+    move: float = Field(ge=0, le=120, allow_inf_nan=False)
+
+
+class DemoTourModel(BaseStrictModel):
+    """An opt-in camera sequence; recorded actor and sensing data stay unchanged."""
+
+    label: str = "Scenario tour"
+    views: Dict[str, DemoTourViewModel] = Field(min_length=2, max_length=32)
+    shots: List[DemoTourShotModel] = Field(min_length=2, max_length=64)
+
+    @model_validator(mode="after")
+    def validate_sequence(self):
+        if any(not name.strip() for name in self.views):
+            raise ValueError("demo view names must not be empty")
+        if any(shot.view not in self.views for shot in self.shots):
+            raise ValueError("demo shot references an unavailable view")
+        if sum(shot.hold + (shot.move if i else 0) for i, shot in enumerate(self.shots)) <= 0:
+            raise ValueError("demo tour must have a nonzero duration")
+        return self
+
+
+class DuskLightModel(BaseStrictModel):
+    """One shadowless presentation spotlight, in world or target-local metres."""
+
+    position: List[float] = Field(min_length=3, max_length=3)
+    lookat: List[float] = Field(min_length=3, max_length=3)
+    color: List[float] = Field(default=[1.0, 0.67, 0.32], min_length=3, max_length=3)
+    intensity: float = Field(default=5, ge=0, le=100, allow_inf_nan=False)
+    distance: float = Field(default=60, gt=0, le=200, allow_inf_nan=False)
+    angle_deg: float = Field(default=50, gt=0, le=89, allow_inf_nan=False)
+
+    @field_validator("position", "lookat", "color")
+    @classmethod
+    def finite_coordinates(cls, values):
+        import math
+
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError("dusk coordinates and colors must be finite")
+        return values
+
+    @model_validator(mode="after")
+    def validate_light(self):
+        if self.position == self.lookat:
+            raise ValueError("dusk spotlight position and lookat must differ")
+        if not all(0 <= value <= 1 for value in self.color):
+            raise ValueError("dusk colors must be in [0, 1]")
+        return self
+
+
+class DuskTargetModel(BaseStrictModel):
+    """Headlight pose and emission strips in an existing target's UV palette."""
+
+    object_id: str = Field(min_length=1)
+    light: DuskLightModel
+    palette_slots: int = Field(default=19, ge=1, le=64)
+    emissive_slots: Dict[int, List[float]] = Field(default_factory=dict, max_length=64)
+
+    @model_validator(mode="after")
+    def validate_palette(self):
+        import math
+
+        for index, color in self.emissive_slots.items():
+            if not 0 <= index < self.palette_slots:
+                raise ValueError("dusk emission slot is outside the target palette")
+            if len(color) != 3 or not all(math.isfinite(v) and 0 <= v <= 1 for v in color):
+                raise ValueError("dusk emission colors need three values in [0, 1]")
+        return self
+
+
+class DuskViewModel(BaseStrictModel):
+    """Opt-in optical presentation; lights never participate in RF simulation."""
+
+    label: str = "Blue hour"
+    facade_lights: List[DuskLightModel] = Field(default_factory=list, max_length=4)
+    targets: List[DuskTargetModel] = Field(default_factory=list, max_length=4)
+    window_accents: bool = True
+
+    @model_validator(mode="after")
+    def bounded_light_count(self):
+        if len(self.facade_lights) + len(self.targets) > 6:
+            raise ValueError("dusk supports at most six shadowless local lights")
+        if len({target.object_id for target in self.targets}) != len(self.targets):
+            raise ValueError("dusk target identities must be unique")
+        return self
+
+
 class ViewDefaultsModel(BaseStrictModel):
     """Default Visualizer view settings loaded from scenario YAML."""
+
+    sensing: Optional[SensingViewModel] = Field(
+        default=None,
+        description="Initial sensing plot bounds and scene overlays; does not filter recorded results.",
+    )
+    camera_pose: Optional[CameraPoseModel] = Field(
+        default=None, description="Initial eye/lookat/up/fov; overrides the named camera view."
+    )
+    demo_tour: Optional[DemoTourModel] = Field(
+        default=None,
+        description="Opt-in named camera views and timed shots for Demo; no simulation changes.",
+    )
+    dusk: Optional[DuskViewModel] = Field(
+        default=None,
+        description="Opt-in blue-hour presentation lights; does not enable them or alter RF data.",
+    )
+    appearance_recipe: Optional[str] = Field(
+        default=None, description="Local appearance recipe JSON; resolved relative to the scenario."
+    )
+    playback: Optional[PlaybackViewModel] = Field(
+        default=None,
+        description="Initial playback cadence and stride; recorded timing is unchanged.",
+    )
+    label_callout: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Shared Plain text / Callout / Card appearance for actor and track labels.",
+    )
+    show_labels: Optional[bool] = Field(
+        default=None, description="Initially show transmitter and receiver labels."
+    )
+    show_target_labels: Optional[bool] = Field(
+        default=None, description="Initially show authored target-name labels."
+    )
+    viewport_hud_enabled: Optional[bool] = Field(
+        default=None, description="Initially show the viewport status overlay."
+    )
 
     color_mode: Optional[
         Literal["reflection_order", "mpc_type", "delay", "path_loss", "reconstruction_type"]
@@ -927,6 +1364,24 @@ class ViewDefaultsModel(BaseStrictModel):
         default=None,
         description="Initial named camera orientation.",
     )
+    building_appearance: Optional[Literal["original", "procedural", "varied"]] = Field(
+        default=None,
+        description="Initial illustrative building appearance. Requires textures and classified faces.",
+    )
+    authored_surface_textures: Optional[bool] = Field(
+        default=None,
+        description="Show custom landmark/surface texture maps; defaults to enabled.",
+    )
+    facade_theme: Optional[
+        Literal["mixed", "american", "european", "asian", "portuguese", "paris", "haussmann"]
+    ] = Field(
+        default=None,
+        description="Initial illustrative facade theme for Varied mode; does not imply geographic fidelity.",
+    )
+    road_appearance: Optional[Literal["original", "marked"]] = Field(
+        default=None,
+        description="Initial road/path surfacing and markings. Requires textures and producer road metadata.",
+    )
     auto_generate_uvs: Optional[bool] = Field(
         default=None,
         description="Generate box-projection UVs for meshes without embedded UV coordinates.",
@@ -948,11 +1403,13 @@ class ViewDefaultsModel(BaseStrictModel):
 # Generator Summary
 # ---------------------------------------------------------------------------
 GeneratorSummaryProduct = Literal[
+    "topology",
     "scene2d",
     "scene3d",
     "speed",
     "orientation",
     "angular_velocity",
+    "sensing",
 ]
 
 
@@ -968,15 +1425,57 @@ class GeneratorSummaryOutputModel(BaseStrictModel):
 class VisualizationConfigModel(BaseStrictModel):
     """Visualization rendering configuration for 2D and 3D scene summaries."""
 
+    topology_pose_samples: Literal[3, 5] = Field(
+        default=3,
+        description="Sample three or five authored poses for animated topology targets; rigid targets are unchanged.",
+    )
+
+    @field_validator("topology_pose_samples", mode="before")
+    @classmethod
+    def validate_topology_pose_samples(cls, value):
+        """Require an integer sample count instead of coercing floats or strings."""
+        if type(value) is not int or value not in (3, 5):
+            raise ValueError("topology_pose_samples must be the integer 3 or 5")
+        return value
+
+    topology_motion_detail: Union[bool, Literal["auto"]] = Field(
+        default="auto",
+        description="Show rigid-target motion details; auto selects small movements in sensing scenes.",
+    )
+    topology_fixed_target_orientation: Union[bool, Literal["auto"]] = Field(
+        default="auto",
+        description="Show fixed target orientation arrows; auto hides them for motion-detail targets.",
+    )
     scene2d_mode: str = Field(
-        default="rasterized",
-        description="2D scene summary rendering mode.",
+        default="mesh",
+        description="2D scene drawing: native mesh projection by default; rasterized explicitly selects the legacy pixel floor plan.",
     )
     scene2d_resolution: float = Field(
         default=0.05,
         gt=0,
         description="Rasterized 2D scene resolution in meters.",
     )
+    scene2d_limits: Optional[List[float]] = Field(
+        default=None,
+        min_length=4,
+        max_length=4,
+        description="Display-only 2D limits [xmin, xmax, ymin, ymax] in meters; RF scene unchanged.",
+    )
+
+    @field_validator("scene2d_limits")
+    @classmethod
+    def validate_scene2d_limits(cls, limits):
+        """Reject invalid display bounds before starting an acquisition."""
+        import math
+
+        if limits is not None and (
+            not all(math.isfinite(v) for v in limits)
+            or limits[0] >= limits[1]
+            or limits[2] >= limits[3]
+        ):
+            raise ValueError("scene2d_limits requires finite increasing xmin, xmax, ymin, ymax")
+        return limits
+
     scene2d_material_legend: bool = Field(
         default=False,
         description="Include detected scene material families in the 2D summary legend.",
@@ -985,9 +1484,17 @@ class VisualizationConfigModel(BaseStrictModel):
         default="role",
         description="Actor label mode: role labels such as TX1/RX1 or scenario names.",
     )
+    receiver_color_mode: Literal["role", "individual"] = Field(
+        default="role",
+        description="Receiver palette: shared blue by role, or individual colors and named legend entries.",
+    )
+    scene2d_receiver_inset: List[str] = Field(
+        default_factory=list,
+        description="Optional receiver names for a magnified 2D trajectory inset; empty disables it.",
+    )
     scene3d_mode: str = Field(
-        default="floor_plan",
-        description="3D scene summary rendering mode.",
+        default="mesh",
+        description="3D scene drawing: native meshes by default; floor_plan explicitly selects the legacy raster texture.",
     )
     scene3d_alpha: float = Field(
         default=0.3,
@@ -1018,6 +1525,11 @@ class VisualizationConfigModel(BaseStrictModel):
 class GeneratorSummaryModel(BaseStrictModel):
     """Generator post-run topology, motion, and extension diagnostics."""
 
+    sensing: Optional[SensingSummaryModel] = Field(
+        default=None,
+        description="Sensing figure selection, range-Doppler views and optional saved-decision figures.",
+    )
+
     enabled: bool = Field(default=False, description="Generate post-run summary figures.")
     force: bool = Field(
         default=False,
@@ -1028,6 +1540,10 @@ class GeneratorSummaryModel(BaseStrictModel):
     create: List[GeneratorSummaryProduct] = Field(
         default_factory=list,
         description="Summary figure groups to create. Unlisted groups are not generated.",
+    )
+    inspection_figures: List[Literal["detection_stages", "tracking_decisions"]] = Field(
+        default_factory=list,
+        description="Optional saved-decision figures in the sensing summary; empty by default.",
     )
     output: Optional[GeneratorSummaryOutputModel] = Field(
         default=None,
@@ -1078,21 +1594,8 @@ class ScenarioModel(BaseStrictModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
-    @model_validator(mode="before")
-    @classmethod
-    def reject_unavailable_sensing_authoring(cls, value: Any) -> Any:
-        """Reject scenario-authored sensing while preserving frame interoperability."""
-
-        if isinstance(value, dict) and "sensing" in value:
-            raise ValueError(
-                "The `sensing` section is not supported in ORCHAV 0.1 scenario authoring. "
-                "This release can still read optional sensing extension data stored in "
-                "StandardMPCFrame HDF5 files."
-            )
-        return value
-
     schema_version: Literal[2] = Field(
-        description=("Required format identifier for `scenario.yaml`. ORCHAV 0.1 accepts only `2`.")
+        description=("Required format identifier for `scenario.yaml`. ORCHAV accepts only `2`.")
     )
     timeline: TimelineSpec = Field(description="Endpoint-inclusive scenario timeline.")
     actors: ActorsSpec = Field(
@@ -1116,6 +1619,11 @@ class ScenarioModel(BaseStrictModel):
         default=None,
         description="Optional coverage-map computation settings.",
     )
+    sensing: Optional[SensingModel] = Field(
+        default=None,
+        description="Optional sensing settings.",
+    )
+
     view_defaults: Optional[ViewDefaultsModel] = Field(
         default=None,
         description="Visualizer view defaults.",
@@ -1148,6 +1656,11 @@ class ScenarioModel(BaseStrictModel):
             "these values."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_sensing_authoring(cls, value: Any) -> Any:
+        return normalize_scenario_sensing(value)
 
     @model_validator(mode="after")
     def validate_actor_graph(self) -> "ScenarioModel":

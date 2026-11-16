@@ -1,0 +1,285 @@
+{
+  "scenario": "scenarios/generator/building_appearance/cities/washington_mall/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "generated_scene/scene.xml"
+  },
+  "source_files": {
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/buildings_brick.ply": "5a607b014a38b2250f6aec56df04b3489fb0ca0280274b389abe62eb888c69f8",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/buildings_concrete.ply": "4b68ae5719415bca2362996ebbcd1bba039946991edc06b1374432a5806366d0",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/buildings_glass.ply": "2833f8696c9af3f519d0bac10b7d975ce7a665cfd3abae78b5599dc06f398f0e",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/buildings_marble.ply": "ca8088d32374c2869674ce9b96195adcc62b504fa4f13629cae9d7cb96f164b2",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/buildings_metal.ply": "2bab32416d08403f8fce134e288cf6a4091dfc46808dabae5bae5017bd42f679",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/buildings_wood.ply": "ec613770585a1cb2fdbb7b3c55a0e97aecc6050c7cd3fd61ecbbf86a1ba49c71",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/ground.ply": "0b2c577e8b09d3341c9a9ddaae04ecdf1d0a9dadbfdaab9b61c21f3295831ab3",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/streets_concrete.ply": "cbb9edd8c9197a7a20992e94e8ad2e27028bb50603979e2440428da27bfda7bd",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/streets_medium_dry_ground.ply": "c9bcd7449f806e7813c2beb34c3b06881b382585df9963be028ee3ee5169552a",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/vegetation.ply": "5523746e0d8c1efdb5086dc2f76c90ccc5dc3c4c9dea6d721fd4d64753d09e35",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/mesh/water.ply": "cd5effea29e9ebd5cd435ed70dcc2d8540da48a222c412348a061798e053fb58",
+    "scenarios/generator/building_appearance/cities/washington_mall/generated_scene/scene.xml": "8692928a5709d04e1261f7dacaf45663303002638557cde0c298998ffd11735a",
+    "scenarios/generator/building_appearance/cities/washington_mall/scenario.yaml": "7a52a83cd29bd8be225f3e92dbbf6f55453a9beeac46f6e6342f52a5926cbb4f"
+  },
+  "sample_indices": [
+    0
+  ],
+  "sample_times_s": [
+    0.0
+  ],
+  "steps": 1,
+  "actors": [
+    {
+      "name": "ContextTX",
+      "role": "tx",
+      "members": [
+        "ContextTX"
+      ],
+      "sample_positions_m": [
+        [
+          990.0,
+          126.0,
+          8.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            990.0,
+            126.0,
+            8.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ContextRX",
+      "role": "rx",
+      "members": [
+        "ContextRX"
+      ],
+      "sample_positions_m": [
+        [
+          975.0,
+          116.0,
+          2.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            975.0,
+            116.0,
+            2.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "9760f83bd7ceacef1caacbd265656cd3136889bfc2c4dd5550ba48f71c477184",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (mat-itu medium dry ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Ground (mat-itu wet ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Mat-Itu Brick",
+      "display_rgb": [
+        0.5920000000000001,
+        0.39480000000000004,
+        0.3812
+      ]
+    },
+    {
+      "label": "Mat-Itu Concrete",
+      "display_rgb": [
+        0.6872,
+        0.6872,
+        0.6872
+      ]
+    },
+    {
+      "label": "Mat-Itu Glass",
+      "display_rgb": [
+        0.6784313725490196,
+        0.7764705882352941,
+        0.803921568627451
+      ]
+    },
+    {
+      "label": "Mat-Itu Marble",
+      "display_rgb": [
+        0.796,
+        0.7552000000000001,
+        0.6532
+      ]
+    },
+    {
+      "label": "Mat-Itu Metal",
+      "display_rgb": [
+        0.4696,
+        0.4696,
+        0.49
+      ]
+    },
+    {
+      "label": "Mat-Itu Wood",
+      "display_rgb": [
+        0.6940000000000001,
+        0.558,
+        0.43560000000000004
+      ]
+    },
+    {
+      "label": "Road (mat-itu concrete)",
+      "display_rgb": [
+        0.6235294117647059,
+        0.6627450980392157,
+        0.6784313725490196
+      ]
+    }
+  ],
+  "output_sha256": "6b0d2eaec112b4d8683b8d84cdd3a126f538ea62a5f322605ce23b6103f94de7",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -2787.506337890625,
+        -872.8159106445313,
+        -6.77176025390625
+      ],
+      [
+        2787.05736328125,
+        969.84490234375,
+        176.0657666015625
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "ef1158c348035b465264fffe0e89ec2f7ce041fa72adf21bba951cf058f35c7d",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/building_appearance/cities/washington_mall"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

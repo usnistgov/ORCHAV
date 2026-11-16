@@ -1,70 +1,70 @@
-# Headless Rendering
+# Render Images from Saved Frames
 
-Headless rendering turns generated frames into images without opening the
-desktop Visualizer. Use it for scripts, reports, CI checks, and batch output.
-It is a [consumer](../reference/glossary.md#consumer) workflow that reads an
-existing local frame set through the HDF5
-[frame provider](../reference/glossary.md#frame-provider). Run the
-[Generator](../generator/README.md) first when the scenario does not yet have a
-`frames/` directory.
+Headless rendering turns existing frames into images without opening the desktop
+Visualizer. Use the command-line interface for batch output and `render_scenario()`
+for Python scripts. Both read local recordings through the
+[Shared Data Layer](../shared/README.md) and render with pygfx.
 
-This page covers the command-line and Python image interfaces. For inline
-Jupyter views and animation, use [Notebook Visualization](notebooks.md).
+For an interactive view inside Jupyter, use [Notebook Visualization](notebooks.md).
+For image export from an open desktop session, use the Visualizer's Screenshot
+control or [batch rendering](cli_reference.md#batch-rendering).
 
 ## Render One Frame
 
-From the repository root:
+Use the frame set from [Hello World](../../scenarios/getting_started/hello_world/README.md#running).
+Run commands from the repository root after generating the recording.
+
+Render its first frame to a PNG:
 
 ```bash
 python -m visualizer.headless scenarios/getting_started/hello_world \
   --frame 0 -o tmp/orchav-frame.png
 ```
 
-The command opens the scenario through the Shared Data Layer, renders frame 0
-with pygfx, writes the PNG, and exits. Standalone headless rendering uses pygfx.
-The desktop Visualizer offers both pygfx and Open3D/Filament on Windows and
-Linux. macOS desktop, notebook, and headless visualization use pygfx.
+The command loads frame 0, writes `tmp/orchav-frame.png`, and exits. No ray
+tracing is performed.
 
 ## Render From Python
 
-`render_scenario()` returns an `(H, W, 3)` `uint8` NumPy array. It can also
-write the image to disk:
+`render_scenario()` returns an `(H, W, 3)` `uint8` NumPy array. Pass `output`
+when you also want an image file:
 
 ```python
 from visualizer.headless import render_scenario
 
 image = render_scenario(
-    "scenarios/visualizer/notebook_mode",
-    frame=1,
+    "scenarios/getting_started/hello_world",
+    frame=0,
     azimuth=45,
     elevation=30,
-)
-
-render_scenario(
-    "scenarios/visualizer/notebook_mode",
-    frame=1,
-    output="tmp/orchav-headless/frame1.png",
+    output="tmp/orchav-headless/frame0.png",
 )
 ```
 
-The Python API accepts the same frame, camera, coloring, visibility, lighting,
-and image-size choices as the command-line interface.
+Camera angles are in degrees. Image width and height are in pixels. Camera
+distance and center use the scene's metre coordinates.
 
 ## Select Frames, Camera, And Appearance
 
+For a moving recording, use the existing
+[Notebook Mode example](../../scenarios/visualizer/notebook_mode/README.md#running).
+
+Render its first three frames with path-loss coloring:
+
 ```bash
 python -m visualizer.headless scenarios/visualizer/notebook_mode \
-  --frame 1 \
-  --azimuth 45 --elevation 30 --distance 100 \
-  --color-mode path_loss \
-  -o tmp/orchav-headless/frame1.png
-
-python -m visualizer.headless scenarios/visualizer/notebook_mode \
-  --frames 0,1,2 \
+  --frames 0,1,2 --color-mode path_loss \
   -o tmp/orchav-headless/frames/
 ```
 
-Common option groups are:
+This creates `frame_0000.png`, `frame_0001.png`, and `frame_0002.png` in the
+output directory.
+
+![A saved Notebook Mode frame rendered with path-loss coloring](../assets/scenarios/scenarios_visualizer_notebook_mode_render_frame2_path_loss.png)
+
+This example render shows the Munich scene and the paths for frame 2. Change
+`--center`, `--distance`, `--azimuth` and `--elevation` to inspect the link more
+closely. These controls change the view of the saved data.
 
 | Area | Options |
 |------|---------|
@@ -77,27 +77,17 @@ Common option groups are:
 | Textures | `--enable-textures`, `--disable-textures` |
 
 `--base64` writes a base64-encoded PNG to standard output. Run
-`python -m visualizer.headless --help` for the exact current options.
+`python -m visualizer.headless --help` for all options. Python calls accept the
+frame, camera, coloring, visibility, lighting and image-size arguments shown in
+the [`render_scenario()` signature](../../visualizer/headless.py).
 
 ## Graphics Environment
 
-The standalone interface uses pygfx, wgpu, and rendercanvas. It depends on the
-target system's graphics driver, so test one representative render in the
-environment where automation will run.
-
-See [Renderers](renderers.md) for the desktop renderer capabilities and
-[Troubleshooting](../help/troubleshooting.md) for display-server and remote
-desktop workflows.
-
-## Related Workflows
-
-- Use `orchav-visualizer --render-frames DIR` when batch rendering belongs to a
-  desktop Visualizer launch. See the [CLI Reference](cli_reference.md#batch-rendering).
-- Use [Notebook Visualization](notebooks.md) for inline images, interactive
-  views, animation, or notebook-driven regeneration.
-- Use the [Notebook Mode scenario](../../scenarios/visualizer/notebook_mode/README.md)
-  for a small three-frame example.
+Rendering requires a working wgpu graphics backend, even when no desktop window
+opens. Test one frame in the environment where the script will run. See
+[Troubleshooting](../help/troubleshooting.md) for graphics and remote-machine
+setup, and [Renderers](renderers.md) for desktop backend choices.
 
 ---
 
-Up: [Visualizer](README.md) | Related: [Renderers](renderers.md) | [Notebook Visualization](notebooks.md)
+Up: [Visualizer](README.md) | Related: [Notebook Visualization](notebooks.md) | [CLI Reference](cli_reference.md)

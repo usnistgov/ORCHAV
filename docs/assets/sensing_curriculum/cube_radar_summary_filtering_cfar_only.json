@@ -1,0 +1,60 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "analysis/cube-radar-filtering/cfar_only",
+  "source_identity": {
+    "generation_id": "1060820e-7bd9-40e2-8fc8-72539126121b",
+    "frame_set_id": "381200c697396573867e0733d7b2f6672a153d7ee7bb22afd6551dc0a682c408"
+  },
+  "manifest_sha256": "2b9f317c868dff831da36150e20ae15669f1a5e2df604860614d20d3c267e0bf",
+  "source_files_sha256": {
+    "frames_manifest.json": "2b9f317c868dff831da36150e20ae15669f1a5e2df604860614d20d3c267e0bf",
+    "mpc_frames_00063-00063.h5": "4c805e5745723401327e8a94bce3125e4a0648b4cd2f5518201eeec7dfc3aded"
+  },
+  "figures": [
+    "range_doppler"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 1,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "17d5ec1f-d237-53cc-86e1-8a0969627eee",
+      "processing_recipe_id": "516db2d3542df1a7004745584e6f4f4b68be388cc3a3f20cff43270c2e6c6140",
+      "detection_count": 5
+    }
+  ],
+  "outputs": [
+    "sensing/range_doppler.png",
+    "sensing/range_doppler_full.png"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "summary_output": "sensing/range_doppler_full.png",
+  "output": "docs/assets/sensing_curriculum/cube_radar_summary_filtering_cfar_only.png",
+  "output_sha256": "0148982ea8b0e545e679f7ffa5f8a3124be56a03c95b66b023a8d8161037fb1b",
+  "plotting_source_sha256": {
+    "generator/figures/summary/sensing.py": "68714c70423f25301376c173a5b54bd34b640b28aad113d5993120d4bdec9537",
+    "generator/figures/summary/saved_sensing.py": "93c189d60bb2b71ad65a7a454c4379d7830f1b77285dec8daec04781fd0abcd1",
+    "shared/sensing_viz.py": "45def40892a71ec9fddf952ae697673174d8d3bcf4646b67ee79206b61175ef1",
+    "shared/sensing_doppler_summary.py": "673a30d11deef54429c768cc09c61a15b0db00010cd4ce9d594db3edbb2208a3",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.summary.saved_sensing",
+    "analysis/cube-radar-filtering/cfar_only",
+    "-o",
+    "analysis/public-figure-refresh/summary-9",
+    "--figure",
+    "range_doppler"
+  ],
+  "path_convention": "Repository-relative source paths and reproducible output-directory names.",
+  "image": "cube_radar_summary_filtering_cfar_only.png",
+  "sha256": "0148982ea8b0e545e679f7ffa5f8a3124be56a03c95b66b023a8d8161037fb1b",
+  "tutorial_scenario": "scenarios/sensing/cube_radar/stationary/scenario.yaml",
+  "tutorial_scenario_sha256": "9d693f6d7774fa7e28ac044a7d8c394aca0a9ea76e1a6c01996df860867940b6",
+  "license_spdx": "GPL-3.0-only",
+  "execution_backend": "CPU LLVM"
+}

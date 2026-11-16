@@ -131,8 +131,8 @@ def test_retired_layout_profiles_are_rejected():
 
 
 def test_qt_min_width_for_profile():
-    assert qt_min_width_for_profile("auto") == QT_MIN_WIDTH
-    assert qt_min_width_for_profile("capture-renderer") == QT_MIN_WIDTH
+    assert qt_min_width_for_profile("auto") == 420
+    assert qt_min_width_for_profile("capture-renderer") == 420
     assert qt_min_width_for_profile("capture-workspace") == CAPTURE_WORKSPACE_QT_WIDTH
 
 
@@ -176,3 +176,15 @@ def test_renderer_lifecycle_selects_backend_window_size_units():
     assert logical[:2] == (960, 720)
     assert physical[:2] == (1440, 1080)
     assert logical[2:] == physical[2:] == (layout.renderer_x, layout.renderer_y)
+
+
+def test_small_logical_displays_keep_both_windows_inside_available_geometry():
+    for profile in ("auto", "capture-workspace", "capture-renderer"):
+        for width, height in ((800, 480), (1024, 768), (1280, 800)):
+            layout = compute_layout(
+                width, height, screen_x=120, screen_y=30, layout_profile=profile
+            )
+            assert layout.qt_x >= 120
+            assert layout.qt_y >= 30
+            assert layout.renderer_x + layout.renderer_logical_width <= 120 + width
+            assert layout.qt_y + layout.qt_height <= 30 + height

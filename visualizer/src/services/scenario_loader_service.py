@@ -111,8 +111,7 @@ class ScenarioLoaderService(BaseService):
         if not scenario_path:
             return False
 
-        scenario_dir = scenario_path.parent if scenario_path.is_file() else scenario_path
-        scenario_path_str = self._relative_to_project_root(scenario_dir)
+        scenario_path_str = self._relative_to_project_root(scenario_path)
 
         logger.info("Opening scenario via dialog: %s", scenario_path_str)
         outcome = self.visualizer.open_scenario(scenario_path_str)

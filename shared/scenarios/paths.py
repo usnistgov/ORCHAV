@@ -77,7 +77,8 @@ def find_project_root(start: Path) -> Path:
     generic marker names. If no structural boundary exists, the candidate
     containing the most ORCHAV project markers wins and a VCS marker breaks
     ties. When no candidate qualifies, the resolved starting directory is
-    returned with a warning.
+    returned. Standalone recordings with absolute or scenario-relative assets
+    need no enclosing project; this fallback is diagnostic information.
 
     Args:
         start: Starting directory to search from
@@ -85,21 +86,33 @@ def find_project_root(start: Path) -> Path:
     Returns:
         Path to project root directory
 
-    Raises:
-        RuntimeError: If project root cannot be determined
     """
     start = start.resolve()
 
     project_markers = ["README.md", "config", "libraries", "scenarios", "visualizer", "shared"]
     ancestors = [start] + list(start.parents)
 
+    def is_eligible_root(parent: Path) -> bool:
+        # Generic directories at a drive or filesystem root can be unrelated
+        # to ORCHAV. Require an explicit project marker there, while allowing
+        # real source checkouts or exports located at the filesystem root.
+        return (
+            parent != parent.parent
+            or (parent / ".git").exists()
+            or (parent / "pyproject.toml").is_file()
+        )
+
     for parent in ancestors:
+        if not is_eligible_root(parent):
+            continue
         if (parent / "libraries").is_dir() and (parent / "scenarios").is_dir():
             logger.debug("Found project root via structural boundary: %s", parent)
             return parent.resolve()
 
     candidates: list[tuple[Path, int, bool]] = []
     for parent in ancestors:
+        if not is_eligible_root(parent):
+            continue
         marker_count = sum(1 for marker in project_markers if (parent / marker).exists())
         has_git = (parent / ".git").exists()
         if marker_count >= 2:
@@ -118,8 +131,20 @@ def find_project_root(start: Path) -> Path:
         )
         return best_parent.resolve()
 
-    logger.warning("Could not determine project root from %s, using start directory", start)
+    logger.debug("No enclosing project for %s; using the standalone scenario directory", start)
     return start.resolve()
+
+
+def find_asset_project_root(source: Path) -> Path:
+    """Resolve library assets from the working checkout or source checkout.
+
+    A working checkout contains both ``libraries`` and ``scenarios``. Otherwise,
+    retain project discovery from ``source``.
+    """
+    working_root = find_project_root(Path.cwd())
+    if all((working_root / name).is_dir() for name in ("libraries", "scenarios")):
+        return working_root
+    return find_project_root(source)
 
 
 def find_project_root_from_script(script_path: Path) -> Path:

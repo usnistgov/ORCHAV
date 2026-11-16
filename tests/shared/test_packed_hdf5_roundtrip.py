@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from concurrent import futures
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +50,7 @@ def _write_semantic_frame_set(
     root: Path,
     *,
     include_sensing: bool = True,
+    include_targets: bool = False,
 ) -> tuple[Path, tuple[Any, ...]]:
     frames_dir = root / "frames"
     specs = semantic_frame_sequence()
@@ -60,6 +61,12 @@ def _write_semantic_frame_set(
     )
     for frame_index, spec in enumerate(specs):
         frame = build_standard_mpc_frame(spec, frame_idx=frame_index)
+        if include_targets:
+            frame = replace(
+                frame,
+                target_positions_m=np.full((frame_index + 1, 3), float(frame_index)),
+                targets_metadata=tuple({"name": f"target-{i}"} for i in range(frame_index + 1)),
+            )
         writer.append(frame if include_sensing else replace(frame, sensing=None))
     chunk = writer.finalize_to_range_name()
     manifest = manifest_from_chunks(
@@ -636,6 +643,81 @@ def test_statistics_projection_scan_reads_each_chunk_column_once(
         *(f"paths/{metric.value}" for metric in PATH_METRIC_ORDER),
     }
     assert "bounces/xyz_m" not in reads
+
+
+@pytest.mark.parametrize("steps", [[0, 1, 2, 3], [3, 0, 2, 2, 1]])
+def test_visual_batches_match_individual_reads_and_preserve_order(tmp_path, steps) -> None:
+    frames_dir, specs = _write_semantic_frame_set(tmp_path)
+    reader = PackedHDF5Reader(frames_dir)
+    request = visual_frame_read_request()
+    try:
+        expected = [reader.load_projection(step, request) for step in steps]
+        actual = list(reader.iter_projections(steps, request))
+        for single, batched in zip(expected, actual, strict=True):
+            for field in fields(single.frame):
+                left, right = getattr(single.frame, field.name), getattr(batched.frame, field.name)
+                if isinstance(left, np.ndarray):
+                    np.testing.assert_array_equal(left, right)
+                else:
+                    assert left == right
+            assert_canonical_matches_semantics(
+                canonical_from_projection(batched, points_dtype=np.float32),
+                specs[batched.frame.frame_index],
+            )
+    finally:
+        reader.close()
+
+
+@pytest.mark.parametrize("row_limit", [2, 64])
+def test_visual_batches_bound_read_ahead_and_coalesce_metadata(
+    tmp_path, monkeypatch, row_limit
+) -> None:
+    frames_dir, _ = _write_semantic_frame_set(tmp_path, include_targets=True)
+    monkeypatch.setattr(packed_reader_module, "_PROJECTION_BATCH_ROWS", row_limit)
+    reads = defaultdict(list)
+    original = packed_reader_module._dataset
+    monkeypatch.setattr(
+        packed_reader_module,
+        "_dataset",
+        lambda root, path: _CountingDataset(original(root, path), path, reads),
+    )
+    reader = PackedHDF5Reader(frames_dir)
+    try:
+        projections = list(reader.iter_projections([0, 1, 2, 3], visual_frame_read_request()))
+    finally:
+        reader.close()
+    assert len(projections) == 4
+    expected_reads = 2 if row_limit == 2 else 1
+    for name in (
+        "index/frame_target_offsets",
+        "targets/position_m",
+        "targets/metadata_json",
+        "frames/source_json",
+    ):
+        assert len(reads[name]) == expected_reads, (name, reads)
+    assert not any(name.startswith("sensing/") for name in reads)
+    assert "frames/sensing_metadata_json" not in reads
+
+
+@pytest.mark.parametrize("budget", [0, 128])
+def test_visual_batches_fall_back_when_columns_exceed_cache_budget(
+    tmp_path, monkeypatch, budget
+) -> None:
+    frames_dir, _ = _write_semantic_frame_set(tmp_path, include_targets=True)
+    monkeypatch.setattr(packed_reader_module, "_PROJECTION_BATCH_CACHE_BYTES", budget)
+    reader = PackedHDF5Reader(frames_dir)
+    try:
+        projections = list(reader.iter_projections([0, 1, 2, 3], visual_frame_read_request()))
+        for projection in projections:
+            expected = reader.load_projection(
+                projection.frame.frame_index, visual_frame_read_request()
+            )
+            np.testing.assert_array_equal(
+                expected.frame.bounce_xyz_m, projection.frame.bounce_xyz_m
+            )
+            assert expected.frame.targets_metadata == projection.frame.targets_metadata
+    finally:
+        reader.close()
 
 
 def test_deep_validation_rejects_metric_values_that_disagree_with_validity(

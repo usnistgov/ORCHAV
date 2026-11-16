@@ -1,0 +1,21 @@
+{
+  "python": "3.12.12",
+  "source_receipt_sha256": "01d50c1860d999be3b58caad07eaec0c8b9c35a4ca03c970510c43d891033787",
+  "assets": [
+    {
+      "image": "tracking_decisions.png",
+      "sha256": "a78cdd107079cab8aa70be9b3dec85f13d3c6b21caf65363a635529e4b865115",
+      "frame_set_id": "73cac9ad1af57629ba7b99d1e7417383023c5495e4335f1aae1f7d96cf92e544",
+      "generation_id": "9a80ab28-feb0-48f4-9ff2-2ae9139b5e49",
+      "frame_index": 1599,
+      "source": "ORCHAV synthetic maneuver-tracking illustration",
+      "reproduction_status": "Historical instructional capture; original acquisition workflow is not included in this release."
+    },
+    {
+      "image": "detection_overview.png",
+      "sha256": "45a376ba5c179c62ce0f6513035a7a00700bea3c5e82c0ec2bd9133fc0dcc154",
+      "source": "ORCHAV synthetic detection-stage illustration",
+      "reproduction_status": "Historical instructional capture; original acquisition workflow is not included in this release."
+    }
+  ]
+}

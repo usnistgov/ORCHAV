@@ -3,93 +3,81 @@
 [Scenarios](../../../README.md) > [Visualizer](../../README.md) >
 [Data Modes](../README.md) > Live Generator (gRPC)
 
-Live Generator (gRPC) connects the Visualizer to a separate running Generator
-service and requests frames on demand. Use it when the Visualizer should send
-tracing settings, TX/RX positions, or target transforms to that live session
-for recomputation. `live_grpc` is the corresponding
-[`data.mode`](../../../../docs/shared/README.md#choose-a-data-mode) and CLI value.
-
-Unlike Local What-if Preview, this workflow keeps a Generator service running
-and sends requests over gRPC. See
-[Interactive Recomputation](../../../../docs/visualizer/interactive_recomputation.md)
-for the shared persistence rules.
-
-Install the [`grpc` optional
-extra](../../../../docs/getting_started/installation.md#optional-extras) before
-running this example.
+Connect the Visualizer to a running Generator, request frames as you explore
+the timeline, and try moving the receiver to recompute its propagation paths.
 
 To run it, see [Running](#running).
 
-## Scene Setup
+## Scene Layout
 
-![2D scene layout](../../../../docs/assets/scenarios/scenarios_visualizer_data_modes_live_grpc_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_visualizer_data_modes_live_grpc_topology.png)
 
-| Element | Configuration |
-| --- | --- |
-| `BaseStation` | Fixed transmitter above the Etoile scene |
-| `MobileRx` | Receiver moving diagonally across the scene over 50 frames |
-| `data.mode` | `live_grpc` (Live Generator over gRPC) |
+`BaseStation` stays 30 m above the Etoile scene. `MobileRx` follows a linear
+street-level route over 50 frames and 5 s.
 
-## Scenario Configuration
+## Configuration Walkthrough
+
+The [scenario.yaml](scenario.yaml) selects live generation:
 
 ```yaml
 data:
   mode: live_grpc
 ```
 
-With no endpoint override, both processes use
-`grpc://localhost:50051`. To use another local port without editing YAML, pass
-the same override to both processes:
-
-```bash
-orchav-generator SCENARIO --data-mode live_grpc --grpc-port 50053
-orchav-visualizer --scenario SCENARIO --data-mode live_grpc --grpc-port 50053 --no-resume
-```
-
-For a trusted private network, also select a server listener explicitly with
-`--bind-host HOST`. Otherwise, the Generator remains loopback-only. The client
-port override retains the configured host. If the stream disconnects, reopen
-the scenario after the Generator is available rather than expecting automatic
-reconnection or request replay.
+The Generator and Visualizer use `localhost:50051` by default. Requested
+frames are computed and cached in memory; this mode does not save a `frames/`
+directory.
 
 ## Running
 
-Open two terminals:
+From the repository root, install the gRPC extra:
 
 ```bash
-# Terminal 1: start the Generator server
-orchav-generator scenarios/visualizer/data_modes/live_grpc
-
-# Terminal 2: connect the Visualizer
-orchav-visualizer --scenario scenarios/visualizer/data_modes/live_grpc
+python -m pip install -e ".[grpc]"
 ```
 
-## What To Notice
+In the first terminal, start the Generator and leave it running:
 
-- Open **System** and expand **Data Source**. It reports mode **Live gRPC** and
-  shows the connection, buffer, and frame-timeline status.
-- Scrub to a later frame and watch the latest-frame and buffer values update
-  while the Generator remains running in the first terminal.
-- No persistent `frames/` directory is written. Frames are computed, streamed,
-  and cached in memory.
-- One Visualizer controls the mutable live simulation at a time.
+```bash
+orchav-generator scenarios/visualizer/data_modes/live_grpc
+```
 
-## What To Try
+In a second terminal, connect the Visualizer:
 
-- Open **Edit** and apply a different ray-tracing quality preset.
-- With the pygfx renderer, open **Edit**, enable **Live Actor Editing**, move
-  the receiver with its gizmo, and release it to send one update to the
-  Generator. The Object Management context menu also offers **Node
-  Properties** for live actors.
-- In **System** > **Data Source** > **Actions**, choose **Reset Live Frames**
-  and request the frame again.
+```bash
+orchav-visualizer --scenario scenarios/visualizer/data_modes/live_grpc --no-resume
+```
+
+## What To Inspect
+
+1. Open **System → Data Source**. It reports **Live gRPC** and the connection
+   and frame-buffer status.
+2. Scrub to a later frame. The Generator computes the requested frame, and
+   `MobileRx` moves to that point on its route.
+3. Keep the Generator running while you explore. One Visualizer controls the
+   live session at a time.
+
+## Try A Live Edit
+
+1. Pause playback. Under **Edit → Actor Editing**, select **Enable Live Actor
+   Editing**.
+2. Select `MobileRx` in the scene, move it with the transform gizmo, and release
+   the gizmo. The Generator recomputes the paths for the edited pose.
+3. To compare solver settings, change the quality preset under
+   **Edit → Raytracing**, then choose **Apply Raytracing Changes**.
+
+These edits affect the current session. To make a change permanent, edit
+`scenario.yaml` and restart the Generator. See
+[Interactive Recomputation](../../../../docs/visualizer/interactive_recomputation.md)
+for the supported edits and reset controls.
+
+When finished, close the Visualizer and stop the Generator with **Ctrl+C**.
+If the connection is lost, restart the Generator as needed and reopen the
+scenario. For another port or host, see the
+[connection options](../../../../docs/visualizer/cli_reference.md).
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) |
-> [Visualizer](../../README.md) | [Data Modes](../README.md) | Current:
-> **Live Generator (gRPC)**
->
-> Up: [Data Modes](../README.md) | Compare:
-> [Local HDF5 Playback](../hdf5_files/README.md) |
-> [Remote HDF5 Playback](../remote_hdf5/README.md)
+Up: [Data Modes](../README.md) ·
+[Local HDF5 Playback](../hdf5_files/README.md) ·
+[Remote HDF5 Playback](../remote_hdf5/README.md)

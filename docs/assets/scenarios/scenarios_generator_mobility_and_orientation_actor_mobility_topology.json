@@ -1,0 +1,447 @@
+{
+  "scenario": "scenarios/generator/mobility_and_orientation/actor_mobility/scenario.yaml",
+  "scene_source": {
+    "source": "library",
+    "id": "ground/ground_60x50.xml"
+  },
+  "source_files": {
+    "libraries/scenes/ground/ground_60x50.ply": "ac6fde51be56692107e71a2faa61ca661a47e171bd9244b58523b2cc01dcd0fa",
+    "libraries/scenes/ground/ground_60x50.xml": "17359e5bee8e7bbd1b3340dbf6c20ece66636db0431d745d818947499445ef46",
+    "scenarios/generator/mobility_and_orientation/actor_mobility/scenario.yaml": "0edf861d4d9755935b2c73b10fcba7d75a4351323f58d197305e27c0b9a5d50a"
+  },
+  "sample_indices": [
+    0,
+    31
+  ],
+  "sample_times_s": [
+    0.0,
+    8.0
+  ],
+  "steps": 32,
+  "actors": [
+    {
+      "name": "MainTransmitter",
+      "role": "tx",
+      "members": [
+        "MainTransmitter"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          0.0,
+          10.0
+        ],
+        [
+          0.0,
+          0.0,
+          10.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            0.0,
+            10.0
+          ],
+          "rotation_matrix": [
+            [
+              0.7071067811865475,
+              -0.0,
+              -0.7071067811865476
+            ],
+            [
+              0.0,
+              1.0,
+              -0.0
+            ],
+            [
+              0.7071067811865476,
+              0.0,
+              0.7071067811865475
+            ]
+          ],
+          "forward_direction": [
+            0.7071067811865475,
+            0.0,
+            0.7071067811865476
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX_Static",
+      "role": "rx",
+      "members": [
+        "RX_Static"
+      ],
+      "sample_positions_m": [
+        [
+          24.0,
+          -8.0,
+          1.5
+        ],
+        [
+          24.0,
+          -8.0,
+          1.5
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            24.0,
+            -8.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX_Linear",
+      "role": "rx",
+      "members": [
+        "RX_Linear"
+      ],
+      "sample_positions_m": [
+        [
+          -22.0,
+          -18.0,
+          1.5
+        ],
+        [
+          23.0,
+          -18.0,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -22.0,
+            -18.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX_Waypoint",
+      "role": "rx",
+      "members": [
+        "RX_Waypoint"
+      ],
+      "sample_positions_m": [
+        [
+          10.0,
+          -15.0,
+          1.5
+        ],
+        [
+          25.0,
+          0.0,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            10.0,
+            -15.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX_Circular",
+      "role": "rx",
+      "members": [
+        "RX_Circular"
+      ],
+      "sample_positions_m": [
+        [
+          -2.0,
+          14.0,
+          1.5
+        ],
+        [
+          -2.0,
+          14.000000000000002,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -2.0,
+            14.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX_MeshGrid",
+      "role": "rx",
+      "members": [
+        "RX_MeshGrid"
+      ],
+      "sample_positions_m": [
+        [
+          -28.0,
+          8.0,
+          1.5
+        ],
+        [
+          -20.0,
+          20.0,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -28.0,
+            8.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "54d45195ca1b95ca91fd31f3626fa95937131b514b7c897c2a64b82d5f99d5e8",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (concrete)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    }
+  ],
+  "output_sha256": "b3cc23615866989bfe29f2533a0bc16d799a160ac05a69cce41b5d819efa6e3a",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -32.4,
+        -27.0,
+        -0.4
+      ],
+      [
+        32.4,
+        27.0,
+        10.4
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "name"
+  },
+  "renderer_sha256": "8832ee6a74cf03bfac1434a265d6ca1d887e04f7f95394323e31955b255118e1",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/mobility_and_orientation/actor_mobility"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

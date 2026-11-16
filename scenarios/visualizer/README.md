@@ -1,8 +1,6 @@
 # Visualizer Scenarios
 
-[Scenarios](../README.md) > Visualizer
-
-These runnable examples teach the ORCHAV Visualizer as a
+These examples show how to use the ORCHAV Visualizer as a
 [consumer](../../docs/reference/glossary.md#consumer) of generated or synthetic
 frame data. Complete [Your First Visualizer
 Session](../../docs/visualizer/first_session.md) with Hello World before starting
@@ -21,43 +19,27 @@ Follow these four scenarios in order:
 
 ## Optional Workflows
 
-Choose these by task. They are not additional required tutorial steps.
+Choose the workflow you need; these examples and guided exercises can be followed independently.
 
 | Goal | Scenario |
-|------|----------|
+|---|---|
 | Compare local, live, and remote frame delivery | [Data Modes](data_modes/README.md) |
 | Inspect antenna-array response overlays | [Beamforming](beamforming/README.md) |
 | Render local frames in Jupyter | [Notebook Mode](notebook_mode/README.md) |
+| Select a saved range–Doppler cell and inspect its 3D range shell and associated paths | [Sensing selection guided exercise](sensing_selection/README.md), using runnable fixtures from [Visualizer experiments](../../examples/visualizer_experiments/README.md) |
+| Compare Detailed, Paper, Glow, and procedural facades on a small local scene | [Building Appearance](building_appearance/README.md) |
+
 
 ## Performance And Diagnostics
 
-These scenarios measure software behavior. Do not interpret their outputs as a
-physical-channel study unless the individual page says otherwise.
+Use the [Synthetic MPC Benchmark](synthetic_mpc_benchmark/README.md) to measure
+Visualizer performance with controlled random paths, without ray tracing.
+For developers checking the source-cell selection behavior of coverage and
+sensing volume views, the [direct source-cell inspection fixture](volume_cell_inspection/README.md)
+uses **synthetic data and a native Qt harness**; it is not a radar experiment.
 
-| Goal | Scenario |
-|------|----------|
-| Generate controlled random MPC populations without [Sionna RT](https://nvlabs.github.io/sionna/) | [Synthetic MPC Benchmark](synthetic_mpc_benchmark/README.md) |
-
-Synthetic workloads range from a quick smoke check to memory-intensive stress
-runs. Begin with the default or quick-smoke command on the scenario page.
-
-## Generated Data
-
-Scenarios that run the Generator create reusable HDF5 frame sets under their
-local `frames/` directory. The same frames can be reopened in the Visualizer,
-inspected with `orchav-inspect`, or consumed through the
-[Shared Data Layer](../../docs/shared/README.md).
-
-The synthetic benchmark writes structurally valid frames without Sionna RT,
-so use it for performance and cache testing rather than propagation
-interpretation.
-
-For workflows associated with a paper, use the dedicated
-[Reproducibility documentation](../../docs/reproducibility/simultech_2026.md)
-rather than treating the scenario catalog as a paper index.
+For saved products and detector controls, follow the [sensing dashboard tour](../../docs/visualizer/sensing_dashboard.md). To generate a first sensing recording, start with the [stationary cube](../sensing/cube_radar/stationary/README.md).
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../README.md) | Current: **Visualizer**
->
-> Start the core path: [MPC Inspection](mpc_inspection/README.md)
+Up: [All scenarios](../README.md) | Begin: [MPC Inspection](mpc_inspection/README.md)

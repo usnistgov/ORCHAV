@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "front": {
+    "axis": "horizontal bearing -140.118872 degrees from +X toward +Y",
+    "yaw_offset_deg": 140.11887222867557,
+    "note": "Face direction visually checked against source clip translation. This correction maps the source front to actor +X; align_motion then points it along the route. +Z remains upright."
+  }
+}

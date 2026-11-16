@@ -18,10 +18,12 @@ from .figures import (
     normalize_coverage_height_stack,
     serving_tx_class_labels,
 )
+from .spatial import create_coverage_3d_figure
 
 __all__ = [
     "_coverage_extent_from_grid",
     "_load_coverage",
+    "create_coverage_3d_figure",
     "create_coverage_comparison_figure",
     "create_coverage_distribution_figure",
     "create_coverage_height_evolution_animation",

@@ -1,0 +1,276 @@
+{
+  "scenario": "scenarios/generator/building_appearance/cities/tokyo_shinjuku/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "generated_scene/scene.xml"
+  },
+  "source_files": {
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/buildings_concrete.ply": "6b90a5b580491421851c93b98668659b140864091586ec9351e112c4970abc82",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/buildings_glass.ply": "57f754e9297e3198041453ddc59d6ccf24091478aec0f32ff07c83a4c5432be6",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/buildings_marble.ply": "e2327a3db44f0e729123807080d566a85064e48cc259f4dd71cfbb935bb0ee27",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/buildings_metal.ply": "fe9cd66245274bab6cf6ae2f8d060e47a7df8a067ea67c67a4abd7c9f354130d",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/buildings_wood.ply": "6ce042289bfc498a217470ff818c4d3487e84f1d7db0376ea95d229298b6d257",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/ground.ply": "ae13dba16273311ec3ff1ee6e69b0fd38e588059af7add0f50814871921e7efc",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/streets_concrete.ply": "f302652864fa33fd4863ea73a193aaa6bc8560b5b537bf4f68caa11a42eea536",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/streets_medium_dry_ground.ply": "45a79defb53e831c0b139299979ee9f8defe20b6fd2e5efd90afa4fa95d3d796",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/vegetation.ply": "17d10c0aa2cbf5ef45ec729ded8609dc21c4da7fc020baf0db025a701b7fc676",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/mesh/water.ply": "ca737604ef9915ebb4994cd01d245dbb03af784d8272cd8ec356fc152b3f3bd9",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/generated_scene/scene.xml": "c7b1f6f08bec09ab325559cded0dfc343ea1ba097f67ebbf66ebc74798a0f168",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku/scenario.yaml": "dc7f56e720cb202b842c00460a8e46e5e9cfedfa613f333a8bbd008765de9a7b"
+  },
+  "sample_indices": [
+    0
+  ],
+  "sample_times_s": [
+    0.0
+  ],
+  "steps": 1,
+  "actors": [
+    {
+      "name": "TX",
+      "role": "tx",
+      "members": [
+        "TX"
+      ],
+      "sample_positions_m": [
+        [
+          -400.0,
+          -420.0,
+          5.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -400.0,
+            -420.0,
+            5.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX",
+      "role": "rx",
+      "members": [
+        "RX"
+      ],
+      "sample_positions_m": [
+        [
+          400.0,
+          420.0,
+          5.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            400.0,
+            420.0,
+            5.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "6418ec498b1081f9e9b7390fe04a1a175663506bef1aff7f4ad84e00d06a3e74",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (mat-itu medium dry ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Ground (mat-itu wet ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Mat-Itu Concrete",
+      "display_rgb": [
+        0.6872,
+        0.6872,
+        0.6872
+      ]
+    },
+    {
+      "label": "Mat-Itu Glass",
+      "display_rgb": [
+        0.6784313725490196,
+        0.7764705882352941,
+        0.803921568627451
+      ]
+    },
+    {
+      "label": "Mat-Itu Marble",
+      "display_rgb": [
+        0.796,
+        0.7552000000000001,
+        0.6532
+      ]
+    },
+    {
+      "label": "Mat-Itu Metal",
+      "display_rgb": [
+        0.4696,
+        0.4696,
+        0.49
+      ]
+    },
+    {
+      "label": "Mat-Itu Wood",
+      "display_rgb": [
+        0.6940000000000001,
+        0.558,
+        0.43560000000000004
+      ]
+    },
+    {
+      "label": "Road (mat-itu concrete)",
+      "display_rgb": [
+        0.6235294117647059,
+        0.6627450980392157,
+        0.6784313725490196
+      ]
+    }
+  ],
+  "output_sha256": "1cea3c045f87cef1e832f8ede14b58666ae80629b03ba2fc664df475068dc08a",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -638.379775390625,
+        -651.3017846679687,
+        -9.72
+      ],
+      [
+        658.8219750976563,
+        685.241787109375,
+        252.72
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "ef1158c348035b465264fffe0e89ec2f7ce041fa72adf21bba951cf058f35c7d",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/building_appearance/cities/tokyo_shinjuku"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

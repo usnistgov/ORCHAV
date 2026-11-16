@@ -60,7 +60,7 @@ def _raw_frame() -> dict[str, Any]:
         ),
         current_mesh_idx=0,
         meshes=["walker_000.ply"],
-        relative_mesh_directory="libraries/targets/nist_human_walking",
+        relative_mesh_directory="libraries/targets/digital_twin_update1",
     )
 
     valid = np.asarray([[[True, False]]], dtype=bool)
@@ -173,6 +173,38 @@ def test_diagnostic_client_decodes_standard_mpc_frame_payload() -> None:
     np.testing.assert_array_equal(decoded.interactions, standard_frame.interactions)
     assert decoded.targets_metadata[0]["name"] == "walker"
     assert decoded.targets_metadata[0]["current_position"] == [7.0, 8.0, 9.0]
+
+
+def test_raw_scene_time_populates_canonical_timestamp_independently_of_frame_id() -> None:
+    raw_frame = _raw_frame()
+    raw_frame["scene_time_s"] = 50.25
+
+    standard_frame = standard_mpc_frame_from_raw(
+        raw_frame,
+        100,
+        source_provider="test",
+        simulation_config=SimpleNamespace(export_path_metrics=False),
+    )
+
+    assert standard_frame.frame_index == 100
+    assert standard_frame.timestamp_s == 50.25
+    assert standard_frame.provenance["timestamp"] == 50.25
+
+
+def test_explicit_conversion_timestamp_overrides_raw_scene_time() -> None:
+    raw_frame = _raw_frame()
+    raw_frame["scene_time_s"] = 50.25
+
+    standard_frame = standard_mpc_frame_from_raw(
+        raw_frame,
+        100,
+        source_provider="test",
+        simulation_config=SimpleNamespace(export_path_metrics=False),
+        timestamp=12.5,
+    )
+
+    assert standard_frame.timestamp_s == 12.5
+    assert standard_frame.provenance["timestamp"] == 12.5
 
 
 def test_diagnostic_client_requires_standard_frame_data_payload() -> None:

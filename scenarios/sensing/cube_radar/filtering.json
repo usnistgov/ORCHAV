@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "cfar_threshold_scale": 2.0,
+    "cfar_ref_cells_range": 6,
+    "cluster_range_gate_m": 0.5,
+    "cluster_velocity_gate_m_s": 0.3,
+    "cfar_min_snr_db": 3.0,
+    "cfar_max_dynamic_range_db": 12.0,
+    "include_stage_artifacts": true
+  },
+  "recipes": {
+    "cfar_only": {
+      "cfar_min_snr_db": 0.0,
+      "cfar_max_dynamic_range_db": null
+    },
+    "bounded": {},
+    "outside_range": {
+      "max_detection_range_m": 4.0
+    }
+  },
+  "evaluation": {"figures": false},
+  "summary": true
+}

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Any, Callable, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
 
 from PySide6.QtCore import QObject, Qt, Signal
 
@@ -13,6 +12,8 @@ from shared.frames.loader import FrameLoaderService
 from shared.logging import get_logger
 
 from ..io.packed_frame_payload import (
+    packed_payload_satisfies,
+    projection_to_visual_frame,
     standard_frame_to_visual_frame,
     try_load_packed_visual_frame,
     visual_frame_read_request,
@@ -25,10 +26,6 @@ if TYPE_CHECKING:
     from ...visualizer import OrchavVisualizer
 
 
-PRELOAD_WORKERS = 4
-"""Number of parallel I/O threads used for frame preloading."""
-
-
 class _PreloadSignals(QObject):
     """Qt signals for thread-safe preload progress/completion."""
 
@@ -38,13 +35,11 @@ class _PreloadSignals(QObject):
 
 
 class _PreloadWorker:
-    """Loads frames on a background thread using a pool for parallel I/O.
+    """Loads frames off the GUI thread with bounded I/O concurrency.
 
-    Frame reads are submitted to a :class:`ThreadPoolExecutor` so that
-    multiple HDF5/file reads overlap.  Cache writes and canonical
-    precomputation are serialized in the consumer loop to avoid contention
-    on non-thread-safe structures (``_preloaded_steps`` set, eviction
-    callbacks).
+    One background thread consumes bounded provider batches. Cache writes and
+    canonical precomputation stay serialized, avoiding competing HDF5 reads and
+    contention on cache step tracking and eviction callbacks.
     """
 
     def __init__(
@@ -80,7 +75,7 @@ class _PreloadWorker:
         return self._stop_requested.is_set() or not self._is_current()
 
     def _load_one(self, step: int) -> tuple[int, Any]:
-        """Perform I/O for a single frame (runs inside the thread pool).
+        """Perform fallback I/O for one frame on the background thread.
 
         Returns:
             ``(step, frame_data)`` on success, ``(step, None)`` on failure.
@@ -110,6 +105,83 @@ class _PreloadWorker:
         except (OSError, IOError, ValueError, KeyError, AttributeError, TypeError) as exc:
             self._logger.warning("Failed to preload frame %d: %s", step, exc)
             return (step, None)
+        except RuntimeError:
+            if self._should_stop():
+                return (step, None)  # The source may retire before this read acquires a lease.
+            raise
+
+    def _cached_visual_frame(self, step: int) -> dict[str, Any] | None:
+        """Reuse only resident payloads with the complete visual field inventory."""
+        get_frame = getattr(self._cache_service, "get_frame", None)
+        data = get_frame(step) if callable(get_frame) else None
+        if isinstance(data, dict) and packed_payload_satisfies(data, visual_frame_read_request()):
+            return data
+        return None
+
+    def _iter_frame_data(self) -> Iterator[tuple[int, Any]]:
+        """Batch missing frames while preserving resident frames and caller order."""
+        cached_steps = set()
+        missing_steps = []
+        for step in self._frame_numbers:
+            if self._should_stop():
+                return
+            if self._cached_visual_frame(step) is not None:
+                cached_steps.add(step)
+            else:
+                missing_steps.append(step)
+
+        provider = getattr(self._loader, "provider", None)
+        batch_loader = getattr(provider, "iter_frame_projections", None)
+        batch = None
+        if missing_steps and callable(batch_loader):
+            try:
+                batch = iter(batch_loader(missing_steps, visual_frame_read_request()))
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+                self._logger.debug("Provider cannot batch preload reads", exc_info=True)
+        try:
+            for step in self._frame_numbers:
+                if self._should_stop():
+                    break
+                if step in cached_steps:
+                    # Keep only IDs while planning: a long preload must not pin
+                    # evicted payloads. An eviction needs an individual retry,
+                    # without consuming the next missing frame's batch result.
+                    data = self._cached_visual_frame(step)
+                    if data is not None:
+                        yield step, data
+                    else:
+                        if self._should_stop():
+                            break
+                        yield self._load_one(step)
+                    continue
+                if batch is not None:
+                    try:
+                        projection = next(batch)
+                        if projection.frame.frame_index != step:
+                            raise ValueError("Preload batch changed requested frame order")
+                        data = projection_to_visual_frame(
+                            projection,
+                            points_dtype=self._canonical_points_dtype or "float32",
+                            provider=provider,
+                        )
+                    except (OSError, ValueError, KeyError, TypeError, RuntimeError, StopIteration):
+                        self._logger.debug(
+                            "Batch preload failed; retrying individual frames", exc_info=True
+                        )
+                        close = getattr(batch, "close", None)
+                        if callable(close):
+                            close()
+                        batch = None
+                    else:
+                        yield step, data
+                        continue
+                if self._should_stop():
+                    break
+                yield self._load_one(step)
+        finally:
+            close = getattr(batch, "close", None)
+            if callable(close):
+                close()
 
     def run(self) -> None:
         """Load requested frames, store cache entries, and emit preload progress."""
@@ -125,63 +197,45 @@ class _PreloadWorker:
                 self.signals.complete.emit(0, total, time.time() - start_time, [])
             return
 
-        futures: dict[Future[tuple[int, Any]], int] = {}
-        with ThreadPoolExecutor(max_workers=PRELOAD_WORKERS) as pool:
-            for step in self._frame_numbers:
-                if self._should_stop():
-                    break
-                fut = pool.submit(self._load_one, step)
-                futures[fut] = step
+        for step, data in self._iter_frame_data():
+            if self._should_stop():
+                break
+            if data is not None:
 
-            for fut in as_completed(futures):
-                if self._should_stop():
-                    # Cancel any remaining pending futures
-                    for pending in futures:
-                        pending.cancel()
+                def store_frame() -> None:
+                    if self._cache_service is not None:
+                        self._cache_service.store_frame(step, data, source="preload")
+
+                if not self._run_if_current(store_frame):
                     break
 
-                step = futures[fut]
-                try:
-                    _step, data = fut.result()
-                except (OSError, IOError, ValueError, KeyError, AttributeError) as exc:
-                    self._logger.warning("Failed to preload frame %d: %s", step, exc)
-                    failed += 1
-                    data = None
+                if self._mpc_core is not None:
+                    try:
+                        t0 = time.time()
+                        # Scene retirement must serialize this cache write too:
+                        # checking only store_frame allows an old worker to
+                        # repopulate the canonical cache after a scenario switch.
+                        if not self._run_if_current(
+                            lambda: self._mpc_core.precompute_canonical(step, data)
+                        ):
+                            break
+                        self._logger.info(
+                            "Canonical precompute step %d: %.2fs", step, time.time() - t0
+                        )
+                    except (ValueError, TypeError, KeyError, IndexError) as exc:
+                        self._logger.debug(
+                            "Failed to precompute canonical for step %d: %s", step, exc
+                        )
+                loaded += 1
+                loaded_steps.append(step)
+                if self._is_current():
+                    self.signals.step_ready.emit(step)
+            else:
+                failed += 1
 
-                if data is not None:
-
-                    def store_frame() -> None:
-                        if self._cache_service is not None:
-                            self._cache_service.store_frame(step, data, source="preload")
-
-                    if not self._run_if_current(store_frame):
-                        for pending in futures:
-                            pending.cancel()
-                        break
-
-                    if self._mpc_core is not None:
-                        try:
-                            t0 = time.time()
-                            self._mpc_core.precompute_canonical(step, data)
-                            self._logger.info(
-                                "Canonical precompute step %d: %.2fs", step, time.time() - t0
-                            )
-                        except (ValueError, TypeError, KeyError, IndexError) as exc:
-                            self._logger.debug(
-                                "Failed to precompute canonical for step %d: %s",
-                                step,
-                                exc,
-                            )
-                    loaded += 1
-                    loaded_steps.append(step)
-                    if self._is_current():
-                        self.signals.step_ready.emit(step)
-                else:
-                    failed += 1
-
-                if total > 0 and self._is_current():
-                    pct = int((loaded + failed) / total * 100)
-                    self.signals.progress.emit(f"Preload: {loaded}/{total} ({pct}%)")
+            if total > 0 and self._is_current():
+                pct = int((loaded + failed) / total * 100)
+                self.signals.progress.emit(f"Preload: {loaded}/{total} ({pct}%)")
 
         duration = time.time() - start_time
         if not self._should_stop():
@@ -640,6 +694,13 @@ class AnimationService(BaseService):
                     logger.debug("No frames available yet; skipping preloading")
                 return False
 
+        sensing_playback = getattr(self.visualizer, "sensing_playback", None)
+        sensing_steps = getattr(sensing_playback, "steps", None)
+        if sensing_steps == ():
+            # The metadata index is still loading; its completion starts the
+            # selected preload. Do not load the entire recording meanwhile.
+            return False
+
         # Mark preloading as started
         self._preloading_started = True
         self._preload_start_time = time.time()
@@ -649,7 +710,9 @@ class AnimationService(BaseService):
 
         try:
             # Find all frame data using the frame source
-            if loader is not None:
+            if sensing_steps is not None:
+                frame_numbers = list(sensing_steps)
+            elif loader is not None:
                 frame_numbers = loader.list_frames()
             else:
                 frame_numbers = frame_source.list_frames()
@@ -741,11 +804,6 @@ class AnimationService(BaseService):
                 logger.debug("No frame source yet; skipping frame detection")
             return None
 
-        if not frame_source.has_frame(0):
-            if logger:
-                logger.debug("Frame 0 not available yet; skipping frame detection")
-            return None
-
         try:
             # Find all frame data using the frame source
             frame_numbers = frame_source.list_frames()
@@ -754,21 +812,14 @@ class AnimationService(BaseService):
                     logger.debug("No MPC frame files found")
                 return None
 
-            # Find the maximum step number
-            max_step = max(frame_numbers)
-
-            if max_step >= 0:
-                # Frame count is max_step + 1 (frames are 0-indexed)
-                new_total_steps = max_step + 1
-
-                if logger:
-                    logger.info(f"Detected {new_total_steps} MPC frames (max index: {max_step})")
-
-                # Notify callback
-                if on_frame_count_updated:
-                    on_frame_count_updated(new_total_steps)
-
-                return new_total_steps
+            # Source IDs may start above zero or contain gaps. Navigation uses
+            # their cardinality; an ID extent is not a recording frame count.
+            new_total_steps = len(frame_numbers)
+            if logger:
+                logger.info("Detected %d MPC frames", new_total_steps)
+            if on_frame_count_updated:
+                on_frame_count_updated(new_total_steps)
+            return new_total_steps
 
         except (OSError, ValueError, KeyError, AttributeError) as e:
             if logger:

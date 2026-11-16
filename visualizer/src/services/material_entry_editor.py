@@ -12,6 +12,7 @@ from ..materials.catalog import normalize_material_type_name
 from ..scene.io import MaterialHandler
 from .base import BaseService
 from .material_properties import sync_entry_pbr_properties_from_catalog
+from .source_edit_policy import visual_surface_source_edit_message
 
 logger = get_logger("orchav.material_entry_editor")
 
@@ -27,6 +28,11 @@ class MaterialEntryEditService(BaseService):
         target_entries: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         """Update material color in XML and all entries with the same material ID."""
+        canonical = self._canonical_entry(entry, mesh_entries, target_entries)
+        message = visual_surface_source_edit_message(canonical)
+        if message is not None:
+            logger.warning(message)
+            return []
         material_id = entry.get("material_id", "")
         updated_entries: list[dict[str, Any]] = []
 
@@ -68,7 +74,12 @@ class MaterialEntryEditService(BaseService):
         mpc_core: Any | None = None,
     ) -> tuple[str, list[float], Any | None]:
         """Change a scene entry's material ID and return ID, color, and BSDF."""
-        old_id = entry.get("material_id", "")
+        canonical = self._canonical_entry(entry, mesh_entries, target_entries)
+        old_id = canonical.get("material_id", "")
+        message = visual_surface_source_edit_message(canonical)
+        if message is not None:
+            logger.warning(message)
+            return old_id, canonical.get("color", [0.7, 0.7, 0.7]), canonical.get("xml_bsdf")
         if not new_id:
             return old_id, entry.get("color", [0.7, 0.7, 0.7]), entry.get("xml_bsdf")
 
@@ -145,7 +156,7 @@ class MaterialEntryEditService(BaseService):
             target_entries,
         )
         self._sync_material_type(entry, actual_material_id, mesh_entries, target_entries)
-        self._update_shape_reference(entry, new_id, actual_material_id, new_bsdf)
+        self._update_shape_reference(canonical, new_id, actual_material_id, new_bsdf)
 
         logger.info(
             "Material ID changed from %s to %s for %s (color: %s)",
@@ -266,6 +277,39 @@ class MaterialEntryEditService(BaseService):
                 )
         return None
 
+    @staticmethod
+    def _canonical_entry(
+        entry: dict[str, Any],
+        mesh_entries: list[dict[str, Any]],
+        target_entries: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Prefer object/stable identity; only an unambiguous legacy name may match."""
+        candidates = mesh_entries if entry.get("entry_type", "mesh") == "mesh" else target_entries
+        for candidate in candidates:
+            if candidate is entry:
+                return candidate
+        has_identity = False
+        for key in ("object_id", "stable_mesh_id", "stable_target_id", "geometry_name"):
+            identity = entry.get(key)
+            if identity:
+                has_identity = True
+                matches = [
+                    candidate
+                    for candidate in candidates
+                    if candidate and candidate.get(key) == identity
+                ]
+                if len(matches) == 1:
+                    return matches[0]
+        if not has_identity and entry.get("name"):
+            matches = [
+                candidate
+                for candidate in candidates
+                if candidate and candidate.get("name") == entry["name"]
+            ]
+            if len(matches) == 1:
+                return matches[0]
+        return entry
+
     def _update_entry_lists(
         self,
         entry: dict[str, Any],
@@ -276,27 +320,10 @@ class MaterialEntryEditService(BaseService):
         target_entries: list[dict[str, Any]],
     ) -> None:
         """Update the edited entry and its authoritative list entry."""
-        entry_name = entry.get("name", "")
-        entry_type = entry.get("entry_type", "mesh")
-        candidates = mesh_entries if entry_type == "mesh" else target_entries
-        updated_in_list = False
-
-        for candidate in candidates:
-            if candidate is not None and candidate.get("name") == entry_name:
-                self._set_entry_material(candidate, actual_material_id, new_color, new_bsdf)
-                updated_in_list = True
-                logger.debug(
-                    "Updated entry in %s_entries: '%s' -> material '%s'",
-                    entry_type,
-                    entry_name,
-                    actual_material_id,
-                )
-                break
-
+        canonical = self._canonical_entry(entry, mesh_entries, target_entries)
+        if canonical is not entry:
+            self._set_entry_material(canonical, actual_material_id, new_color, new_bsdf)
         self._set_entry_material(entry, actual_material_id, new_color, new_bsdf)
-
-        if not updated_in_list:
-            logger.warning("Could not find entry '%s' in lists to update", entry_name)
 
     @staticmethod
     def _set_entry_material(
@@ -322,16 +349,12 @@ class MaterialEntryEditService(BaseService):
         if not new_material_type:
             return
 
-        entry_name = entry.get("name", "")
-        entry_type = entry.get("entry_type", "mesh")
         entry["material_type"] = new_material_type
         sync_entry_pbr_properties_from_catalog(entry, new_material_type)
-        candidates = mesh_entries if entry_type == "mesh" else target_entries
-        for candidate in candidates:
-            if candidate is not None and candidate.get("name") == entry_name:
-                candidate["material_type"] = new_material_type
-                sync_entry_pbr_properties_from_catalog(candidate, new_material_type)
-                break
+        canonical = self._canonical_entry(entry, mesh_entries, target_entries)
+        if canonical is not entry:
+            canonical["material_type"] = new_material_type
+            sync_entry_pbr_properties_from_catalog(canonical, new_material_type)
 
     @staticmethod
     def _update_shape_reference(

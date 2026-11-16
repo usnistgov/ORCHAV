@@ -7,12 +7,15 @@ and current focus dropdown selection.
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
 
 from shared.logging import get_logger
 
+from ..io.packed_frame_payload import visualizer_frame_provider
+from ..io.trajectory_frame_projection import try_load_packed_trajectory_frame
 from .base import BaseService
 from .object_identity import normalize_token
 
@@ -29,6 +32,9 @@ class CameraSceneQueryService(BaseService):
         """Bind camera scene queries to the active visualizer state."""
         super().__init__()
         self.visualizer = visualizer
+        self._motion_provider = None
+        self._motion_frames: list[int] = []
+        self._motion_projections: dict[int, dict[str, Any]] = {}
 
     def compute_scene_bounds(
         self, scope: str = "visible"
@@ -111,6 +117,76 @@ class CameraSceneQueryService(BaseService):
         if pos:
             return pos
         return None
+
+    def get_focus_motion_direction(self) -> Optional[np.ndarray]:
+        """Read chronological motion from neighboring recorded positions.
+
+        Use a preceding frame when possible, or the next frame at the start of
+        a recording. This also works while paused or playing backward. Only
+        position metadata is loaded; the displayed frame never changes.
+        """
+        position, _, entity = self.get_entity_position_orientation_and_info()
+        step = getattr(getattr(self.visualizer, "app_state", None), "step", None)
+        if position is None or entity is None or step is None:
+            return None
+        try:
+            provider = visualizer_frame_provider(self.visualizer)
+            if provider is not self._motion_provider:
+                self._motion_provider = provider
+                self._motion_frames = []
+                self._motion_projections.clear()
+            if provider is not None:
+                index = bisect_left(self._motion_frames, step)
+                if index == len(self._motion_frames) or self._motion_frames[index] != step:
+                    self._motion_frames = sorted(provider.list_frames())
+                    index = bisect_left(self._motion_frames, step)
+                neighbors = self._motion_frames[max(0, index - 1) : index]
+                neighbors += self._motion_frames[index + 1 : index + 2]
+            else:
+                neighbors = [step - 1, step + 1]
+
+            get_cached = getattr(getattr(self.visualizer, "cache_service", None), "get_frame", None)
+            for neighbor in neighbors:
+                frame = get_cached(neighbor) if callable(get_cached) else None
+                if frame is None:
+                    frame = self._motion_projections.get(neighbor)
+                if frame is None and provider is not None:
+                    frame = try_load_packed_trajectory_frame(provider, neighbor)
+                    if frame is not None:
+                        # Keep position-only reads separate from full playback frames.
+                        self._motion_projections[neighbor] = frame
+                        while len(self._motion_projections) > 2:
+                            del self._motion_projections[next(iter(self._motion_projections))]
+                if frame is None:
+                    continue
+                other = self._entity_position_in_frame(frame, entity)
+                if other is None:
+                    continue
+                direction = (np.asarray(position) - other) / (step - neighbor)
+                if direction.shape == (3,) and np.isfinite(direction).all():
+                    return direction
+        except (OSError, RuntimeError, KeyError, IndexError, TypeError, ValueError):
+            logger.debug("Camera motion direction is unavailable", exc_info=True)
+        return None
+
+    def _entity_position_in_frame(self, frame: dict, entity: dict) -> Optional[np.ndarray]:
+        """Match targets by stable identity, never by another frame's row order."""
+        kind = entity["type"]
+        if kind == "target":
+            aliases = self._selection_target_aliases(entity["stable_target_id"])
+            metadata = frame.get("targets_metadata", [])
+            index = self._metadata_index_for_aliases(metadata, aliases)
+            if index is None:
+                return None
+            position = metadata[index].get("current_position")
+            if position is None:
+                position = self._extract_position(frame.get("target_pos"), index)
+        else:
+            position = self._extract_position(frame.get(f"{kind}_positions"), entity["index"])
+        if position is None:
+            return None
+        value = np.asarray(position, dtype=float)
+        return value if value.shape == (3,) and np.isfinite(value).all() else None
 
     def target_focus_selection(self, metadata_index: int) -> Optional[dict[str, Any]]:
         """Return stable dropdown data for one target in the active frame.
@@ -364,13 +440,14 @@ class CameraSceneQueryService(BaseService):
     def _current_frame_data(self) -> Optional[dict[str, Any]]:
         """Return cached frame data for the current visualizer step."""
         viz = self.visualizer
-        if not hasattr(viz, "current_step"):
+        step = getattr(getattr(viz, "app_state", None), "step", None)
+        if step is None:
             return None
         cache_service = getattr(viz, "cache_service", None)
         get_frame = getattr(cache_service, "get_frame", None)
         if not callable(get_frame):
             return None
-        return get_frame(viz.current_step)
+        return get_frame(step)
 
     def _target_metadata(self) -> Any:
         """Return active target metadata without assuming a concrete sequence type."""

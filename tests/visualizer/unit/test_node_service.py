@@ -148,6 +148,52 @@ class TestNodeServiceInit:
 class TestTxRxMarkerManagement:
     """Test TX/RX marker creation and management."""
 
+    def test_deferred_inventory_uses_latest_positions_and_repairs_labels(self):
+        viz = make_mock_visualizer(tx_count=0, rx_count=0)
+        service = NodeService(viz)
+        service.ensure_tx_rx_markers_created(1, 1, synchronize=False)
+        viz.renderer.ensure_object.assert_not_called()
+        viz.current_tx_positions = [[3.0, 2.0, 1.0]]
+        viz.current_rx_positions = [[7.0, 8.0, 9.0]]
+        assert service.retry_pending_node_syncs()
+        np.testing.assert_allclose(
+            _ensured_object(viz, make_node_geometry_name("rx", 0, "marker")).transform.translation,
+            [7, 8, 9],
+        )
+        viz.renderer.ensure_object.reset_mock()
+        service.ensure_tx_rx_markers_created(1, 1, synchronize=False)
+        assert service.retry_pending_node_syncs()
+        viz.renderer.ensure_object.assert_not_called()
+        viz.rx_labels.clear()
+        service.ensure_tx_rx_markers_created(1, 1, synchronize=False)
+        assert service.retry_pending_node_syncs()
+        _assert_label_ensured(viz, make_node_geometry_name("rx", 0, "label"), viz.rx_labels[0])
+
+    def test_deferred_shrink_retires_failed_sync_and_retries_last_removal(self):
+        viz = make_mock_visualizer(tx_count=0, rx_count=0)
+        service = NodeService(viz)
+        service.ensure_tx_rx_markers_created(1, 0, synchronize=False)
+        viz.renderer.ensure_object = Mock(return_value=False)
+        assert not service.retry_pending_node_syncs()
+        viz.renderer.remove_object = Mock(return_value=False)
+        service.ensure_tx_rx_markers_created(0, 0, synchronize=False)
+        assert not service._pending_node_entity_ids
+        assert not service.retry_pending_node_syncs()
+        viz.renderer.remove_object.return_value = True
+        assert service.retry_pending_node_syncs()
+        assert not service._pending_node_removals
+
+    def test_regrown_node_cancels_obsolete_pending_removal(self):
+        viz = make_mock_visualizer(tx_count=0, rx_count=0)
+        service = NodeService(viz)
+        service.ensure_tx_rx_markers_created(1, 0)
+        viz.renderer.remove_object = Mock(return_value=False)
+        service.ensure_tx_rx_markers_created(0, 0, synchronize=False)
+        service.ensure_tx_rx_markers_created(1, 0, synchronize=False)
+        viz.renderer.remove_object.reset_mock()
+        assert service.retry_pending_node_syncs()
+        viz.renderer.remove_object.assert_not_called()
+
     def test_create_tx_rx_markers_creates_correct_count(self):
         """Test that create_tx_rx_markers creates the right number of markers."""
         mock_viz = make_mock_visualizer(tx_count=3, rx_count=2)
@@ -2034,3 +2080,79 @@ class TestObjectPanelLabelAndIdentity:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_sensing_role_labels_follow_colocation_and_keep_rename():
+    from types import SimpleNamespace
+
+    from visualizer.src.state import create_initial_state
+
+    viz = make_mock_visualizer(tx_count=1, rx_count=1)
+    viz.app_state = create_initial_state(node_label_mode="sensing")
+    viz.scenario_config = SimpleNamespace(sensing={"enabled": True})
+    viz.current_tx_positions = [[1, 2, 3]]
+    viz.current_rx_positions = [[1, 2, 3]]
+    service = NodeService(viz)
+    assert service._node_label_text("tx", 0) == "Monostatic radar 1"
+    assert service._node_label_text("rx", 0) == "Monostatic radar 1"
+    viz.current_rx_positions = [[1, 2, 4]]
+    assert service._node_label_text("rx", 0) == "Sensing receiver 1"
+    viz.app_state = create_initial_state(node_label_mode="sensing", tx_labels=("My radar",))
+    viz.current_rx_positions = [[1, 2, 3]]
+    assert service._node_label_text("tx", 0) == "My radar"
+    assert service._node_label_text("rx", 0) == "Sensing receiver 1"
+    viz.app_state = create_initial_state(node_label_mode="sensing")
+    viz.scenario_config.sensing["enabled"] = False
+    assert service._node_label_text("tx", 0) == "TX1"
+    viz.sensing_volume_window = SimpleNamespace(reader=object(), closed=False)
+    assert service._node_label_text("tx", 0) == "Monostatic radar 1"
+    assert service._node_label_text("rx", 0) == "Monostatic radar 1"
+    viz.sensing_volume_window.closed = True
+    assert service._node_label_text("tx", 0) == "TX1"
+
+
+def test_sensing_role_duplicate_only_hidden_when_tx_label_is_visible():
+    from types import SimpleNamespace
+
+    from visualizer.src.state import create_initial_state
+
+    viz = make_mock_visualizer(tx_count=1, rx_count=1)
+    viz.app_state = create_initial_state(node_label_mode="sensing")
+    viz.scenario_config = SimpleNamespace(sensing={"enabled": True})
+    viz.current_tx_positions = [[0, 0, 0]]
+    viz.current_rx_positions = [[0, 0, 0]]
+    service = NodeService(viz)
+    marker = service._node_marker_handle("tx", 0, size=0.3, color=[1, 0, 0], visible=True)
+    viz.tx_markers = [marker]
+    viz.tx_entries = [{"visible": True, "show_label": True}]
+    assert service._sensing_label_duplicate("rx", 0)
+    assert not service._sensing_label_duplicate("tx", 0)
+    viz.tx_entries[0]["show_label"] = False
+    assert not service._sensing_label_duplicate("rx", 0)
+    viz.tx_entries[0]["show_label"] = True
+    viz.tx_entries[0]["visible"] = False
+    assert not service._sensing_label_duplicate("rx", 0)
+
+
+def test_sensing_label_payload_updates_when_nodes_separate():
+    from types import SimpleNamespace
+
+    from visualizer.src.state import create_initial_state
+
+    viz = make_mock_visualizer(tx_count=1, rx_count=1)
+    viz.app_state = create_initial_state(node_label_mode="sensing")
+    viz.scenario_config = SimpleNamespace(sensing={"enabled": True})
+    viz.current_tx_positions = [[0, 0, 0]]
+    viz.current_rx_positions = [[0, 0, 0]]
+    service = NodeService(viz)
+    marker = service._node_marker_handle("tx", 0, size=0.3, color=[1, 0, 0], visible=True)
+    label = make_text_label_state("tx:0::label", "TX1", [1, 0, 0])
+    service._node_marker_entity(
+        "tx", 0, marker, label=label, anchor=np.zeros(3), label_visible=True
+    )
+    assert label.payload.text == "Monostatic radar 1"
+    viz.current_rx_positions = [[3, 0, 0]]
+    service._node_marker_entity(
+        "tx", 0, marker, label=label, anchor=np.zeros(3), label_visible=True
+    )
+    assert label.payload.text == "Sensing transmitter 1"

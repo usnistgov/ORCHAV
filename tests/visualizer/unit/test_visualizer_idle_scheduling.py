@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import OrderedDict
 from types import SimpleNamespace
 
+import pytest
+
 from visualizer.src.model import make_text_label_state
 from visualizer.src.renderers.protocol import RendererCapabilities
 from visualizer.src.services.object_appearance_service import ObjectAppearanceService
@@ -77,6 +79,40 @@ def test_cancel_scheduled_update_stops_coalesce_timer():
 
     assert viz.update_pending is False
     assert timer.stop_calls == 1
+
+
+def test_shutdown_callbacks_cannot_restart_coalesced_updates():
+    timer = _TimerStub()
+    viz = SimpleNamespace(_shutdown_started=True, update_pending=False, update_timer_coalesce=timer)
+
+    OrchavVisualizer.schedule_update(viz)
+
+    assert viz.update_pending is False
+    assert timer.active is False
+    assert timer.start_calls == []
+
+
+@pytest.mark.parametrize("vis_initialized", [True, False])
+def test_queued_scene_only_flush_is_quiet_during_shutdown(vis_initialized, caplog):
+    processed_steps: list[int] = []
+    viz = SimpleNamespace(
+        _shutdown_started=True,
+        update_pending=True,
+        _frame_retry_pending=True,
+        ready=False,
+        _scene_only_mode=True,
+        vis_initialized=vis_initialized,
+        app_state=object(),
+        animation_step=0,
+        _process_frame_step=lambda step: processed_steps.append(step),
+    )
+
+    OrchavVisualizer._flush_update(viz)
+
+    assert viz.update_pending is False
+    assert viz._frame_retry_pending is False
+    assert processed_steps == []
+    assert not caplog.records
 
 
 def test_flush_update_reaches_pipeline_for_scene_only_coverage():

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
 
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import QLabel
 
 from shared.frames import StandardMPCFrame
 from shared.logging import get_logger
+from shared.node_labels import monostatic_label_pairs, sensing_role_label
 
 from ..io.packed_frame_payload import (
     standard_frame_to_visual_frame,
@@ -74,6 +76,7 @@ from ..services.target_service import TargetService
 from ..types.render_payloads import (
     MaterialPayload,
     MeshPayload,
+    TextLabelPayload,
 )
 
 if TYPE_CHECKING:
@@ -133,6 +136,8 @@ class NodeService(BaseService):
             return resolve_node_label(role, index)
         custom = getattr(app_state, "tx_labels" if is_tx else "rx_labels", ())
         device_names = getattr(app_state, "tx_device_names" if is_tx else "rx_device_names", ())
+        if self._sensing_labels_enabled() and not (index < len(custom) and custom[index]):
+            return sensing_role_label(kind, index, self._sensing_label_pairs())
         return resolve_node_label(
             role,
             index,
@@ -140,6 +145,48 @@ class NodeService(BaseService):
             label_mode=getattr(app_state, "node_label_mode", "role"),
             device_names=device_names,
         )
+
+    def _sensing_labels_enabled(self) -> bool:
+        """Use sensing roles for active recordings and saved sensing volumes."""
+        from .sensing_label_context import has_sensing_label_context
+
+        viz = self.visualizer
+        return getattr(
+            viz.app_state, "node_label_mode", "role"
+        ) == "sensing" and has_sensing_label_context(viz)
+
+    def _sensing_label_pairs(self) -> dict[int, int]:
+        """Preserve explicit Rename actions instead of merging their labels."""
+        if not self._sensing_labels_enabled():
+            return {}
+        state = self.visualizer.app_state
+        tx_custom = getattr(state, "tx_labels", ())
+        rx_custom = getattr(state, "rx_labels", ())
+        return {
+            tx: rx
+            for tx, rx in monostatic_label_pairs(
+                self._node_positions("tx"), self._node_positions("rx")
+            ).items()
+            if not (tx < len(tx_custom) and tx_custom[tx])
+            and not (rx < len(rx_custom) and rx_custom[rx])
+        }
+
+    def _sensing_label_duplicate(self, kind: str, index: int) -> bool:
+        """Hide the RX copy only while its paired TX label is actually visible."""
+        if kind != "rx":
+            return False
+        for tx, rx in self._sensing_label_pairs().items():
+            if rx == index:
+                markers = getattr(self.visualizer, "tx_markers", [])
+                if tx >= len(markers):
+                    return False
+                anchor = self._resolve_node_anchor("tx", tx, markers[tx], allow_fallback=False)
+                return (
+                    self._node_visible_for_anchor("tx", tx, anchor)
+                    and self._node_label_enabled("tx", tx)
+                    and markers[tx].visible
+                )
+        return False
 
     def _labels_use_screen_space(self) -> bool:
         """Return the application-owned text sizing policy."""
@@ -467,6 +514,16 @@ class NodeService(BaseService):
         marker_visible = bool(marker.visible and visible)
         label_render_object = None
         if isinstance(label, RenderObjectState):
+            text = self._node_label_text(kind_norm, int(index))
+            if (
+                self._sensing_labels_enabled()
+                and isinstance(label.payload, TextLabelPayload)
+                and label.payload.text != text
+            ):
+                label.payload = replace(label.payload, text=text)
+            label_visible = label_visible and not self._sensing_label_duplicate(
+                kind_norm, int(index)
+            )
             label_position = np.zeros(3, dtype=float)
             if anchor is not None:
                 label_position = np.asarray(anchor, dtype=float).reshape(-1)[:3]
@@ -503,6 +560,7 @@ class NodeService(BaseService):
     def _remove_node_marker_entity(self, kind: str, index: int) -> bool:
         """Remove one TX/RX marker entity by stable render IDs."""
         key = (str(kind).lower(), int(index))
+        self._pending_node_entity_ids.discard(make_node_entity_id(*key))
         removed = self._node_render_sync.remove_marker_entity(*key)
         if removed:
             self._pending_node_removals.discard(key)
@@ -601,6 +659,9 @@ class NodeService(BaseService):
         self._pending_node_entity_ids.update(
             entity_id for entity_id, synced in results.items() if not synced
         )
+        coverage = getattr(viz, "coverage_volume_window", None)
+        if coverage is not None and not coverage.closed:
+            coverage.sync_transmitter_labels()
         return removals_ok and not self._pending_node_entity_ids
 
     def retry_pending_node_syncs(self) -> bool:
@@ -1939,9 +2000,19 @@ class NodeService(BaseService):
             if i < len(rx_orientations):
                 self.apply_orientation_to_marker(rx_marker, rx_orientations[i], f"RX{i+1}")
 
-    def ensure_tx_rx_markers_created(self, tx_count: int, rx_count: int):
-        """Ensure TX/RX marker entities are created when frame data arrives."""
+    def ensure_tx_rx_markers_created(
+        self, tx_count: int, rx_count: int, *, synchronize: bool = True
+    ):
+        """Maintain node inventory, optionally deferring presentation.
+
+        Frame derivation prepares handles before installing current positions.
+        It defers native sync until those positions are available. Interactive
+        callers keep immediate synchronization, including backend repair.
+        """
         viz = self.visualizer
+        inventory_before = tuple(
+            len(items) for items in (viz.tx_markers, viz.rx_markers, viz.tx_labels, viz.rx_labels)
+        )
         tx_count = max(0, int(tx_count))
         rx_count = max(0, int(rx_count))
         logger.debug(
@@ -1994,6 +2065,7 @@ class NodeService(BaseService):
             font_size = getattr(viz, "label_font_size", 0.3)
             for _ in range(tx_needed):
                 idx = len(viz.tx_markers)
+                self._pending_node_removals.discard(("tx", idx))
                 marker = self._node_marker_handle(
                     "tx",
                     idx,
@@ -2012,6 +2084,7 @@ class NodeService(BaseService):
             font_size = getattr(viz, "label_font_size", 0.3)
             for _ in range(rx_needed):
                 idx = len(viz.rx_markers)
+                self._pending_node_removals.discard(("rx", idx))
                 marker = self._node_marker_handle(
                     "rx",
                     idx,
@@ -2026,6 +2099,18 @@ class NodeService(BaseService):
             logger.debug("Created %d RX marker render handles", rx_needed)
 
         logger.debug(f"Final marker counts: TX={len(viz.tx_markers)}, RX={len(viz.rx_markers)}")
+
+        inventory_after = tuple(
+            len(items) for items in (viz.tx_markers, viz.rx_markers, viz.tx_labels, viz.rx_labels)
+        )
+        if inventory_before != inventory_after:
+            self._pending_node_entity_ids.update(
+                make_node_entity_id(kind, index)
+                for kind, markers in (("tx", viz.tx_markers), ("rx", viz.rx_markers))
+                for index in range(len(markers))
+            )
+        if not synchronize:
+            return
 
         if self._node_entity_renderer_ready():
             self._sync_tx_rx_visual_entities()

@@ -100,6 +100,7 @@ class ActorStateManager:
         duration: float,
         motion_mode: str = "cached",
         mesh_update_interval_s: float | None = None,
+        sample_rate_hz: float | None = None,
     ):
         self.tx_configs = tx_configs
         self.rx_configs = rx_configs
@@ -119,7 +120,7 @@ class ActorStateManager:
         self._tgt_velocities_cache: list[list[Position3]] = []
         self._actor_mobility_lookup: dict[str, PreparedMobility] = {}
         self._state_cache: ActorStateCache | None = None
-        self._timeline = Timeline(self.steps, self.duration)
+        self._timeline = Timeline(self.steps, self.duration, sample_rate_hz=sample_rate_hz)
 
     def is_streaming_state(self) -> bool:
         """Return whether propagation is being driven by streaming mode."""

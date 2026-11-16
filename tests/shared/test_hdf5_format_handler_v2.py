@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from shared.frames.contracts import (
     PathMetric,
 )
 from shared.frames.hdf5 import HDF5FormatHandler
+from shared.frames.json_codec import dumps_frame_json
 from shared.frames.manifest import (
     FrameChunkManifest,
     manifest_from_chunks,
@@ -36,6 +38,15 @@ def _write_minimal_packed_frame_set(
     chunk_path = frames_dir / f"mpc_frames_{frame_id:05d}-{frame_id:05d}.h5"
     string_dtype = h5py.string_dtype(encoding="utf-8")
     all_metric_bits = np.uint8(sum(PATH_METRIC_VALIDITY_BITS.values()))
+    sensing_layout_id = hashlib.sha256(
+        dumps_frame_json(
+            {
+                "fixed": {},
+                "cir": {"storage_dtype": None, "rank": None},
+                "static_config": None,
+            }
+        ).encode("utf-8")
+    ).hexdigest()
 
     with h5py.File(chunk_path, "w") as h5:
         h5.attrs["file_kind"] = "mpc_frames"
@@ -48,11 +59,12 @@ def _write_minimal_packed_frame_set(
         h5.attrs["start_frame"] = frame_id
         h5.attrs["end_frame"] = frame_id
         h5.attrs["topology_id"] = "one-pair"
-        h5.attrs["sensing_layout_id"] = "none"
+        h5.attrs["sensing_layout_id"] = sensing_layout_id
 
         h5.create_dataset("static/tx_rx_pairs", data=np.array([[0, 0]], dtype=np.int32))
         h5.create_dataset("static/tx_names", data=np.array(["TX"], dtype=string_dtype))
         h5.create_dataset("static/rx_names", data=np.array(["RX"], dtype=string_dtype))
+        h5.create_dataset("static/sensing_config_json", data="null", dtype=string_dtype)
         h5.create_dataset(
             "static/materials/name",
             data=np.array(["", "concrete"], dtype=string_dtype),
@@ -133,6 +145,12 @@ def _write_minimal_packed_frame_set(
             shape=(0,),
             dtype=string_dtype,
         )
+        # Match the writer's absent-sensing layout, including its empty CIR columns.
+        h5.create_group("sensing/fixed")
+        h5.create_dataset("sensing/ragged/cir/offsets", data=np.array([0, 0], dtype=np.int64))
+        h5.create_dataset("sensing/ragged/cir/shapes", shape=(1, 0), dtype=np.int64)
+        h5.create_dataset("sensing/ragged/cir/present", data=np.array([0], dtype=np.uint8))
+        h5.create_dataset("sensing/ragged/cir/values", shape=(0,), dtype=np.complex64)
 
     chunk = FrameChunkManifest(
         file=chunk_path.name,
@@ -140,7 +158,7 @@ def _write_minimal_packed_frame_set(
         size_bytes=chunk_path.stat().st_size,
         uncompressed_bytes=0,
         topology_id="one-pair",
-        sensing_layout_id="none",
+        sensing_layout_id=sensing_layout_id,
     )
     manifest = manifest_from_chunks(
         generation_id="test-generation",

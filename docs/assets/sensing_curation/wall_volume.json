@@ -1,0 +1,344 @@
+{
+  "license_spdx": "GPL-3.0-only",
+  "kind": "plot_of_saved_paired_outcomes",
+  "image": "wall_volume.png",
+  "sha256": "8c93c6de23b2c55bcb3f90ca64ad5f20e732054dc96e480d415bfa5e679fcc54",
+  "tutorial_scenario": "scenarios/sensing/applications/wall_detection_volume/scenario.yaml",
+  "tutorial_scenario_sha256": "e6eac0288ba6ad40ce84c7628b742207915d330702bdb39a3911b2b0636e2471",
+  "launcher_sha256": "b6542af5d955475310b7881d1f1664ca38afde7320df69715647e30f34a1af89",
+  "grid": "tutorial",
+  "summary": {
+    "manifest_sha256": {
+      "wall": "2bccba2b7bc78467dbcee8873b83a5d35403a5d2f0a1bc2e504e03044416acb6",
+      "open": "423ccfb0df94039469b43489a84948165e46a49fd4d12410a5f703237f7a17f7"
+    },
+    "position_gate_m": 0.75,
+    "counts": {
+      "wall": {
+        "measured": 11,
+        "tp": 9,
+        "fp": 6,
+        "fn": 2,
+        "no_reports": 1,
+        "reports_but_no_spatial_match": 1,
+        "median_error_m": 0.31167215362214507,
+        "p90_error_m": 0.484340163084476
+      },
+      "open": {
+        "measured": 11,
+        "tp": 10,
+        "fp": 2,
+        "fn": 1,
+        "no_reports": 0,
+        "reports_but_no_spatial_match": 1,
+        "median_error_m": 0.3479016115345227,
+        "p90_error_m": 0.4764269525716731
+      }
+    },
+    "excluded_per_condition": 1,
+    "pending_per_condition": {
+      "wall": 0,
+      "open": 0
+    },
+    "paired_measured_positions": 11,
+    "paired_outcomes": {
+      "hit_in_both": 9,
+      "hit_only_without_wall": 1,
+      "hit_only_with_wall": 0,
+      "miss_in_both": 1
+    },
+    "geometric_groups_using_wall_reference": {
+      "before_wall": {
+        "wall": {
+          "measured": 4,
+          "tp": 4,
+          "fp": 4,
+          "fn": 0,
+          "no_reports": 0,
+          "reports_but_no_spatial_match": 0,
+          "median_error_m": 0.20721741025879528,
+          "p90_error_m": 0.36189333994127965
+        },
+        "open": {
+          "measured": 4,
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "no_reports": 0,
+          "reports_but_no_spatial_match": 0,
+          "median_error_m": 0.20721741025879528,
+          "p90_error_m": 0.36189333994127965
+        }
+      },
+      "all_nine_reference_rays_blocked": {
+        "wall": {
+          "measured": 1,
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "no_reports": 1,
+          "reports_but_no_spatial_match": 0,
+          "median_error_m": null,
+          "p90_error_m": null
+        },
+        "open": {
+          "measured": 1,
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "no_reports": 0,
+          "reports_but_no_spatial_match": 0,
+          "median_error_m": 0.38413106944690034,
+          "p90_error_m": 0.38413106944690034
+        }
+      },
+      "some_reference_rays_blocked": {
+        "wall": {
+          "measured": 1,
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "no_reports": 0,
+          "reports_but_no_spatial_match": 0,
+          "median_error_m": 0.31167215362214507,
+          "p90_error_m": 0.31167215362214507
+        },
+        "open": {
+          "measured": 1,
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "no_reports": 0,
+          "reports_but_no_spatial_match": 0,
+          "median_error_m": 0.31167215362214507,
+          "p90_error_m": 0.31167215362214507
+        }
+      },
+      "all_nine_reference_rays_clear": {
+        "wall": {
+          "measured": 9,
+          "tp": 8,
+          "fp": 6,
+          "fn": 1,
+          "no_reports": 0,
+          "reports_but_no_spatial_match": 1,
+          "median_error_m": 0.3321068642589304,
+          "p90_error_m": 0.49225337359727894
+        },
+        "open": {
+          "measured": 9,
+          "tp": 8,
+          "fp": 2,
+          "fn": 1,
+          "no_reports": 0,
+          "reports_but_no_spatial_match": 1,
+          "median_error_m": 0.3321068642589304,
+          "p90_error_m": 0.49225337359727894
+        }
+      }
+    },
+    "interpretation": "One noiseless CPI per centre and condition. Geometry labels do not modify detector output. Fractions are conditional spatial outcomes, not detection probabilities. Nine rays probe the centre and corners of a finite cube; near-edge partial visibility is retained.",
+    "bookmarks": [
+      "bookmarks/open_match_with_extras.json",
+      "bookmarks/open_reports_without_match.json",
+      "bookmarks/wall_match_with_extras.json",
+      "bookmarks/wall_reports_without_match.json"
+    ]
+  },
+  "reproduction_commands": [
+    "python -m scenarios.sensing.applications.wall_detection_volume.generate output/examples/wall-tutorial --prepare --grid tutorial",
+    "python -m scenarios.sensing.applications.wall_detection_volume.generate output/examples/wall-tutorial --yes",
+    "python -m scenarios.sensing.applications.wall_detection_volume.generate output/examples/wall-tutorial --collect",
+    "python -m scenarios.sensing.applications.wall_detection_volume.generate output/examples/wall-tutorial --report"
+  ],
+  "source_hashes": {
+    "open/scenario.yaml": "a97d9355d87ca2b369a68feb90fe166b025492314e04c272094a7799dfa93550",
+    "open/sensing_volume.json": "423ccfb0df94039469b43489a84948165e46a49fd4d12410a5f703237f7a17f7",
+    "open/volume_recipe.json": "41b31bb03f5dbcc1dba0e387b96b4bd87afdf8d39a18dd678fafdbf0eeef4d2c",
+    "open/trials/h0_z1_y1_x0/outcome.json": "6fbfcee27cc58a462643ae865d85bcf4740635b1cf070fccb3ab1a1ae2886182",
+    "open/trials/h0_z1_y1_x0/native/scenario.yaml": "dc2328b88c4bd16ffb31660d6736166b9ee162678340b5564b26f9fecbe5dadd",
+    "open/trials/h0_z1_y0_x0/outcome.json": "74e459c9274c9ec4bdc288711fa8b80d921408c86bb69953824d60c4431e3643",
+    "open/trials/h0_z1_y0_x0/native/scenario.yaml": "3ebc8439428a6812f64e3faaa326591fa528e28cc241f6005b75188392f127dd",
+    "open/trials/h0_z1_y0_x1/outcome.json": "28ab5355a649aa4b1b9291cf334e1e1df4d08768fa4712ecbb1ef28576cfd037",
+    "open/trials/h0_z1_y0_x1/native/scenario.yaml": "4839a05fa7fd709f3cb2b6e6e76d3e424a8aafb5b93b70f91318022497146511",
+    "open/trials/h0_z0_y0_x0/outcome.json": "01d8c6bcc51f1571957e92ddd48efa80c135bed7ab8d00f9e628efe3c1f68c0c",
+    "open/trials/h0_z0_y0_x0/native/scenario.yaml": "40951695d3e729a188aaed2819959e0efcbd7368851173fe4329a473d9fa169d",
+    "open/trials/h0_z1_y1_x2/outcome.json": "9cef9649e8b60e1d70e29e0ef7593194b58ce6447c79e59fa56bf8dc0fdb32b1",
+    "open/trials/h0_z1_y1_x2/native/scenario.yaml": "b82798910465f30fc0539e1abcea0eda5374c2b5b14fa7643cf30a5083765882",
+    "open/trials/h0_z0_y1_x1/outcome.json": "2d23a4372c119f0e023b537c3b4792cfdc8a6431b4639c02249f2669a2683b99",
+    "open/trials/h0_z0_y1_x1/native/scenario.yaml": "0e65ada9e639b6c025847e16f6ce36ce5c94e04c0d9854a202c3d1d5006447f7",
+    "open/trials/h0_z0_y1_x0/outcome.json": "3ce89cdd1584f8ec04f23969b0e6f435e901a86eacf421506767a33e06441862",
+    "open/trials/h0_z0_y1_x0/native/scenario.yaml": "2bb5bf57d5b511a9ab8dd4443d722bcbcf61c5474fef31313032d2617dc9326d",
+    "open/trials/h0_z1_y0_x2/outcome.json": "297039297b656d975cea15e303babd426c44c3169a85d5ff41454dfc9c253d55",
+    "open/trials/h0_z1_y0_x2/native/scenario.yaml": "68a1f899e15e75efc472cf7863657f1b5f35d7517bf7105dcd71decb2a0df656",
+    "open/trials/h0_z0_y1_x2/outcome.json": "ebff885249e6eacaaaa68cae6ad05e03329f0aeceef3fc764ac0e271437a0024",
+    "open/trials/h0_z0_y1_x2/native/scenario.yaml": "f5a65c0061530d9f7627752599b24f4618a27b17920fb4c076dd8e9e5ecd647f",
+    "open/trials/h0_z0_y0_x2/outcome.json": "c930fac65a1056a1510db68dc00db60366b4a642f1c5aac56b51a0f0c30b1538",
+    "open/trials/h0_z0_y0_x2/native/scenario.yaml": "456e54152da089dfeb665f63e4dd8fe97b2678bbb1757f6c8e9e15cebd026427",
+    "open/trials/h0_z1_y1_x1/outcome.json": "e028f6634ab50cda07e0968f54e3efb77b919c1d2ce775f822b8772194c2203e",
+    "open/trials/h0_z1_y1_x1/native/scenario.yaml": "bed9404cbe3a9a24669591bb47833d2ea0d679c7952bf3819faf86591479bc63",
+    "wall/scenario.yaml": "edcb0e16ed44a9de4bab33c007933eb1548469c07c99e204444fbfed554b3555",
+    "wall/sensing_volume.json": "2bccba2b7bc78467dbcee8873b83a5d35403a5d2f0a1bc2e504e03044416acb6",
+    "wall/volume_recipe.json": "efac25cbc26c31503d8b8192cd2db56602e015b68cc1f61645f0b62ff8a85324",
+    "wall/trials/h0_z1_y1_x0/outcome.json": "253a2bf1e125ccfdcba6a380b7c5e6d8e5b1594d1dc351d46556e9b81b298836",
+    "wall/trials/h0_z1_y1_x0/native/scenario.yaml": "c7d200ca7acd7d6bca23036ec867571b0bec94778a2abac850139e2159cfc7c6",
+    "wall/trials/h0_z1_y0_x0/outcome.json": "aaaa91fd1856f462d70364ed86757b306e31777dd3bff25652f88cedbaa56d11",
+    "wall/trials/h0_z1_y0_x0/native/scenario.yaml": "688b92aacff1a4a5ae468b72f3f8b4d5adc75aaedc44565f495ac67fcb6d5ffc",
+    "wall/trials/h0_z1_y0_x1/outcome.json": "01a3084b8d645b61bcbef0ba53b26adcded7d35117ac803a82a2a0d7b4434080",
+    "wall/trials/h0_z1_y0_x1/native/scenario.yaml": "0ed37d99cd0f36b39d36029753a09f69e46d1784cc3ea71e5cdb96b8a1d86e9e",
+    "wall/trials/h0_z0_y0_x0/outcome.json": "0c1ec70bfc90baefbdf4084d4ad300b58a404e19577dc50805f2d50d6080b02d",
+    "wall/trials/h0_z0_y0_x0/native/scenario.yaml": "c15463b684d7f0a8e68f3eb2dc6a8e8312dbd09b586021a580e84480bb587d91",
+    "wall/trials/h0_z1_y1_x2/outcome.json": "35966e1087f43601927d8826d478097e5ebd392247fed0a5748e6ee62eb1bda6",
+    "wall/trials/h0_z1_y1_x2/native/scenario.yaml": "db4a3cbbf317e5ff3ed842131e39afa2b7a197c3087016f84124d847a178a342",
+    "wall/trials/h0_z0_y1_x1/outcome.json": "cfd1c12c18cf681c88c72baecea2c34d59e9a5736f8975eb68fd3d955a1ee12a",
+    "wall/trials/h0_z0_y1_x1/native/scenario.yaml": "cc130da503b24e6086768ad6884c4a41465a293cbe6ada2349beae0823300427",
+    "wall/trials/h0_z0_y1_x0/outcome.json": "8e8d5599891a0ef42832320a4441b65c5e2b75f635bcf0ac8ffc39548c9e1466",
+    "wall/trials/h0_z0_y1_x0/native/scenario.yaml": "db528a3d3b4c9051066341de82da8e56b80d55c71acc0108ca82f8cd886b8f19",
+    "wall/trials/h0_z1_y0_x2/outcome.json": "296d596cadcba80614ac1c9a6ef3e85f5e633ed1c7497800ae952eea29ab8c24",
+    "wall/trials/h0_z1_y0_x2/native/scenario.yaml": "15f1330d75d44ea5291941a14a30e1dce777c7d0a488b1b4d6ef7e78903bfcc6",
+    "wall/trials/h0_z0_y1_x2/outcome.json": "cbdda328e00e35c95311d13f05f025e1c394a407d48e3737225b3860b4fcd310",
+    "wall/trials/h0_z0_y1_x2/native/scenario.yaml": "ae0590492598ab887f6508ee525f01594e1f5beef6fb4fc412d7e0a760a124d3",
+    "wall/trials/h0_z0_y0_x2/outcome.json": "e806712a567626cc7a3d4ca0aee3bbe7451c17548a152f17f309ce0bdf49e169",
+    "wall/trials/h0_z0_y0_x2/native/scenario.yaml": "55c0634a67eafedf4723e189d1348871ec8e4473a92eee7402cc4e16070d19dd",
+    "wall/trials/h0_z1_y1_x1/outcome.json": "24eb0c6c57f0b2a99ad34239153525568ff70c8fd0bdc93231392aba19711bfa",
+    "wall/trials/h0_z1_y1_x1/native/scenario.yaml": "bab3e422ae2591be82cab87736cca32e6399013a8c268bee811e10873884aed5"
+  },
+  "plotter_sha256": "12396400d86161b7a539ba215465cbafae1ad58004bd3646c1255aa6e2cba886",
+  "display_slices_m": {
+    "z": 3.0,
+    "y": 0.0
+  },
+  "authoring_equivalence": {
+    "original_authored_sha256": "5d2bedd7d3bdcbbd074568daad09324d1b1f2db459161c53b8fa0380d219fa8f",
+    "original_source_revision": "2f66c03e15f585d1532545aaacb3d63271f5d799",
+    "resolved_configuration_sha256": "b19a61bac1058d2c6821d532528d98567370c244716803d57b7357f105107aac",
+    "command": "python -m scripts.docs.refresh_sensing_authoring_receipts",
+    "scope": "Equivalent scientific configuration; optional current view hints may be omitted for automatic zoom. Original acquisition, image, figure presentation, plotter hashes and execution commands remain unchanged."
+  },
+  "summary_configuration_equivalence": {
+    "schema_version": 1,
+    "scope": "Current authored YAML enables or selects native summary outputs; acquisition and scientific processing settings are unchanged.",
+    "acquisition_repeated": false,
+    "figure_rerendered": false,
+    "original_receipt_sha256": "92b073280d7df4450c0280e173abdd323373f4b0170a7259ac419bef46115b69",
+    "original_source_configuration_fields": {
+      "/tutorial_scenario_sha256": "7e887503c44eab05a3899a3261ac69b594bdfd33710b19340c143e678cdaacc2"
+    },
+    "updated_authored_binding_fields": [
+      "/tutorial_scenario_sha256"
+    ],
+    "configurations": [
+      {
+        "scenario": "scenarios/sensing/applications/wall_detection_volume/scenario.yaml",
+        "previous_authored_sha256": "7e887503c44eab05a3899a3261ac69b594bdfd33710b19340c143e678cdaacc2",
+        "current_authored_sha256": "e3576e8f4c060e2a43ecbb9891cb70bc760f42c150259931f66bbda2b1071e00",
+        "excluded_top_level_keys": [
+          "generator_summary"
+        ],
+        "unchanged_non_summary_document_sha256": "3e74fd8923f161bd10ed80dac1c881afb17996cae3671c84913a9939bebb2cb7",
+        "previous_generator_summary": {
+          "create": [
+            "scene2d",
+            "sensing"
+          ],
+          "visualization": {
+            "scene2d_mode": "auto"
+          }
+        },
+        "current_generator_summary": {
+          "create": [
+            "scene2d",
+            "sensing"
+          ],
+          "visualization": {
+            "scene2d_mode": "auto"
+          },
+          "enabled": true,
+          "sensing": {
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "angles",
+              "detection"
+            ],
+            "inspection_figures": [
+              "detection_stages"
+            ]
+          }
+        }
+      }
+    ],
+    "identity_note": "Original acquisition, renderer, source-file and image hashes are preserved. Updated authored bindings certify configuration equivalence only and do not claim regeneration under the new summary selections."
+  },
+  "authored_configuration_binding": {
+    "schema_version": 1,
+    "kind": "summary_only_rebind",
+    "source_revision": "b5874d3bc0e265ea7e781901a6869266a8fd9ae3",
+    "previous_source_revision": "8ac3a55195bbef9f96eb04324a549d5aa49bb077",
+    "original_receipt_sha256": "c4f5353c12d1e559d843c1f1212eb81c09840f8eb173a5a28c502d01f5f14a86",
+    "original_authored_configuration_fields": {
+      "/tutorial_scenario_sha256": "e3576e8f4c060e2a43ecbb9891cb70bc760f42c150259931f66bbda2b1071e00"
+    },
+    "updated_authored_binding_fields": [
+      "/tutorial_scenario_sha256"
+    ],
+    "configurations": [
+      {
+        "scenario": "scenarios/sensing/applications/wall_detection_volume/scenario.yaml",
+        "previous_authored_sha256": "e3576e8f4c060e2a43ecbb9891cb70bc760f42c150259931f66bbda2b1071e00",
+        "current_authored_sha256": "e6eac0288ba6ad40ce84c7628b742207915d330702bdb39a3911b2b0636e2471",
+        "excluded_top_level_keys": [
+          "generator_summary"
+        ],
+        "unchanged_non_summary_document_sha256": "3e74fd8923f161bd10ed80dac1c881afb17996cae3671c84913a9939bebb2cb7",
+        "previous_generator_summary": {
+          "create": [
+            "scene2d",
+            "sensing"
+          ],
+          "visualization": {
+            "scene2d_mode": "auto"
+          },
+          "enabled": true,
+          "sensing": {
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "angles",
+              "detection"
+            ],
+            "inspection_figures": [
+              "detection_stages"
+            ]
+          }
+        },
+        "current_generator_summary": {
+          "create": [
+            "topology",
+            "sensing"
+          ],
+          "enabled": true,
+          "sensing": {
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "angles",
+              "detection"
+            ],
+            "inspection_figures": [
+              "detection_stages"
+            ]
+          }
+        }
+      }
+    ],
+    "acquisition_repeated": false,
+    "figure_rerendered": false,
+    "identity_note": "Exact historical input bytes and complete non-summary YAML were independently verified. Only generator_summary presentation settings changed; storage-only changes are separately authenticated by the recording bindings. Acquisition, plotting and image identities are unchanged."
+  },
+  "source_receipt_sha256": "818bfa83535daaffde4ed37e34eeff52a0187a8a025271c9d665598c77d28a44",
+  "public_receipt_scope": "Scientific settings, image/authored/rendered hashes and configuration-equivalence proofs retained; historical execution locations and private pose-file inventories omitted."
+}

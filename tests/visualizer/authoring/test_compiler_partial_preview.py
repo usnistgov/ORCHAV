@@ -90,7 +90,7 @@ def test_partial_target_preview_uses_catalog_front_alignment() -> None:
         ActorRole.TARGET,
         "Car",
         position=(5.0, 0.0, 1.0),
-        target=TargetAsset.from_catalog_id("car", mesh_pattern="car.ply"),
+        target=TargetAsset.from_catalog_id("procedural_car", mesh_pattern="car.ply"),
     )
 
     partial = _compile(tx, rx, target, with_scene=False)

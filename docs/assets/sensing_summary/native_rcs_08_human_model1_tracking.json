@@ -1,0 +1,260 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "scenarios/sensing/foundations/RCS/08_human_model1",
+  "source_identity": {
+    "generation_id": "57beb248-77f7-47d3-ac91-fc44a8185267",
+    "frame_set_id": "c12fc65944f7232a978d1ac43a7cabb37fef0e50a7c8da2f493a45bcabd04051"
+  },
+  "manifest_sha256": "3723db4c74c5e1a661bc105f20997c02d05508c109d627a675075582ff61b88f",
+  "source_files_sha256": {
+    "frames_manifest.json": "3723db4c74c5e1a661bc105f20997c02d05508c109d627a675075582ff61b88f",
+    "mpc_frames_00000-00062.h5": "30b2c647316aafb5ffbb0ca5fcefc941008281112e8630381a43ee327aa3c784",
+    "mpc_frames_00063-00063.h5": "8c35af9cade8d20aa10b7cc9facdccdd039a30842109821f3a8ce8c13712b0a6",
+    "mpc_frames_00064-00126.h5": "bbd78a751ba45b988551afed1095d69bbdec86db48e2e365c557db5b27c534de",
+    "mpc_frames_00127-00127.h5": "b028f8fe1e0c729785037a9408bf58782f29903c987e990aa0d6882788fe6cb3",
+    "mpc_frames_00128-00190.h5": "436b30ac8528cebc772cd9b2847b3b2b96f3b8e354a8dc6742a121d48573c831",
+    "mpc_frames_00191-00191.h5": "d2987dc683da1f2719f3789d165bc37b64081981e2f7466b175f75385419e047",
+    "mpc_frames_00192-00254.h5": "54d16ea6d53094b163e7bd2674000fcd12b1e379f496023f2c9bcc0fd64af647",
+    "mpc_frames_00255-00255.h5": "c3999910a2737c6c8283cbfeefd3c3bb66ae13815e1b1595d3e33f1556882e5b",
+    "mpc_frames_00256-00318.h5": "159622cbac22a125e32c6ddef0b7b619504e18ae4aeca141bf9e5e8812a2bf6d",
+    "mpc_frames_00319-00319.h5": "070c1816a1d13ffd3da41c15c101b91d5598399b27c0552851e3e1622301f51d",
+    "mpc_frames_00320-00382.h5": "b70af3a2061339eadbffee041964abf175887a080fa4f44d299c6f9f004a530b",
+    "mpc_frames_00383-00383.h5": "d5133132f04aa20ef2ac9a19056009205c17b0dd2d5547a41d8d8491144d0122",
+    "mpc_frames_00384-00446.h5": "52ac0de074e9cf2618ae4a01ca9df1e66bb6c2c32ea69c67a92bd846e67924bc",
+    "mpc_frames_00447-00447.h5": "51dce5109afb494291b06641cd6b4451bf064c5bc657233570cae8b4d3d73482",
+    "mpc_frames_00448-00510.h5": "81bbd25c6759634aa7fbce2ea1d5725d073a2efe8907baf33e01981aa7f220a7",
+    "mpc_frames_00511-00511.h5": "6c7c80ab07312880c2566b2c8898b8e1510be40abae14e0375f33625dbc95b19"
+  },
+  "figures": [
+    "range_doppler",
+    "range_profile",
+    "tracking"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 8,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "ff27a531-e1af-5da4-888a-12cddabc45b1",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 127,
+      "reference_time_s": 0.128,
+      "acquisition_id": "b2475eea-9b17-5d5a-9e33-a7f7fbb74d87",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 191,
+      "reference_time_s": 0.256,
+      "acquisition_id": "cc42199c-95c5-52ef-a0bd-5746e357d7d1",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 255,
+      "reference_time_s": 0.384,
+      "acquisition_id": "db66abd6-6182-5cc5-acd7-2d504d662e0b",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 319,
+      "reference_time_s": 0.512,
+      "acquisition_id": "627d745a-5eb5-5eaf-844e-932c6254faa2",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 383,
+      "reference_time_s": 0.64,
+      "acquisition_id": "4958d746-f303-5fd0-886a-48b21c15ddca",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 447,
+      "reference_time_s": 0.768,
+      "acquisition_id": "173ac20b-2fb5-534f-809c-cc50dfb366f9",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 511,
+      "reference_time_s": 0.896,
+      "acquisition_id": "5f0e3831-157f-553a-93ae-50d330e07bea",
+      "processing_recipe_id": "cf9ab5be5ffab02e9e48f5304f5cdaf767cc71b769afaa032df7602206eba20a",
+      "detection_count": 1
+    }
+  ],
+  "outputs": [
+    "sensing/range_profile.png",
+    "sensing/range_profile_full.png",
+    "sensing/range_doppler.png",
+    "sensing/range_doppler_full.png",
+    "sensing/tracking.png"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "image": "native_rcs_08_human_model1_tracking.png",
+  "sha256": "6c7364915d086919bf929ea322824355020a6051aac873fb6fb06ac78dbd4231",
+  "output": "docs/assets/sensing_summary/native_rcs_08_human_model1_tracking.png",
+  "output_sha256": "6c7364915d086919bf929ea322824355020a6051aac873fb6fb06ac78dbd4231",
+  "summary_output": "sensing/tracking.png",
+  "tutorial_scenario": "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml",
+  "tutorial_scenario_sha256": "2545b6343c999642f7046adb94de8990d1f9470f3043f6c1c9bce23fa6c3b297",
+  "plotting_source_sha256": {
+    "generator/figures/summary/saved_sensing.py": "db87f55264b0a45e360ce3638780c1aadfb4c232431a4c8bc98a2d4f30af192c",
+    "generator/figures/summary/sensing.py": "52fff472d92fcd64cc07446c9b709a2e1199cead04bd584befbbea45f39f904c",
+    "shared/sensing_viz.py": "9a56ac6faa1d92d85f92dd9edd0876bc0b4ec6dcea3bb3da3ec9f9b4456b0368",
+    "shared/sensing_doppler_summary.py": "673a30d11deef54429c768cc09c61a15b0db00010cd4ce9d594db3edbb2208a3",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "reproduction_command": "python -m generator.figures.summary.saved_sensing scenarios/sensing/foundations/RCS/08_human_model1 --output analysis/native-rcs/08_human_model1 --figure range_doppler --figure range_profile --figure tracking",
+  "summary_configuration_equivalence": {
+    "schema_version": 1,
+    "scope": "Current authored YAML enables or selects native summary outputs; acquisition and scientific processing settings are unchanged.",
+    "acquisition_repeated": false,
+    "figure_rerendered": false,
+    "original_receipt_sha256": "5286adf596c730f91933fed7523069fff8b9e29c60a629764f717e6852a0c525",
+    "original_source_configuration_fields": {
+      "/tutorial_scenario_sha256": "e7b4dbab1e5996fe7e2193ed1c94b0fec8b61722e4b84030c188f00d7d77ccac"
+    },
+    "updated_authored_binding_fields": [
+      "/tutorial_scenario_sha256"
+    ],
+    "configurations": [
+      {
+        "scenario": "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml",
+        "previous_authored_sha256": "e7b4dbab1e5996fe7e2193ed1c94b0fec8b61722e4b84030c188f00d7d77ccac",
+        "current_authored_sha256": "8151f5a082e3267c86f018a474cbf0f507b12cce78c5c61badb7bb73fa6d12e7",
+        "excluded_top_level_keys": [
+          "generator_summary"
+        ],
+        "unchanged_non_summary_document_sha256": "cc7f45b0f27628d1b16665f2c64d3962e9111951e660839689b02b46bfe4fba9",
+        "previous_generator_summary": {
+          "enabled": true,
+          "create": [
+            "sensing"
+          ],
+          "output": {
+            "format": "svg"
+          },
+          "force": true,
+          "sensing": {
+            "inspection_figures": [
+              "detection_stages",
+              "tracking_decisions"
+            ]
+          }
+        },
+        "current_generator_summary": {
+          "enabled": true,
+          "create": [
+            "sensing"
+          ],
+          "output": {
+            "format": "svg"
+          },
+          "force": true,
+          "sensing": {
+            "inspection_figures": [
+              "detection_stages",
+              "tracking_decisions"
+            ],
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "detection",
+              "tracking",
+              "truth"
+            ]
+          }
+        }
+      }
+    ],
+    "identity_note": "Original acquisition, renderer, source-file and image hashes are preserved. Updated authored bindings certify configuration equivalence only and do not claim regeneration under the new summary selections."
+  },
+  "authored_configuration_binding": {
+    "schema_version": 1,
+    "kind": "summary_only_rebind",
+    "source_revision": "b5874d3bc0e265ea7e781901a6869266a8fd9ae3",
+    "previous_source_revision": "8ac3a55195bbef9f96eb04324a549d5aa49bb077",
+    "original_receipt_sha256": "7b9cb373661334686336aa479329fc41e90756c57cd873a936c0297c6e3d754f",
+    "original_authored_configuration_fields": {
+      "/tutorial_scenario_sha256": "8151f5a082e3267c86f018a474cbf0f507b12cce78c5c61badb7bb73fa6d12e7"
+    },
+    "updated_authored_binding_fields": [
+      "/tutorial_scenario_sha256"
+    ],
+    "configurations": [
+      {
+        "scenario": "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml",
+        "previous_authored_sha256": "8151f5a082e3267c86f018a474cbf0f507b12cce78c5c61badb7bb73fa6d12e7",
+        "current_authored_sha256": "2545b6343c999642f7046adb94de8990d1f9470f3043f6c1c9bce23fa6c3b297",
+        "excluded_top_level_keys": [
+          "generator_summary"
+        ],
+        "unchanged_non_summary_document_sha256": "cc7f45b0f27628d1b16665f2c64d3962e9111951e660839689b02b46bfe4fba9",
+        "previous_generator_summary": {
+          "enabled": true,
+          "create": [
+            "sensing"
+          ],
+          "output": {
+            "format": "svg"
+          },
+          "force": true,
+          "sensing": {
+            "inspection_figures": [
+              "detection_stages",
+              "tracking_decisions"
+            ],
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "detection",
+              "tracking",
+              "truth"
+            ]
+          }
+        },
+        "current_generator_summary": {
+          "enabled": true,
+          "create": [
+            "topology",
+            "sensing"
+          ],
+          "output": {
+            "format": "svg"
+          },
+          "force": true,
+          "sensing": {
+            "inspection_figures": [
+              "detection_stages",
+              "tracking_decisions"
+            ],
+            "figures": [
+              "range_profile",
+              "range_doppler",
+              "doppler",
+              "detection",
+              "tracking",
+              "truth"
+            ]
+          }
+        }
+      }
+    ],
+    "acquisition_repeated": false,
+    "figure_rerendered": false,
+    "identity_note": "Exact historical input bytes and complete non-summary YAML were independently verified. Only generator_summary presentation settings changed; storage-only changes are separately authenticated by the recording bindings. Acquisition, plotting and image identities are unchanged."
+  },
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "bb7cf760a40dff31c22ff6346d3dcb8e7cc7ff29c53d3b720823cbbc69fe8d3f"
+}

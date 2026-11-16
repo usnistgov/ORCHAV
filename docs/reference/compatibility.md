@@ -1,24 +1,44 @@
 # Versions and Compatibility
 
-ORCHAV `0.1.0` is a software release. The scenarios it reads, the frames it
-creates, the files it stores, and the messages it sends each have their own
-format identifier. An identifier applies only to the artifact or interface
-named beside it.
+In ORCHAV `0.2.0`, scenarios, generated frames, stored files, and messages each
+have their own format identifier. An identifier applies only to the artifact
+or interface named beside it.
 
 Most users set only one of these values: every `scenario.yaml` contains
 `schema_version: 2`. ORCHAV writes and validates the identifiers in generated
 frames, HDF5 files, manifests, coverage files, and gRPC messages.
 
+## Platform Support
+
+Use Python 3.12 on Linux, Windows, or Apple Silicon macOS.
+
+ORCHAV is developed and most thoroughly tested on Linux. Windows and Apple
+Silicon macOS have also been tested on a smaller set of workflows.
+
+Use pygfx on macOS. On Linux and Windows, the Visualizer also offers
+Open3D/Filament. Ray tracing needs CUDA or an LLVM CPU backend. You can
+play back saved frames without a ray-tracing backend.
+
+For Windows generation with local mesh assets, use ASCII-only full paths for
+the scenario and its meshes. See the
+[Windows mesh-path limitation](../help/troubleshooting.md#windows-generation-cannot-open-an-existing-mesh).
+
+The [target-model reference](../sensing/target_models.md#solver-and-acquisition)
+explains the Sionna RT 2.2 requirements for native RCS acquisition. Saved-data
+reprocessing does not require another ray-tracing solve.
+
+See [Installation](../getting_started/installation.md) for setup.
+
 ## Compatibility Map
 
 Read the map from top to bottom. The scenario schema identifies the authored
 YAML accepted by validation. Generation can create ORCHAV frames, a coverage
-grid, or both. A frame can be stored as an HDF5 frame set or encoded for a gRPC
-connection. Each representation has its own compatibility marker.
+grid, or both. Local HDF5 stores frames. Live and remote connections encode
+propagation frames for gRPC. Each representation has its own compatibility marker.
 
 ```mermaid
 flowchart TB
-    subgraph Release["ORCHAV 0.1.0"]
+    subgraph Release["ORCHAV 0.2.0"]
         direction TB
         Scenario["Scenario input: scenario.yaml schema 2"] --> Validation["Scenario validation"]
         Validation -->|"frame generation"| Frame["ORCHAV frame: StandardMPCFrame contract 2"]
@@ -40,7 +60,7 @@ not mean that connected formats share one version sequence.
 
 | Artifact or boundary | Identifier | Current value | What it identifies |
 |----------------------|------------|---------------|--------------------|
-| ORCHAV software | Package and release version | `0.1.0` | The Generator, Visualizer, shared packages, documentation, and included scenarios released together. It is not written into every data format as a compatibility test. |
+| ORCHAV software | Package and release version | `0.2.0` | The ORCHAV distribution, including the Generator, Visualizer, shared packages, documentation, and examples. It is not written into every data format as a compatibility test. |
 | `scenario.yaml` | Root `schema_version` | `2` | The accepted structure and meaning of authored scenario YAML. |
 | In-memory ORCHAV frame | `StandardMPCFrame.version` | `2` | The source-independent fields, arrays, shapes, units, and validation rules for one frame. |
 | `frames_manifest.json` | `manifest_version` | `2` | The JSON frame-set inventory and metadata document. |
@@ -49,6 +69,7 @@ not mean that connected formats share one version sequence.
 | Packed HDF5 chunk payload | `packed_frame_version` | `1` | The compact-array vocabulary stored in an HDF5 chunk. This is not the in-memory frame-contract version. |
 | Frame data sent over gRPC | `wire_format_version` | `3` | The protobuf encoding used by Live Generator and Remote HDF5 Playback. It is unrelated to protobuf's `proto3` syntax or package version. |
 | Coverage HDF5 file | `coverage_schema_version` and `coverage_storage_layout` | `2` and `canonical_derived_v2` | The separate grid, transmitter, metric, solver, and metadata layout used by coverage output. |
+| Optional sensing extension | Sensing schema and product contract | `4` and `2` | Pair-qualified sensing time, axes, representation, lineage, targets, products, detections, and tracking semantics. Older sensing payloads may require regeneration; this does not change generic packed-HDF5 v2 or non-sensing frame compatibility. |
 
 The repeated `2` values do not make these artifacts the same format. For
 example, a `StandardMPCFrame` contract at version `2` is correctly stored with
@@ -115,11 +136,15 @@ exchange contracts and are intentionally outside this map.
 
 ## Related Details
 
+Release exports include `RELEASE_PROVENANCE.json`. It records the source
+revision and file checksums so maintainers can identify and verify the export.
+You do not need to edit it or use it during installation.
+
 - [Scenario YAML Reference](scenario_yaml.md)
 - [Scenario Validation](scenario_validation.md)
 - [Frame Contract](../shared/frame_reference.md#frame-contract)
 - [HDF5 Frame Layout](../shared/frame_reference.md#hdf5-frame-layout)
 - [Technical Delivery Routes](../shared/frame_reference.md#technical-delivery-routes)
-- [Coverage Maps](../concepts/propagation.md#coverage-maps)
+- [Coverage Maps](propagation.md#coverage-maps)
 
 Home: [Documentation](../README.md)

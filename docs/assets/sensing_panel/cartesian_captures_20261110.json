@@ -1,0 +1,70 @@
+{
+  "license_spdx": "GPL-3.0-only",
+  "kind": "native_sensing_dashboard_captures",
+  "date": "2026-11-10",
+  "source_revision": "23501c46f90668e86657fcfe0b7250b9626fca7b",
+  "scenario": "scenarios/sensing/cube_radar/moving_tracking_3d",
+  "scenario_sha256": "9cbbbd1523daab6b2a32d162995d268e54598f3b3e0ddf1187b1f92977fd2ccc",
+  "frames_manifest_sha256": "5e202a19b77a6423fb52e6ef82c0eb13bad6bba13c66224e6d671bca32290a1e",
+  "generation_id": "02899498-a45f-42a6-bb2c-1c97e30da01b",
+  "scene_frame_id": 960,
+  "result_time_s": 0.96,
+  "acquisition_count": 16,
+  "capture_method": "Unedited Qt widget screenshots from the native Visualizer using the retained Cartesian-cube recording. The detector image is its native input/threshold plot. Other images show the detached sensing dashboard. No acquisition or sensing reprocessing was run.",
+  "renderer": "pygfx, Vulkan software rendering (Mesa lavapipe), Qt offscreen bitmap presentation",
+  "software": {
+    "pygfx": "0.17.0",
+    "wgpu": "0.31.1",
+    "rendercanvas": "2.6.3",
+    "PySide6": "6.8.3",
+    "pyqtgraph": "0.14.0"
+  },
+  "display": {
+    "graph_height_px": 180,
+    "tracking_projection": "XY",
+    "range_gate_m": 2.0,
+    "velocity_gate_m_s": 2.0,
+    "interval": "full retained recording",
+    "theme": "dark",
+    "theme_control": "Display > Theme > Dark"
+  },
+  "figures": [
+    {
+      "image": "cartesian_current_result.png",
+      "sha256": "7284c10c87cab0084dcc7a858bd3c337f27442cdb3c76a2b90611c55562a6fa7",
+      "dimensions_px": [
+        1320,
+        1320
+      ],
+      "bytes": 150763
+    },
+    {
+      "image": "cartesian_detector.png",
+      "sha256": "97af03801773791180722061ee7d961d06132c224bf53e20f1a0168e2fd56456",
+      "dimensions_px": [
+        1278,
+        290
+      ],
+      "bytes": 30805
+    },
+    {
+      "image": "cartesian_tracking.png",
+      "sha256": "167b5a35dc1baf818bfb88e120392d7cbfcf79e6de6fef9c9a651046d0cefc58",
+      "dimensions_px": [
+        1320,
+        1320
+      ],
+      "bytes": 128915
+    },
+    {
+      "image": "cartesian_run_summary.png",
+      "sha256": "826d5a68e3a7e7fc3690f70f9551a1e8ffe24fb2b5a35a699d99957a5d944f10",
+      "dimensions_px": [
+        1320,
+        1100
+      ],
+      "bytes": 109611
+    }
+  ],
+  "limits": "Screenshots illustrate this saved simulation and selected evaluation settings. They are not performance measurements or general detection-accuracy claims."
+}

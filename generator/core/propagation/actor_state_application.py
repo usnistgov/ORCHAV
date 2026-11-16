@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
+from contextlib import nullcontext
 from typing import Any
 
 from shared.logging import get_logger
@@ -110,7 +111,8 @@ def apply_target_scale_overrides(
     Scale is not part of the TX/RX assignment path, so live override handling
     defers it until target managers are available. Reapplying the configured
     scale when no override is present prevents one live session from changing
-    the scene observed by the next session.
+    the scene observed by the next session. Entries must already be keyed by
+    exact configured names, as returned by ``apply_live_overrides``.
     """
     for manager in target_managers:
         cfg_name = getattr(manager.config, "name", None)
@@ -119,15 +121,6 @@ def apply_target_scale_overrides(
         entry = None
         if target_override_entries:
             entry = target_override_entries.get(cfg_name)
-            if entry is None:
-                entry = next(
-                    (
-                        value
-                        for key, value in target_override_entries.items()
-                        if key.lower() == cfg_name.lower()
-                    ),
-                    None,
-                )
         scale_value = getattr(entry, "scale", None) if entry else None
         if scale_value is None and isinstance(entry, dict):
             scale_value = entry.get("scale")
@@ -168,7 +161,7 @@ def apply_target_state_to_scene(
             num_steps = getattr(simulation_config, "num_steps", None)
             duration = getattr(simulation_config, "duration", None)
             if num_steps and duration and duration > 0:
-                dt = duration / max(int(num_steps), 1)
+                dt = duration / max(int(num_steps) - 1, 1)
                 step_interval = compute_mesh_update_step_interval(simulation_config) or 1
                 if cir_steps > 1:
                     acquisitions_per_mesh = max(1, math.ceil(step_interval / cir_steps))
@@ -191,27 +184,15 @@ def apply_target_state_to_scene(
                     )
 
     for idx, target_manager in enumerate(target_managers):
-        if idx < len(step_positions):
-            position_value = step_positions[idx]
-            if (
-                position_value is not None
-                and getattr(target_manager.config, "mobility", None) is not None
-                and not getattr(target_manager.config, "use_ply_position", False)
-            ):
-                # PLY-position targets are positioned by the mesh sequence
-                # itself; applying the mobility position here would double-move
-                # the object relative to its mesh-derived center.
-                target_name = getattr(target_manager.config, "name", f"target_{idx}")
-                try:
-                    target_manager.apply_position_snapshot(
-                        point_to_tuple(position_value, error_type=ValueError)
-                    )
-                except Exception as exc:  # noqa: BLE001 - external setter needs frame context
-                    raise ComputationError(
-                        f"Target {target_name!r} state update failed at frame {frame_idx} "
-                        f"while setting position: {exc}"
-                    ) from exc
-
+        is_animated = getattr(target_manager.config, "animated_asset", None) is not None
+        if is_animated:
+            cir_steps = max(1, int(getattr(simulation_config, "cir_time_steps", 1) or 1))
+            start_step = int(getattr(simulation_config, "start_step", 0) or 0)
+            if (int(frame_idx) - start_step) % cir_steps:
+                # Intermediate output/display frames also call this function.
+                # Keep the whole selected geometry/root snapshot frozen until
+                # the next coherent solve; sequential acquisition has stride 1.
+                continue
         velocity_tuple = None
         if step_velocities is not None and idx < len(step_velocities):
             velocity_tuple = step_velocities[idx]
@@ -220,7 +201,11 @@ def apply_target_state_to_scene(
         if idx < len(step_orientations):
             orientation_tuple = step_orientations[idx]
 
-        if should_update_mesh and getattr(target_manager.config, "switch_meshes", True):
+        # Animated assets bind geometry to the exact physical solve step,
+        # independently of legacy ordinal mesh cadence.
+        if (is_animated or should_update_mesh) and getattr(
+            target_manager.config, "switch_meshes", True
+        ):
             mesh_step_interval = compute_mesh_update_step_interval(simulation_config) or 1
             # The expected count is derived from simulation time because coherent
             # acquisition can intentionally skip intermediate mesh updates.
@@ -254,12 +239,38 @@ def apply_target_state_to_scene(
                 )
                 raise ComputationError(message) from exc
 
-        if orientation_tuple is not None:
-            target_name = getattr(target_manager.config, "name", f"target_{idx}")
-            try:
-                target_manager.apply_orientation_snapshot(orientation_tuple)
-            except Exception as exc:  # noqa: BLE001 - external setter needs frame context
-                raise ComputationError(
-                    f"Target {target_name!r} state update failed at frame {frame_idx} "
-                    f"while setting orientation: {exc}"
-                ) from exc
+        pose_update = getattr(target_manager, "pose_update", None)
+        with pose_update() if callable(pose_update) else nullcontext():
+            if orientation_tuple is not None:
+                target_name = getattr(target_manager.config, "name", f"target_{idx}")
+                try:
+                    target_manager.apply_orientation_snapshot(orientation_tuple)
+                except Exception as exc:  # noqa: BLE001 - external setter needs frame context
+                    raise ComputationError(
+                        f"Target {target_name!r} state update failed at frame {frame_idx} "
+                        f"while setting orientation: {exc}"
+                    ) from exc
+
+            # Mesh replacement and rotation can move an asymmetric mesh's AABB
+            # center. Apply the prepared world position last so the solved geometry
+            # and exported/displayed center describe the same pose.
+            if idx < len(step_positions):
+                position_value = step_positions[idx]
+                if (
+                    position_value is not None
+                    and getattr(target_manager.config, "mobility", None) is not None
+                    and not getattr(target_manager.config, "use_ply_position", False)
+                ):
+                    # PLY-position targets are positioned by the mesh sequence
+                    # itself; applying the mobility position here would double-move
+                    # the object relative to its mesh-derived center.
+                    target_name = getattr(target_manager.config, "name", f"target_{idx}")
+                    try:
+                        target_manager.apply_position_snapshot(
+                            point_to_tuple(position_value, error_type=ValueError)
+                        )
+                    except Exception as exc:  # noqa: BLE001 - external setter needs frame context
+                        raise ComputationError(
+                            f"Target {target_name!r} state update failed at frame {frame_idx} "
+                            f"while setting position: {exc}"
+                        ) from exc

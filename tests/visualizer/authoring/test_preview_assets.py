@@ -135,8 +135,8 @@ def test_library_scene_assets_preserve_reference_and_reuse_revision_cache(
 
 def test_target_animation_order_and_rotated_aabb_center_match_prepared_pose() -> None:
     target = _target(
-        "nist_human_walking",
-        "fitted_Image_Psm_01_0000[12].ply",
+        "digital_twin_update1",
+        "DT_Pjh_02_0000[12].ply",
         scale=1.25,
         mesh_animation=True,
     )
@@ -150,9 +150,9 @@ def test_target_animation_order_and_rotated_aabb_center_match_prepared_pose() ->
     assert result.valid, result.issues
     frames = result.target_assets[target.id]
     assert [Path(frame.mesh_path).name for frame in frames] == [
-        "fitted_Image_Psm_01_00001.ply",
-        "fitted_Image_Psm_01_00002.ply",
-        "fitted_Image_Psm_01_00001.ply",
+        "DT_Pjh_02_00001.ply",
+        "DT_Pjh_02_00002.ply",
+        "DT_Pjh_02_00001.ply",
     ]
     samples = result.samples[target.id]
     for frame, position, orientation in zip(
@@ -170,8 +170,8 @@ def test_target_animation_order_and_rotated_aabb_center_match_prepared_pose() ->
 
 def test_target_mesh_switch_disabled_uses_sorted_first_frame() -> None:
     target = _target(
-        "nist_human_walking",
-        "fitted_Image_Psm_01_0000[12].ply",
+        "digital_twin_update1",
+        "DT_Pjh_02_0000[12].ply",
         mesh_animation=False,
     )
 
@@ -182,7 +182,7 @@ def test_target_mesh_switch_disabled_uses_sorted_first_frame() -> None:
 
     assert result.valid, result.issues
     frames = result.target_assets[target.id]
-    assert {Path(frame.mesh_path).name for frame in frames} == {"fitted_Image_Psm_01_00001.ply"}
+    assert {Path(frame.mesh_path).name for frame in frames} == {"DT_Pjh_02_00001.ply"}
     assert all(frame.mesh is frames[0].mesh for frame in frames)
 
 
@@ -398,3 +398,80 @@ def test_target_preview_failure_preserves_successful_peer(
     assert not result.valid
     assert set(result.target_assets) == {valid_target.id}
     assert len(result.target_assets[valid_target.id]) == 2
+
+
+def test_scene_cache_invalidates_when_authored_texture_symlink_is_retargeted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same sidecar lookup can resolve to a different existing texture."""
+    import hashlib
+    import json
+
+    from PIL import Image
+
+    monkeypatch.setenv("ORCHAV_SCENE_PAYLOAD_CACHE_DIR", str(tmp_path / "scene_cache"))
+    monkeypatch.setenv("ORCHAV_ENABLE_TEXTURES", "1")
+    monkeypatch.delenv("ORCHAV_DISABLE_TEXTURES", raising=False)
+    mesh = tmp_path / "mesh.ply"
+    _write_triangle_ply(mesh, 1.0)
+    xml = tmp_path / "scene.xml"
+    xml.write_text(
+        '<scene version="2.1.0"><bsdf id="mat-wall" type="diffuse">'
+        '<string name="type" value="concrete"/>'
+        '</bsdf><shape id="wall" type="ply">'
+        '<string name="filename" value="mesh.ply"/>'
+        '<ref name="bsdf" id="mat-wall"/></shape></scene>'
+    )
+    first_texture, second_texture = tmp_path / "first.png", tmp_path / "second.png"
+    Image.new("RGB", (2, 2), "red").save(first_texture)
+    Image.new("RGB", (2, 2), "blue").save(second_texture)
+    lookup = tmp_path / "front.png"
+    try:
+        lookup.symlink_to(first_texture.name)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Texture symlinks are unavailable: {exc}")
+    sidecar = tmp_path / "visual_surfaces.json"
+    sidecar.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "meshes": {
+                    "mesh.ply": {
+                        "source_sha256": hashlib.sha256(mesh.read_bytes()).hexdigest(),
+                        "surfaces": [
+                            {
+                                "id": "front",
+                                "triangle_indices": [0],
+                                "triangle_uvs": [[0, 0], [1, 0], [0, 1]],
+                                "material": {"texture_path": "front.png"},
+                            }
+                        ],
+                    }
+                },
+            }
+        )
+    )
+    original_inputs = {path: path.read_bytes() for path in (xml, mesh, sidecar)}
+    compiler = PreviewAssetCompiler(PROJECT_ROOT)
+    reference = SceneReference("local", "scene.xml")
+    first = compiler.build_scene_assets(reference, xml)
+    assert len(first) == 1
+    assert first[0].material.texture_path == str(first_texture)
+    # The optional baseline view changes material selection, not scene geometry.
+    baseline = compiler.build_scene_assets(reference, xml, authored_surface_textures=False)
+    assert baseline is not first
+    assert baseline[0].material.texture_path != str(first_texture)
+    np.testing.assert_array_equal(baseline[0].mesh.vertices, first[0].mesh.vertices)
+    np.testing.assert_array_equal(baseline[0].mesh.triangles, first[0].mesh.triangles)
+    assert compiler.build_scene_assets(reference, xml) is first
+
+    lookup.unlink()
+    lookup.symlink_to(second_texture.name)
+    second = compiler.build_scene_assets(reference, xml)
+
+    assert second is not first
+    assert second[0].cache_key != first[0].cache_key
+    assert second[0].material.texture_path == str(second_texture)
+    np.testing.assert_array_equal(second[0].mesh.vertices, first[0].mesh.vertices)
+    np.testing.assert_array_equal(second[0].mesh.triangle_uvs, first[0].mesh.triangle_uvs)
+    assert {path: path.read_bytes() for path in original_inputs} == original_inputs

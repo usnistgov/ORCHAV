@@ -1,0 +1,115 @@
+# Native Sionna RT 2.2 target; see README.md for the walkthrough.
+schema_version: 2
+scene:
+  source: local
+  id: scene.xml
+timeline:
+  steps: 512
+  sample_rate_hz: 500.0
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 3500000000.0
+  bandwidth_hz: 200000000.0
+  quality:
+    preset: ultra-low
+    custom:
+      max_depth: 1
+      samples_per_src: 32
+      max_num_paths_per_src: 1000
+      diffuse_reflection: false
+      specular_reflection: false
+      refraction: false
+  rcs:
+    max_depth: 1
+    samples_per_sp: 32
+    buffer_size_per_sp: 1000
+    specular_reflection: false
+    refraction: false
+actors:
+  tx:
+  - name: radar_tx
+    mobility:
+      type: stationary
+      position_m:
+      - 0
+      - 0
+      - 1
+  rx:
+  - name: radar_rx
+    mobility:
+      type: stationary
+      position_m:
+      - 0
+      - 0
+      - 1
+  targets:
+  - name: native_human
+    representation: tr38901
+    geometry:
+      type: box
+    mobility:
+      type: linear
+      start_m:
+      - 40
+      - 0.0
+      - 0.875
+      end_m:
+      - 38.467
+      - 0.0
+      - 0.875
+    orientation:
+      type: fixed
+      yaw_deg: 180.0
+    tr38901:
+      object_type: human
+      model_type: 1
+sensing:
+  enabled: true
+  preset: coherent_hann
+  acquisition:
+    bandwidth_hz: 200000000.0
+    frequency_samples: 128
+    sample_rate_hz: 500.0
+    samples_per_cpi: 64
+  processing:
+    range:
+      interpretation: monostatic
+      fft_size: 128
+    clutter:
+      coherent_mode: unweighted_mean
+  detection:
+    cfar:
+      threshold_scale: 4.0
+      range_doppler:
+        guard_doppler_cells: 2
+        reference_range_cells: 6
+    filters:
+      maximum_dynamic_range_db: 30.0
+      minimum_range_m: 10.0
+      maximum_range_m: 75.0
+  tracking:
+    enabled: true
+    max_missed_updates: 2
+    output_tentative: true
+    association:
+      range_gate_m: 2.0
+      velocity_gate_m_s: 1.0
+  evaluation:
+    range_gate_m: 3.5
+    velocity_gate_m_s: 1.0
+  recording:
+    profile: maps
+    detection_stages: true
+    tracking_diagnostics: true
+generator_summary:
+  enabled: true
+  create: [topology, sensing]
+  output:
+    format: svg
+  force: true
+  sensing:
+    inspection_figures: [detection_stages, tracking_decisions]
+    figures: [range_profile, range_doppler, doppler, detection, tracking, truth]
+data:
+  files:
+    chunk_size: 64

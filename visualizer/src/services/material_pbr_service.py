@@ -27,10 +27,12 @@ from ..materials.presets import BUILTIN_MATERIAL_PRESETS
 from ..materials.texture_policy import (
     TEXTURE_MAP_KEYS,
     clear_texture_path_validation_cache,
+    set_texture_maps_override,
     textures_globally_enabled,
 )
 from ..model import RenderObjectState
 from ..types.render_payloads import MeshPayload, SurfaceColorSource
+from .material_context import MaterialContext
 from .object_identity import (
     ensure_scene_entry_identity,
     ensure_target_entry_identity,
@@ -67,6 +69,7 @@ class MaterialPBRService:
         "roughness_map_path",
         "ao_map_path",
         "metallic_map_path",
+        "clearcoat_roughness_map_path",
         "uv_scale_meters",
         "uv_repeat_scale",
         "shader_variant",
@@ -99,6 +102,15 @@ class MaterialPBRService:
         "roughness_map_path",
         "ao_map_path",
         "metallic_map_path",
+        "clearcoat_roughness_map_path",
+        "uv_repeat_scale",
+        "shader_variant",
+    }
+    # Scalar appearance edits can layer over generated facades/road markings.
+    # Texture, UV and shader assignments replace the surface's representation.
+    _PROCEDURAL_EDIT_PROPERTIES = _SUPPORTED_PROPERTIES - {
+        *TEXTURE_MAP_KEYS,
+        "uv_scale_meters",
         "uv_repeat_scale",
         "shader_variant",
     }
@@ -120,13 +132,15 @@ class MaterialPBRService:
         "uv_scale_meters": 2.0,
     }
 
-    def __init__(self, visualizer: "Visualizer"):
-        """Initialize runtime PBR overrides and the user preset directory."""
+    def __init__(self, visualizer: "Visualizer | MaterialContext"):
+        """Resolve materials from application state or an immutable worker context."""
         self.visualizer = visualizer
         self.overrides: Dict[str, Dict[str, Any]] = {}
+        self._texture_refresh_pending = False
         self._resolved_materials: OrderedDict[tuple[Any, ...], ResolvedMaterial] = OrderedDict()
         self.preset_dir = Path.home() / ".orchav" / "material_presets"
-        self.preset_dir.mkdir(parents=True, exist_ok=True)
+        if not isinstance(visualizer, MaterialContext):
+            self.preset_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"MaterialPBRService: Initialized (preset dir: {self.preset_dir})")
 
     @classmethod
@@ -200,6 +214,45 @@ class MaterialPBRService:
         self._resolved_materials.clear()
         clear_texture_path_validation_cache()
 
+    @property
+    def texture_maps_refresh_pending(self) -> bool:
+        """Return whether the current map choice needs publication retried."""
+        return self._texture_refresh_pending
+
+    def set_texture_maps_enabled(self, enabled: bool | None) -> bool:
+        """Apply a reversible display-only map choice and republish surface materials.
+
+        None restores the CLI/environment default. Canonical appearance refresh
+        retains visibility, selection, RF overlays and scientific color ownership;
+        frame/MPC/coverage geometry is intentionally outside this entry list.
+        """
+        previous = textures_globally_enabled()
+        if not set_texture_maps_override(enabled):
+            return False
+        if previous == textures_globally_enabled() and not getattr(
+            self, "_texture_refresh_pending", False
+        ):
+            return True
+        self.invalidate_material_resolution_cache()
+        self._texture_refresh_pending = True
+        appearance = getattr(self.visualizer, "object_appearance_service", None)
+        refresh = getattr(appearance, "refresh_entry_appearance_batch", None)
+        entries = self._all_entries()
+        try:
+            prepare = getattr(
+                getattr(self.visualizer, "scene_service", None),
+                "prepare_texture_map_defaults",
+                None,
+            )
+            if textures_globally_enabled() and callable(prepare):
+                prepare()
+            synced = not entries or bool(callable(refresh) and refresh(entries))
+        except (RuntimeError, ValueError, TypeError, OSError) as exc:
+            logger.warning("Texture map appearance refresh failed: %s", exc)
+            synced = False
+        self._texture_refresh_pending = not synced
+        return synced
+
     def set_property(
         self, material_type: str, property_name: str, value: "float | list[float]"
     ) -> bool:
@@ -245,14 +298,7 @@ class MaterialPBRService:
         """Return a normalized safe PBR value, or the invalid sentinel."""
         if property_name not in cls._SUPPORTED_PROPERTIES:
             return cls._INVALID
-        if property_name in {
-            "texture_path",
-            "normal_map_path",
-            "roughness_map_path",
-            "ao_map_path",
-            "metallic_map_path",
-            "shader_variant",
-        }:
+        if property_name in {*TEXTURE_MAP_KEYS, "shader_variant"}:
             if value is None:
                 return None
             if not isinstance(value, (str, Path)):
@@ -380,6 +426,14 @@ class MaterialPBRService:
             if not entry_changes:
                 continue
             overrides.update(entry_changes)
+            edited_properties = None
+            if preset is None and (
+                binding.source is VisualMaterialSource.FOLLOW_EM
+                or binding.edited_properties is not None
+            ):
+                edited_properties = (
+                    binding.edited_properties or frozenset()
+                ) | entry_changes.keys()
             updated_binding = VisualMaterialBinding(
                 source=VisualMaterialSource.MANUAL,
                 material_type=(
@@ -389,6 +443,7 @@ class MaterialPBRService:
                 ),
                 preset=preset if preset is not None else binding.preset,
                 overrides=overrides,
+                edited_properties=edited_properties,
             )
             if updated_binding == binding:
                 continue
@@ -536,6 +591,13 @@ class MaterialPBRService:
         em_material_type = str(entry.get("material_type") or "default")
         if binding.source is VisualMaterialSource.FOLLOW_EM:
             props = dict(material_preset(em_material_type))
+            if "_visual_surface_base_properties" in entry and not getattr(
+                self.visualizer, "authored_surface_textures", True
+            ):
+                props.update(entry["_visual_surface_base_properties"])
+                if entry.get("_visual_surface_base_color") is not None:
+                    props["color"] = entry["_visual_surface_base_color"]
+                return props
             props.update(dict(entry.get("pbr_properties", {}) or {}))
             authored_fields = {
                 "color": entry.get("pbr_color", entry.get("color")),
@@ -577,6 +639,27 @@ class MaterialPBRService:
             props.setdefault("metallic", entry.get("pbr_metallic", 0.0))
             props.setdefault("reflectance", entry.get("pbr_reflectance", 0.5))
             props.setdefault("alpha", entry.get("pbr_alpha", 1.0))
+        # A target skin owns albedo independently of the selected PBR preset.
+        # Apply the global texture policy later, so toggling maps remains reversible.
+        from ..scene.target_surface import TargetSurface
+
+        surface = entry.get("_target_surface")
+        if isinstance(surface, TargetSurface):
+            # Authored scalar/map pairs stay together (roughness maps multiply
+            # their scalar). With maps off, retain the selected scalar preset.
+            # Deliberate object overrides still win over authored map factors.
+            from ..materials.texture_policy import textures_globally_enabled
+
+            maps_enabled = textures_globally_enabled()
+            props.update(
+                {
+                    key: value
+                    for key, value in surface.material
+                    if key in TEXTURE_MAP_KEYS or maps_enabled
+                }
+            )
+            props.update(dict(binding.overrides))
+            props["texture_path"] = surface.texture_path
         return props
 
     @staticmethod
@@ -620,6 +703,76 @@ class MaterialPBRService:
             entry,
             discovered_texture_defaults=discovered_texture_defaults,
         )
+        if (
+            getattr(self.visualizer, "building_appearance", "original") in {"procedural", "varied"}
+            or getattr(self.visualizer, "road_appearance", "original") == "marked"
+            or entry.get("_building_style_key")
+        ):
+
+            from ..materials.building_style import apply_building_style
+            from ..materials.surface_defaults import geographic_surface_properties
+
+            # Catalog maps are defaults, not authored assets. Procedural styling may
+            # replace them, but explicit XML maps and discovered assets still win.
+            authored = dict(entry.get("pbr_properties") or {})
+            explicit = authored.get("_explicit_props")
+            xml_bsdf = entry.get("xml_bsdf")
+            if xml_bsdf is not None:
+                explicit = {node.get("name") for node in xml_bsdf.findall("string")}
+            visual_defaults = material_preset(str(entry.get("material_type") or "default"))
+            if entry.get("_osm_road_segments"):
+                # Geographic roads can use an RF surrogate with no catalog
+                # material type. Their automatic asphalt maps are still visual
+                # defaults, not authored maps that veto requested markings.
+                visual_defaults = (
+                    geographic_surface_properties(entry.get("rel_path"), material_type)
+                    or visual_defaults
+                )
+            authored_maps = (
+                any(
+                    entry.get(key) or (authored.get(key) and (explicit is None or key in explicit))
+                    for key in self._TEXTURE_MAP_PROP_KEYS
+                )
+                or bool(discovered_texture_defaults)
+                or any(
+                    value and value != visual_defaults.get(key)
+                    for key, value in dict(entry.get("_resolved_texture_maps") or {}).items()
+                )
+            )
+            style_props = base_props
+            if not authored_maps:
+                style_props = {**base_props, **{key: None for key in self._TEXTURE_MAP_PROP_KEYS}}
+            styled_props = apply_building_style(
+                entry,
+                style_props,
+                enabled=(
+                    getattr(self.visualizer, "road_appearance", "original") == "marked"
+                    if entry.get("_osm_road_segments")
+                    else getattr(self.visualizer, "building_appearance", "original")
+                    in {"procedural", "varied"}
+                ),
+                mode=getattr(self.visualizer, "building_appearance", "original"),
+                roads=bool(entry.get("_osm_road_segments")),
+                theme=getattr(self.visualizer, "facade_theme", "mixed"),
+                eligible=(
+                    binding.source is VisualMaterialSource.FOLLOW_EM
+                    or (
+                        binding.source is VisualMaterialSource.MANUAL
+                        and binding.preset is None
+                        and binding.edited_properties is not None
+                        and binding.edited_properties <= self._PROCEDURAL_EDIT_PROPERTIES
+                    )
+                )
+                and self.overrides.get(material_type, {}).keys()
+                <= self._PROCEDURAL_EDIT_PROPERTIES,
+            )
+            if entry.get("_building_style_key"):
+                base_props = styled_props
+                # Reapply only explicitly edited values, not the frozen base's
+                # defaults. The generated albedo continues to own surface RGB.
+                for key in binding.edited_properties or ():
+                    if key != "color":
+                        base_props[key] = binding.overrides[key]
         props = self._effective_unresolved_properties(material_type, base_props)
         kind = self._entry_kind(entry)
         alpha_key = "current_target_alpha" if kind == "target" else "current_building_alpha"
@@ -857,6 +1010,7 @@ class MaterialPBRService:
         properties["roughness_map_path"] = None
         properties["ao_map_path"] = None
         properties["metallic_map_path"] = None
+        properties["clearcoat_roughness_map_path"] = None
         properties["uv_scale_meters"] = 2.0
         properties["uv_repeat_scale"] = None
         properties["shader_variant"] = None
@@ -960,6 +1114,7 @@ class MaterialPBRService:
         preset_path = self.preset_dir / f"{safe_name}.json"
 
         try:
+            self.preset_dir.mkdir(parents=True, exist_ok=True)
             preset_data = {"name": name, "overrides": self.overrides}
             preset_path.write_text(json.dumps(preset_data, indent=2))
             logger.info(f"MaterialPBRService: Saved preset '{name}' to {preset_path}")

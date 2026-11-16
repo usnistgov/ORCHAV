@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -9,6 +10,7 @@ import pytest
 
 from visualizer.src.renderers.pygfx.geometry import PygfxGeometryMixin
 from visualizer.src.renderers.pygfx.labels import PygfxLabelMixin
+from visualizer.src.renderers.pygfx.lighting import PygfxIBLManager
 from visualizer.src.renderers.pygfx.materials import PygfxMaterialMixin
 from visualizer.src.types.render_payloads import (
     MaterialPayload,
@@ -160,7 +162,8 @@ def test_pygfx_material_failure_repairs_native_state_when_desired_reverts() -> N
         visible=True,
     )
     assert PygfxGeometryMixin.ensure_object(renderer, failed_update) is False
-    assert native.color == pytest.approx(requested.base_color)
+    assert native.color == pytest.approx((*requested.base_color[:3], 1.0))
+    assert native.opacity == original.base_color[3]  # The opacity update failed.
     assert renderer.name not in renderer._material_apply_signatures
 
     reverted = SimpleNamespace(
@@ -366,7 +369,7 @@ class _FailOnceCoverageMaterial:
 class _CoverageMaterialHarness(PygfxMaterialMixin):
     COVERAGE_MESH_NAME = "coverage_mesh"
 
-    def __init__(self, failure_attr: str) -> None:
+    def __init__(self, failure_attr: str, ibl_dir: Path) -> None:
         material = _FailOnceCoverageMaterial()
         material.fail_once_on(failure_attr)
         self._objects = {
@@ -375,7 +378,8 @@ class _CoverageMaterialHarness(PygfxMaterialMixin):
         self._kinds = {self.COVERAGE_MESH_NAME: "mesh"}
         self._gfx = SimpleNamespace(MeshBasicMaterial=_FailOnceCoverageMaterial)
         self._clipping_planes = ()
-        self._ibl_manager = SimpleNamespace(_tracked_materials=[])
+        self._ibl_manager = PygfxIBLManager(self._gfx, ibl_dir)
+        self._ibl_manager._tracked_materials.add(material)
         self.redraws = 0
 
     def request_redraw(self) -> None:
@@ -383,8 +387,10 @@ class _CoverageMaterialHarness(PygfxMaterialMixin):
 
 
 @pytest.mark.parametrize("failure_attr", ["opacity", "depth_write"])
-def test_pygfx_coverage_required_property_failure_retries(failure_attr: str) -> None:
-    renderer = _CoverageMaterialHarness(failure_attr)
+def test_pygfx_coverage_required_property_failure_retries(
+    failure_attr: str, tmp_path: Path
+) -> None:
+    renderer = _CoverageMaterialHarness(failure_attr, tmp_path)
 
     assert renderer.set_coverage_transparency(0.4) is False
     assert renderer.redraws == 0
@@ -394,6 +400,7 @@ def test_pygfx_coverage_required_property_failure_retries(failure_attr: str) -> 
     material = renderer._objects[renderer.COVERAGE_MESH_NAME].material
     assert material.opacity == pytest.approx(0.4)
     assert material.depth_write is False
+    assert material not in renderer._ibl_manager._tracked_materials
 
 
 class _LabelLayoutHarness(PygfxLabelMixin):
@@ -444,3 +451,65 @@ def test_pygfx_label_layout_requires_every_transform_and_retries(failure_name: s
     assert renderer.transform_calls == calls_after_retry
     assert tx_name in renderer._positions
     assert rx_name in renderer._positions
+
+
+def test_native_text_updates_keep_identity_transform_and_style():
+    pygfx = pytest.importorskip("pygfx")
+    renderer = SimpleNamespace(
+        _initialized=True,
+        _scene=pygfx.Scene(),
+        _name_to_handle={"label": 1},
+        _objects={},
+        _kinds={"label": "text"},
+    )
+    native = pygfx.Text(text="pose 1", font_size=18, material=pygfx.TextMaterial())
+    native.local.position = (3, 4, 5)
+    native.visible = False
+    renderer._objects["label"] = native
+    renderer._scene.add(native)
+    payload = TextLabelPayload(
+        text="pose 2000",
+        font_size=0.4,
+        screen_space=True,
+        outline_color=(0.1, 0.2, 0.3),
+        outline_thickness=0.3,
+    )
+    assert PygfxGeometryMixin._ensure_text_label_payload(renderer, "label", payload)
+    assert renderer._objects["label"] is native
+    assert renderer._name_to_handle["label"] == 1
+    assert len(renderer._scene.children) == 1
+    np.testing.assert_allclose(native.local.position, [3, 4, 5])
+    assert native.visible is False
+    assert native.font_size == 24
+    assert native.screen_space is True
+    np.testing.assert_allclose(native.material.outline_color, [0.1, 0.2, 0.3, 1])
+    assert native.material.outline_thickness == pytest.approx(0.3)
+    assert native._text_blocks[0]._input == ("text", "pose 2000")
+
+
+def test_native_text_update_failure_is_reported_and_can_retry():
+    class Text:
+        font_size = 18
+        screen_space = True
+        material = SimpleNamespace()
+        attempts = 0
+
+        def set_text(self, text):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RuntimeError("temporary text update failure")
+            self.text = text
+
+    native = Text()
+    renderer = SimpleNamespace(
+        _initialized=True,
+        _scene=object(),
+        _name_to_handle={"label": 1},
+        _objects={"label": native},
+        _kinds={"label": "text"},
+    )
+    payload = TextLabelPayload(text="pose 2", font_size=0.3)
+    assert not PygfxGeometryMixin._ensure_text_label_payload(renderer, "label", payload)
+    assert renderer._objects["label"] is native
+    assert PygfxGeometryMixin._ensure_text_label_payload(renderer, "label", payload)
+    assert native.text == "pose 2"

@@ -160,6 +160,7 @@ class _AuthoringRuntime:
         self.live_callback = None
         self.synced_poses = []
         self.hide_calls = 0
+        self.live_preview_picking = []
 
     @property
     def logical_size(self):
@@ -177,6 +178,9 @@ class _AuthoringRuntime:
 
     def object_id_for_native(self, native):
         return self.owner._reverse_objects.get(id(native))
+
+    def set_live_preview_picking(self, enabled):
+        self.live_preview_picking.append(enabled)
 
     def set_camera_mode(self, mode):
         self.owner.camera_mode = mode
@@ -541,6 +545,7 @@ def test_visualization_live_preview_and_authoring_share_one_registration() -> No
     authoring_events = []
 
     router.activate(InteractionSession.VISUALIZATION, lambda _event: None)
+    assert renderer._authoring_runtime.live_preview_picking == [False]
     pointer_move = SimpleNamespace(type="pointer_move", target=None)
     router._route_event(pointer_move)
     assert renderer._authoring_runtime.camera_events == [pointer_move]
@@ -548,6 +553,7 @@ def test_visualization_live_preview_and_authoring_share_one_registration() -> No
     assert renderer._authoring_runtime.mpc_selection_events == [pointer_move]
 
     router.activate(InteractionSession.LIVE_PREVIEW, live_events.append)
+    assert renderer._authoring_runtime.live_preview_picking[-1] is True
     stops = []
     router._route_event(
         SimpleNamespace(
@@ -569,6 +575,7 @@ def test_visualization_live_preview_and_authoring_share_one_registration() -> No
     assert live_events == [{"phase": "selected"}]
 
     router.activate(InteractionSession.AUTHORING, authoring_events.append)
+    assert renderer._authoring_runtime.live_preview_picking[-1] is False
     renderer._authoring_runtime.live_callback({"phase": "changed"})
     assert live_events == [{"phase": "selected"}]
     assert authoring_events == []
@@ -580,6 +587,7 @@ def test_visualization_live_preview_and_authoring_share_one_registration() -> No
     router.deactivate()
     assert renderer._renderer.active_registration_count == 0
     assert renderer._renderer.remove_calls == 1
+    assert renderer._authoring_runtime.live_preview_picking[-1] is False
 
 
 @pytest.mark.parametrize(

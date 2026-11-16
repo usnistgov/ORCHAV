@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -54,7 +55,7 @@ def ensure_viridis_lut() -> np.ndarray:
     return _VIRIDIS256
 
 
-def ensure_continuous_lut() -> np.ndarray:
+def ensure_continuous_lut(colormap: str | None = None) -> np.ndarray:
     """Return (and cache) a 256x3 LUT using the theme's continuous colormap.
 
     The LUT is regenerated if the theme's colormap changes.
@@ -68,6 +69,8 @@ def ensure_continuous_lut() -> np.ndarray:
         current_cmap = theme_manager.current.continuous_colormap
     except (ImportError, AttributeError):
         current_cmap = "viridis"  # Fallback
+
+    current_cmap = colormap or current_cmap
 
     # Regenerate if colormap changed
     if _CONTINUOUS_LUT is not None and _CONTINUOUS_LUT_NAME == current_cmap:
@@ -148,7 +151,7 @@ _CATEGORICAL_TYPE_PALETTE: Optional[np.ndarray] = None
 _CATEGORICAL_TYPE_CMAP: Optional[str] = None
 
 
-def get_categorical_order_palette(n_colors: int = 7) -> np.ndarray:
+def get_categorical_order_palette(n_colors: int = 7, *, colormap: str | None = None) -> np.ndarray:
     """Get a palette for reflection orders from the theme's categorical colormap.
 
     Returns (n_colors, 3) float32 array of RGB colors.
@@ -163,6 +166,8 @@ def get_categorical_order_palette(n_colors: int = 7) -> np.ndarray:
         current_cmap = theme_manager.current.categorical_colormap
     except (ImportError, AttributeError):
         current_cmap = "tab10"
+
+    current_cmap = colormap or current_cmap
 
     # Special value meaning "use theme's explicit colors"
     if current_cmap == "theme_default":
@@ -198,7 +203,7 @@ def get_categorical_order_palette(n_colors: int = 7) -> np.ndarray:
     return _CATEGORICAL_ORDER_PALETTE
 
 
-def get_categorical_type_palette(n_colors: int = 9) -> np.ndarray:
+def get_categorical_type_palette(n_colors: int = 9, *, colormap: str | None = None) -> np.ndarray:
     """Get a palette for MPC types from the theme's categorical colormap.
 
     Returns (n_colors, 3) float32 array of RGB colors.
@@ -213,6 +218,8 @@ def get_categorical_type_palette(n_colors: int = 9) -> np.ndarray:
         current_cmap = theme_manager.current.categorical_colormap
     except (ImportError, AttributeError):
         current_cmap = "tab10"
+
+    current_cmap = colormap or current_cmap
 
     # Special value meaning "use theme's explicit colors"
     if current_cmap == "theme_default":
@@ -333,3 +340,30 @@ def clear_distinct_material_palette_cache() -> None:
     global _DISTINCT_MATERIAL_PALETTE, _DISTINCT_MATERIAL_N
     _DISTINCT_MATERIAL_PALETTE = None
     _DISTINCT_MATERIAL_N = 0
+
+
+@dataclass(frozen=True)
+class MpcColorPalette:
+    """Explicit path palettes for an isolated view."""
+
+    order: np.ndarray
+    interaction: np.ndarray
+    continuous: np.ndarray
+
+    @classmethod
+    def from_colormaps(cls, continuous: str, categorical: str) -> "MpcColorPalette":
+        """Resolve the shared samplers without modifying the active theme."""
+        from shared.statistics.themes import theme_manager
+        from shared.statistics.themes.palettes import register_presentation_colormap
+
+        from ..services.mpc_interaction_style_service import build_mpc_type_palette
+
+        register_presentation_colormap(continuous)
+        order = get_categorical_order_palette(colormap=categorical)
+        interaction = get_categorical_type_palette(colormap=categorical)
+        theme = theme_manager.current
+        return cls(
+            np.array(theme.reflection_order, dtype=np.float32) if order is None else order,
+            build_mpc_type_palette(theme.interaction_type) if interaction is None else interaction,
+            ensure_continuous_lut(continuous),
+        )

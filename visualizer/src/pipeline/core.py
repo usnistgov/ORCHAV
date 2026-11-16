@@ -45,6 +45,7 @@ from ..services.mpc_interaction_style_service import (
 )
 from ..state import MpcVisibility
 from ..utils.colors import (
+    MpcColorPalette,
     clear_categorical_palette_cache,
     clear_continuous_lut_cache,
     get_categorical_order_palette,
@@ -247,7 +248,13 @@ class ViewModel:
 class MPCCore:
     """Build and cache canonical MPC data and renderer-neutral ViewModels."""
 
-    def __init__(self, logger: Optional[Any] = None, visualizer: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        logger: Optional[Any] = None,
+        visualizer: Optional[Any] = None,
+        *,
+        subscribe_to_theme: bool = True,
+    ) -> None:
         """Initialize canonical caches, material lookup state, and theme palettes."""
         if logger is None:
             self.logger = get_logger("orchav")
@@ -287,7 +294,8 @@ class MPCCore:
 
         self._viridis256 = ensure_luts()
         self._update_palettes_from_theme()
-        theme_manager.add_listener(self._on_theme_change)
+        if subscribe_to_theme:
+            theme_manager.add_listener(self._on_theme_change)
 
     @property
     def canon_points_dtype(self) -> np.dtype:
@@ -732,6 +740,8 @@ class MPCCore:
         aod_el_filter_max_deg: Optional[float] = None,
         # Distinct material colors
         use_distinct_material_colors: bool = False,
+        include_frame_details: bool = True,
+        color_palette: MpcColorPalette | None = None,
     ) -> Optional[ViewModel]:
         """Create a ViewModel from a visual frame payload and render state.
 
@@ -1012,19 +1022,17 @@ class MPCCore:
                 breakdown["mpc_material_colors_ms"] = (
                     time.perf_counter() - material_colors_start
                 ) * 1000.0
-            if color_mode in ("reflection_order", "mpc_type"):
-                point_color_mode = "material"
-            else:
-                point_color_mode = color_mode
-
             line_color_start = time.perf_counter()
             mpc_colors = colorize_segments(
                 canon=canon,
                 segment_mask=segment_mask,
                 mode=color_mode,
-                order_palette=self._order_palette,
-                type_palette=self._type_palette,
+                order_palette=self._order_palette if color_palette is None else color_palette.order,
+                type_palette=(
+                    self._type_palette if color_palette is None else color_palette.interaction
+                ),
                 viridis256=self._viridis256,
+                continuous_lut=None if color_palette is None else color_palette.continuous,
                 material_colors=material_colors,
             )
             if detailed_profile:
@@ -1054,10 +1062,15 @@ class MPCCore:
                 bounce_colors = colorize(
                     canon=canon,
                     mask=bounce_mask,
-                    mode=point_color_mode,
-                    order_palette=self._order_palette,
-                    type_palette=self._type_palette,
+                    mode=color_mode,
+                    order_palette=(
+                        self._order_palette if color_palette is None else color_palette.order
+                    ),
+                    type_palette=(
+                        self._type_palette if color_palette is None else color_palette.interaction
+                    ),
                     viridis256=self._viridis256,
+                    continuous_lut=None if color_palette is None else color_palette.continuous,
                     material_colors=material_colors,
                 )
                 if detailed_profile:
@@ -1243,6 +1256,7 @@ class MPCCore:
                 segment_mask=segment_mask,
                 path_mask=filtered_path_mask,
                 rendered_line_itypes=mpc_line_itypes,
+                include_details=include_frame_details,
             )
             mpc_line_itype_codes = tuple(summary["mpc_line_itype_codes"])
             if detailed_profile:
@@ -1717,6 +1731,7 @@ class MPCCore:
         segment_mask: np.ndarray,
         path_mask: Optional[np.ndarray] = None,
         rendered_line_itypes: Optional[np.ndarray] = None,
+        include_details: bool = True,
     ) -> dict[str, Any]:
         """Summarize filtered MPC counts and color-mode ranges for panels."""
         total_segments = int(np.count_nonzero(segment_mask)) if canon.lines.size else 0
@@ -1748,7 +1763,7 @@ class MPCCore:
                 type_values = canon.itype[canon.lines[segment_mask, 0]]
             type_counts = self._int_count_pairs(type_values)
             summary["mpc_line_itype_codes"] = tuple(value for value, _count in type_counts)
-            if type_counts:
+            if include_details and type_counts:
                 summary["header"] = "MPC Type — Segments"
                 summary["lines"] = self._mpc_type_summary_lines_from_counts(type_counts)
 
@@ -1785,6 +1800,9 @@ class MPCCore:
 
         summary["total_mpcs"] = visible_path_count
 
+        if not include_details:
+            return summary
+
         if visible_path_count == 0 and total_segments == 0:
             return summary
 
@@ -1799,7 +1817,7 @@ class MPCCore:
                 )
             )
             if orders.size:
-                summary["header"] = "Reflection Order — MPCs"
+                summary["header"] = "Interaction Order — MPCs"
                 summary["lines"] = self._reflection_order_summary_lines(orders)
             return summary
 
@@ -1886,7 +1904,7 @@ class MPCCore:
                 )
             )
             if orders.size:
-                summary["header"] = "Reflection Order — MPCs"
+                summary["header"] = "Interaction Order — MPCs"
                 summary["lines"] = self._reflection_order_summary_lines(orders)
 
         return summary

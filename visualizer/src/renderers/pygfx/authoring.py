@@ -23,6 +23,8 @@ class PygfxAuthoringRuntime:
         self._viewport = renderer._gfx.Viewport(renderer._renderer)
         self._registrations: list[tuple[Callable[[Any], None], tuple[str, ...]]] = []
         self._authoring_rotation_enabled = True
+        self._live_preview_picking = False
+        self._overlay_pick_materials: dict[str, tuple[Any, bool]] = {}
         self._closed = False
 
     @property
@@ -93,6 +95,47 @@ class PygfxAuthoringRuntime:
 
         value = self._owner._reverse_objects.get(id(native))
         return value if isinstance(value, str) else None
+
+    def set_live_preview_picking(self, enabled: bool) -> None:
+        """Let actor clicks pass through propagation and sensing overlays.
+
+        Their visible rendering is unchanged. Original material picking flags
+        are restored when the live-preview session ends.
+        """
+
+        enabled = bool(enabled)
+        if enabled == self._live_preview_picking:
+            return
+        self._live_preview_picking = enabled
+        if enabled:
+            self._mask_overlay_picking()
+        else:
+            for material, pick_write in self._overlay_pick_materials.values():
+                material.pick_write = pick_write
+            self._overlay_pick_materials.clear()
+        self._owner.request_redraw()
+
+    def _mask_overlay_picking(self) -> None:
+        """Refresh the bounded mask after scene updates replace materials."""
+
+        active: set[str] = set()
+        for name, native in self._owner._objects.items():
+            if name not in {"mpc_lines", "mpc_points"} and not name.startswith("sensing_"):
+                continue
+            material = getattr(native, "material", None)
+            if material is None:
+                continue
+            active.add(name)
+            previous = self._overlay_pick_materials.get(name)
+            if previous is None or previous[0] is not material:
+                if previous is not None:
+                    previous[0].pick_write = previous[1]
+                self._overlay_pick_materials[name] = (material, bool(material.pick_write))
+            if material.pick_write:
+                material.pick_write = False
+        for name in self._overlay_pick_materials.keys() - active:
+            material, pick_write = self._overlay_pick_materials.pop(name)
+            material.pick_write = pick_write
 
     def route_camera_event(self, event: Any) -> None:
         """Drive the unregistered active camera controller from the router."""
@@ -285,8 +328,14 @@ class PygfxAuthoringRuntime:
     ) -> None:
         """Update controller/gizmo state at the router's render boundary."""
 
+        if self._live_preview_picking:
+            # Selection binding and marker replacement can enable picking
+            # again. Reapply only while editing, before the next pick buffer.
+            self._mask_overlay_picking()
         if route_camera:
             self.route_camera_event(event)
+        # The controller can move during before_render, after _animate began.
+        self._owner._update_camera_depth_precision()
         gizmo = self._owner._transform_gizmo
         if gizmo is not None:
             gizmo.update_gizmo(event)
@@ -322,6 +371,7 @@ class PygfxAuthoringRuntime:
                 except (AttributeError, RuntimeError, TypeError, ValueError):
                     pass
         self._registrations.clear()
+        self.set_live_preview_picking(False)
         self.hide_gizmo()
         self._closed = True
 

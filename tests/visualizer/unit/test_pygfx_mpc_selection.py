@@ -276,16 +276,8 @@ def test_pulse_trail_clamps_pre_entry_particles_at_tx_instead_of_wrapping_to_rx(
 
 
 def test_selected_bounce_markers_reuse_bulk_interaction_marker_semantics() -> None:
-    marker_int = {
-        "custom": 10,
-        "circle": 11,
-        "triangle_up": 12,
-        "diamond": 13,
-        "plus": 14,
-        "square": 15,
-        "cross": 16,
-    }
-    interaction_types = np.asarray((0, 1, 2, 4, 8, 99, 1234), dtype=np.int32)
+    marker_int = gfx.MarkerInt
+    interaction_types = np.asarray((0, 1, 2, 4, 8, 16, 99, 1234), dtype=np.int32)
 
     selected = PygfxMpcSelectionMixin._selected_bounce_marker_codes(
         interaction_types,
@@ -294,6 +286,19 @@ def test_selected_bounce_markers_reuse_bulk_interaction_marker_semantics() -> No
     bulk = PygfxMpcMixin._interaction_marker_codes(interaction_types, marker_int)
 
     np.testing.assert_array_equal(selected, bulk)
+    np.testing.assert_array_equal(
+        selected,
+        [
+            marker_int["custom"],
+            marker_int["circle"],
+            marker_int["triangle_up"],
+            marker_int["diamond"],
+            marker_int["plus"],
+            marker_int["asterisk6"],
+            marker_int["square"],
+            marker_int["cross"],
+        ],
+    )
 
 
 def test_degenerate_selected_path_keeps_static_pulse_without_arrow() -> None:
@@ -311,3 +316,13 @@ def test_degenerate_selected_path_keeps_static_pulse_without_arrow() -> None:
         renderer._objects[MPC_SELECTION_PULSE_NAME].geometry.positions.data,
         np.tile(np.asarray((1, 2, 3), dtype=np.float32), (8, 1)),
     )
+
+
+def test_static_direction_head_extends_beyond_the_path_halo():
+    renderer = _SelectionRenderer()
+    assert renderer.set_mpc_path_inspection(_snapshot())
+    head = renderer._objects[MPC_SELECTION_DIRECTION_NAME]
+    halo = renderer._objects[MPC_SELECTION_HALO_NAME]
+    assert head.material.thickness > halo.material.thickness
+    assert head.material.thickness_space == "screen"
+    assert not head.material.depth_test and not head.material.pick_write

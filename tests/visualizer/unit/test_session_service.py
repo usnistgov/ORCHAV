@@ -350,8 +350,11 @@ def test_coverage_panel_session_sync_blocks_command_signals(qapp) -> None:
         "coverage_threshold_toggle": threshold_toggle,
         "coverage_threshold_value": threshold_value,
         "coverage_threshold_mask_toggle": threshold_mask,
+        "coverage_threshold_controls": QLabel(),
+        "coverage_threshold_summary": QLabel(),
         "coverage_isolines_toggle": isolines,
         "coverage_isoline_count": isoline_count,
+        "coverage_isoline_controls": QLabel(),
     }
     panel._threshold_metric = "sinr_db"
     emitted: list[object] = []
@@ -1148,6 +1151,24 @@ def test_restore_app_state_forces_rf_xray_inactive() -> None:
     assert viz.app_state.rf_xray_property == "thickness"
 
 
+@pytest.mark.parametrize("mode", ["follow", "pov", "overview"])
+def test_restored_camera_panel_updates_dependent_controls(qapp, mode) -> None:
+    from visualizer.src.panels.camera_panel import CameraControlPanel
+
+    viz = _DummyVisualizer()
+    viz.app_state = create_initial_state()
+    panel = CameraControlPanel(viz)
+    group = panel.create_panel()
+    viz.ui_manager = SimpleNamespace(panels={"camera": panel})
+    viz.app_state = update_state(viz.app_state, camera_mode=mode, pov_axis="z")
+    SessionService(viz)._sync_ui_with_state()
+    assert panel.widgets[f"{mode}_mode_rb"].isChecked()
+    assert panel.widgets["track_group"].isHidden() == (mode == "overview")
+    assert panel.widgets["pov_axis_container"].isHidden() == (mode != "pov")
+    assert panel.widgets["pov_axis_combo"].currentData() == "z"
+    group.deleteLater()
+
+
 def test_sync_ui_with_state_refreshes_materials_rf_xray_controls() -> None:
     calls = []
     viz = _DummyVisualizer()
@@ -1310,6 +1331,7 @@ def test_workspace_summary_reads_typed_metadata_and_skips_invalid_files(tmp_path
         path=manual.resolve(),
         scenario_root=scenario_root.resolve(),
         scenario_name="etoile_target_context",
+        scenario_config_path=scenario_yaml.resolve(),
         created_at=datetime(2026, 7, 18, 14, 30),
         frame=17,
         is_autosave=False,
@@ -1926,3 +1948,100 @@ def test_scene_only_workspace_schedules_one_refresh_without_frame_or_flush(tmp_p
     viz.schedule_update.assert_called_once_with()
     viz._flush_update.assert_not_called()
     assert viz.force_update_next_frame is True
+
+
+def test_workspace_sync_restores_procedural_dropdowns_without_reapplying(qapp, monkeypatch):
+    from visualizer.src.panels.materials_pbr_panel import MaterialsPanel
+
+    monkeypatch.setenv("ORCHAV_ENABLE_TEXTURES", "1")
+    monkeypatch.delenv("ORCHAV_DISABLE_TEXTURES", raising=False)
+    viz = _DummyVisualizer()
+    viz.app_state = create_initial_state()
+    viz.renderer.capabilities = RendererCapabilities(pbr=True)
+    viz.building_appearance = "varied"
+    viz.facade_theme = "asian"
+    viz.road_appearance = "marked"
+    viz.mesh_entries = [
+        {
+            "_osm_building_faces": 12,
+            "_osm_building_parts": [[0, 12]],
+            "_osm_road_segments": [{"first_triangle": 0}],
+        }
+    ]
+    panel = MaterialsPanel(viz)
+    changes = []
+    for key, values in [
+        ("building_appearance", ["original", "procedural", "varied"]),
+        ("facade_theme", ["mixed", "american", "european", "asian", "portuguese"]),
+        ("road_appearance", ["original", "marked"]),
+    ]:
+        combo = QComboBox()
+        for value in values:
+            combo.addItem(value, value)
+        combo.currentIndexChanged.connect(lambda *_: changes.append(True))
+        panel.widgets[key] = combo
+    panel.widgets["facade_theme_label"] = QLabel("Theme")
+    viz.ui_manager = SimpleNamespace(
+        panels={
+            "materials": SimpleNamespace(sync_procedural_controls=panel.sync_procedural_controls)
+        }
+    )
+    service = SessionService(viz)
+    service._sync_ui_with_state()
+    assert panel.widgets["building_appearance"].currentData() == "varied"
+    assert panel.widgets["facade_theme"].currentData() == "asian"
+    assert panel.widgets["road_appearance"].currentData() == "marked"
+    assert not panel.widgets["facade_theme"].isHidden()
+    assert not changes
+    viz.building_appearance = "original"
+    viz.road_appearance = "original"
+    service._sync_ui_with_state()
+    assert panel.widgets["building_appearance"].currentData() == "original"
+    assert panel.widgets["road_appearance"].currentData() == "original"
+    assert panel.widgets["facade_theme"].isHidden()
+    assert not changes
+    for widget in panel.widgets.values():
+        widget.deleteLater()
+
+
+def test_variant_workspace_reopens_exact_yaml_in_same_directory(tmp_path):
+    root = tmp_path / "scenario"
+    root.mkdir()
+    default = root / "scenario.yaml"
+    variant = root / "scenario_personal.yaml"
+    default.write_text("schema_version: 1\n")
+    variant.write_text("schema_version: 1\n")
+    snapshot = tmp_path / "workspace.json"
+    _write_session_payload(snapshot, scenario_path=root, frame=5)
+    payload = json.loads(snapshot.read_text())
+    payload["scenario_config_path"] = str(variant)
+    snapshot.write_text(json.dumps(payload))
+    viz = _workspace_restore_visualizer(root)
+    viz.current_scenario_config_path = default
+    opened = []
+
+    def open_scenario(path, **kwargs):
+        opened.append(path)
+        viz.current_scenario_config_path = path
+        return SimpleNamespace(succeeded=True, scenario_root=root)
+
+    viz.open_scenario = open_scenario
+    assert SessionService(viz).load_session(snapshot, skip_camera=True)
+    assert opened == [str(variant)]
+    viz.update_frame.assert_called_once_with(5)
+
+
+def test_variant_autosaves_preserve_each_other(tmp_path):
+    root = tmp_path / "scenario"
+    root.mkdir()
+    viz = _workspace_restore_visualizer(root)
+    service = SessionService(viz)
+    service.session_dir = tmp_path / "sessions"
+    viz.current_scenario_config_path = root / "scenario.yaml"
+    first = service.save_session()
+    viz.current_scenario_config_path = root / "scenario_personal.yaml"
+    second = service.save_session()
+    assert first != second
+    assert first.is_file() and second.is_file()
+    assert read_workspace_snapshot(second).scenario_config_path == root / "scenario_personal.yaml"
+    assert not service._paths_match(root, viz.current_scenario_config_path)

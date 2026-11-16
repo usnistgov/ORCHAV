@@ -32,15 +32,17 @@ from shared.frames.contracts import (
 )
 from shared.statistics.core.metrics import compute_delay_spread
 
+from .statistics_analysis import build_delay_time_heatmap, select_statistics_pair
+
 ProgressCallback = Callable[[int, int], None]
 
-SCENARIO_STATISTICS_SCHEMA_VERSION = 3
+SCENARIO_STATISTICS_SCHEMA_VERSION = 5
 """Version of the persisted result semantics produced by this accumulator."""
 
 # These are the interaction types that have an explicit ORCHAV/Sionna
 # interpretation.  Virtual paths (99) are authored data and must not be folded
 # into the unknown or LoS categories.
-KNOWN_MPC_TYPES = (0, 1, 2, 4, 8, 99)
+KNOWN_MPC_TYPES = (0, 1, 2, 4, 8, 16, 99)
 UNKNOWN_MPC_TYPE = -1
 """Stable statistics-only bucket for an unrecognized first interaction code."""
 
@@ -270,10 +272,11 @@ class ScenarioStatisticsAccumulator:
     device IDs participating in the stored pair topology.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, pair: tuple[int, int] | None = None) -> None:
         """Initialize an empty, streamable statistics pass."""
 
         self._finalized = False
+        self._pair = pair
         self._stats: dict[str, Any] = {
             "total_mpcs": 0,
             "total_frames": 0,
@@ -294,6 +297,8 @@ class ScenarioStatisticsAccumulator:
             },
             "mpc_type_evolution_per_frame": {mpc_type: [] for mpc_type in MPC_TYPE_BUCKETS},
             "frame_indices": [],
+            "frame_times_s": [],
+            "selection_pair": pair,
             "delay_spread_evolution": [],
             "pair_visibility_counts": {category: 0 for category in PAIR_VISIBILITY_CATEGORIES},
             "pair_visibility_evolution": {category: [] for category in PAIR_VISIBILITY_CATEGORIES},
@@ -307,6 +312,7 @@ class ScenarioStatisticsAccumulator:
         self._joint_delay_chunks: list[FloatArray] = []
         self._joint_path_loss_chunks: list[FloatArray] = []
         self._joint_metrics_aligned = True
+        self._heatmap_frame_slots: list[int] = []
         self.stats: dict[str, Any] | None = None
 
     def add_projection(self, projection: FrameProjection) -> None:
@@ -317,12 +323,17 @@ class ScenarioStatisticsAccumulator:
         self._require_statistics_projection(projection)
 
         frame = projection.frame
+        if self._pair is not None:
+            frame = select_statistics_pair(frame, self._pair)
         frame_stats = self._collect_frame_stats(frame)
         stats = self._stats
 
         stats["total_frames"] += 1
         stats["total_mpcs"] += frame_stats.mpc_count
         stats["frame_indices"].append(int(frame.frame_index))
+        stats["frame_times_s"].append(
+            float(frame.timestamp_s) if frame.timestamp_s is not None else float("nan")
+        )
         stats["mpc_evolution"].append(frame_stats.mpc_count)
 
         for order in _EVOLUTION_REFLECTION_ORDERS:
@@ -352,6 +363,7 @@ class ScenarioStatisticsAccumulator:
                 stats[result_key].append(values)
 
         if frame_stats.joint_delays.size:
+            self._heatmap_frame_slots.append(stats["total_frames"] - 1)
             self._joint_delay_chunks.append(frame_stats.joint_delays)
             self._joint_path_loss_chunks.append(frame_stats.joint_path_losses)
         self._joint_metrics_aligned &= frame_stats.joint_metrics_aligned
@@ -433,6 +445,15 @@ class ScenarioStatisticsAccumulator:
             return self.stats
 
         stats = self._stats
+        stats.update(
+            build_delay_time_heatmap(
+                stats["frame_indices"],
+                stats["frame_times_s"],
+                self._heatmap_frame_slots,
+                self._joint_delay_chunks,
+                self._joint_path_loss_chunks,
+            )
+        )
         stats["unique_tx_count"] = len(self._tx_ids)
         stats["unique_rx_count"] = len(self._rx_ids)
         stats["unique_tx_rx_pairs"] = len(stats["tx_rx_pairs"])

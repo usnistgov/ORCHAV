@@ -17,6 +17,8 @@ from shared.scenarios.loader import _summary_yaml_hash
 
 HASH_A = "a" * 64
 HASH_B = "b" * 64
+GENERATION_A = "00000000-0000-4000-8000-0000000000a1"
+GENERATION_B = "00000000-0000-4000-8000-0000000000b2"
 
 
 def _configuration(
@@ -216,6 +218,81 @@ def test_summary_cache_key_includes_output_contract_version(
     assert _cache_key(HASH_A) != current_key
 
 
+def test_generic_summary_retains_v2_cache_identity_when_frames_are_generated(
+    tmp_path: Path,
+) -> None:
+    without_frame_lineage = SummaryPublication(_configuration(tmp_path))
+    with_frame_lineage = SummaryPublication(
+        _configuration(tmp_path),
+        frame_generation_id=GENERATION_A,
+    )
+
+    assert with_frame_lineage.frame_generation_id is None
+    assert with_frame_lineage.cache_key == without_frame_lineage.cache_key
+    assert with_frame_lineage.cache_key == _cache_key(HASH_A)
+
+
+def test_sensing_summary_cache_key_tracks_each_authoritative_frame_generation(
+    tmp_path: Path,
+) -> None:
+    configuration = SimpleNamespace(
+        root=tmp_path,
+        summary_yaml_hash=HASH_A,
+        generator_summary={
+            "enabled": True,
+            "force": False,
+            "create": ["sensing"],
+        },
+        sensing={"enabled": True},
+        coverage_cfg={},
+    )
+    first = SummaryPublication(configuration, frame_generation_id=GENERATION_A)
+    assert first.begin() is True
+    (first.staging_directory / "acquisition_processing.json").write_text(
+        GENERATION_A,
+        encoding="utf-8",
+    )
+    first.finalize()
+
+    repeated_identity = SummaryPublication(
+        configuration,
+        frame_generation_id=GENERATION_A,
+    )
+    assert repeated_identity.begin() is False
+    assert repeated_identity.skipped
+
+    next_generation = SummaryPublication(
+        configuration,
+        frame_generation_id=GENERATION_B,
+    )
+    assert next_generation.cache_key != first.cache_key
+    assert next_generation.begin() is True
+    assert (tmp_path / "summary/acquisition_processing.json").read_text(encoding="utf-8") == (
+        GENERATION_A
+    )
+    next_generation.abort()
+
+
+@pytest.mark.parametrize("frame_generation_id", [None, "", "   "])
+def test_sensing_summary_requires_frame_generation_identity(
+    tmp_path: Path,
+    frame_generation_id: str | None,
+) -> None:
+    configuration = SimpleNamespace(
+        root=tmp_path,
+        summary_yaml_hash=HASH_A,
+        generator_summary={"enabled": True, "create": ["sensing"]},
+        sensing={"enabled": True},
+        coverage_cfg={},
+    )
+
+    with pytest.raises(SummaryPublicationError, match="frame generation identity"):
+        SummaryPublication(
+            configuration,
+            frame_generation_id=frame_generation_id,
+        )
+
+
 def test_normalized_yaml_hash_ignores_key_order_and_force_value() -> None:
     left = {
         "schema_version": 2,
@@ -268,7 +345,10 @@ def test_sensing_summary_requests_output_only_when_enabled_and_selected(
         sensing={"enabled": sensing_enabled},
         coverage_cfg={},
     )
-    publication = SummaryPublication(configuration)
+    publication = SummaryPublication(
+        configuration,
+        frame_generation_id=GENERATION_A if expected else None,
+    )
 
     assert publication.begin() is expected
     publication.abort()
@@ -289,3 +369,10 @@ def test_exact_summary_entry_cannot_be_an_indirect_directory(tmp_path: Path) -> 
     with pytest.raises(SummaryPublicationError, match="must be a real directory"):
         publication.begin()
     assert sentinel.read_bytes() == b"external"
+
+
+def test_topology_only_selection_requests_atomic_publication(tmp_path):
+    configuration = _configuration(tmp_path)
+    configuration.generator_summary["create"] = ["topology"]
+    publication = SummaryPublication(configuration)
+    assert publication.requested

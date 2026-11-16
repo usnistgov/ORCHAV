@@ -16,6 +16,7 @@ python -m pip install -e ".[dev,grpc]"
 
 Install the `jupyter` extra as well only when working on notebook examples.
 
+
 ## Code Style
 
 | Tool | Purpose | Configuration |
@@ -39,6 +40,8 @@ In particular, public workflow diagrams are vertical by default and Mermaid
 labels must not use HTML line breaks.
 
 ## Checks
+
+Release checks run locally. Include the commands and results in your pull request.
 
 Run focused tests for the area you change while developing:
 
@@ -94,12 +97,15 @@ Run coverage explicitly when coverage is the goal:
 python -m pytest --cov=generator --cov=shared --cov=visualizer --cov-report=term-missing
 ```
 
-This single-process coverage command is not the macOS v0.1 release gate. Large
+This single-process coverage command is not the macOS release gate. Large
 Visualizer test collections have shown native Qt teardown instability after
 many tests share one process on Apple Silicon, even when the affected files
 pass independently. On macOS, use the release smoke plus focused test files,
 and split a coverage campaign into separate pytest processes when complete
 coverage is required.
+
+For appearance changes, use the [native application reference](examples/visualizer/pygfx_pbr_reference/README.md)
+and the [renderer correctness fixtures](tests/visualizer/scenarios/README_PBR.md).
 
 ## Generated Interfaces And References
 

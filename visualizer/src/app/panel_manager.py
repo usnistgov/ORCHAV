@@ -10,13 +10,15 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
+    QMenu,
     QPushButton,
     QScrollArea,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -41,7 +43,9 @@ from ..panels import (
     StatisticsPanel,
     TrajectoryPreviewPanel,
 )
+from ..panels.advanced_camera_panel import AdvancedCameraPanel
 from ..panels.collapsible_section import CollapsibleSection
+from ..panels.demo_panel import DemoPanel
 from ..renderers.protocol import renderer_capabilities
 from ..state import (
     DEFAULT_MPC_ALLOWED_ORDERS,
@@ -49,21 +53,22 @@ from ..state import (
     MPC_ORDER_VALUES,
     MPC_TYPE_VALUES,
 )
+from ..widgets.responsive import ResponsiveRow
 
 logger = get_logger("orchav.panel_manager")
 
 
-class _RangeFiltersProxy:
-    """Expose MPC range filters through the same section API as full panels."""
+class _PathFilteringProxy:
+    """Expose path filtering through the same section API as full panels."""
 
     def __init__(self, mpc_panel: MPCVisualizationPanel) -> None:
-        """Store the MPC panel whose range-filter section is being proxied."""
+        """Share the MPC panel's existing filter widgets and signal routing."""
         self._mpc_panel = mpc_panel
         self.widgets = mpc_panel.widgets
 
     def create_panel(self) -> QWidget:
-        """Create the range-filter section using the wrapped MPC panel."""
-        return self._mpc_panel.create_range_filters_panel()
+        """Create the Filtering section using the wrapped MPC panel."""
+        return self._mpc_panel.create_filtering_panel()
 
 
 class _RenderSubPanelProxy:
@@ -134,10 +139,17 @@ class UIPanelManager:
         }
     )
     _SECTION_TITLE_OVERRIDES = {
+        "nodes": "Nodes and targets",
+        "mpc": "Appearance",
+        "range_filters": "Filtering",
         "statistics_graphs": "Graphs",
         "trajectory": "Trajectory Analysis",
         "export": "Export",
         "viewport_hud": "Viewport HUD",
+        "lighting": "Lighting and environment",
+        "scene_style": "Surfaces",
+        "image_quality": "Image quality",
+        "scene_view": "Guides and inspection",
     }
 
     def __init__(self, parent_widget, total_steps=60):
@@ -336,7 +348,7 @@ class UIPanelManager:
     @staticmethod
     def _normalize_tab_label(label: str) -> str:
         """Collapse dynamic tab label variants to their stable logical label."""
-        text = str(label or "").strip()
+        text = str(label or "").strip().replace("&&", "&")
         if text.startswith("Paths"):
             return "Paths"
         return text
@@ -462,7 +474,7 @@ class UIPanelManager:
                 return True
 
         topk = widgets.get("topk_render_cb")
-        if topk is not None and topk.isChecked():
+        if state is None and topk is not None and topk.isChecked():
             return True
 
         material_filter_active = getattr(mpc_panel, "material_filter_active", None)
@@ -514,16 +526,39 @@ class UIPanelManager:
         if context is None:
             return
         context.sync_from_state(state)
-        context.set_filters_active(self._has_active_path_filters())
+        mpc = self.panels.get("mpc")
+        if mpc is not None:
+            mpc.sync_visibility_from_state(state or getattr(self.parent, "app_state", None))
+        # Restore effective controls before deriving either filter indicator.
+        self.update_paths_tab_badge()
         nodes = self.panels.get("nodes")
         if nodes is not None and hasattr(nodes, "update_node_rename_visibility"):
             nodes.update_node_rename_visibility()
+
+    def refresh_camera_and_coloring(self, state: object, previous: object) -> None:
+        """Sync non-frame controls only when their authoritative settings change."""
+        if any(
+            getattr(state, key) != getattr(previous, key) for key in ("camera_mode", "pov_axis")
+        ):
+            panel = self.panels.get("camera")
+            if panel is not None:
+                panel.sync_from_state(state)
+            advanced = self.panels.get("advanced_camera")
+            if advanced is not None:
+                advanced.sync_from_state(state)
+        if any(
+            getattr(state, key) != getattr(previous, key)
+            for key in ("color_mode", "use_distinct_material_colors")
+        ):
+            panel = self.panels.get("mpc")
+            if panel is not None:
+                panel.sync_coloring_from_state(state)
 
     # Tab schema order is user-visible and persisted by session restore.
     # Each entry is (tab_label, [(panel_key, start_open), ...]).
     _CORE_TABS: List[Tuple[str, List[Tuple[str, bool]]]] = [
         ("Scene", [("nodes", True), ("objects", False), ("materials", False)]),
-        ("Paths", [("mpc", True), ("range_filters", False)]),
+        ("Paths", [("mpc", True), ("range_filters", True)]),
         ("Coverage", [("coverage", True)]),
         (
             "Analysis",
@@ -538,19 +573,22 @@ class UIPanelManager:
         (
             "Rendering",
             [
+                ("appearance", True),
+                ("lighting", True),
                 ("scene_style", True),
+                ("image_quality", False),
                 ("scene_view", False),
-                ("lighting", False),
                 ("viewport_hud", False),
+                ("advanced_camera", False),
             ],
         ),
         (
             "Capture & Export",
             [
-                ("figure_capture", True),
-                ("export", False),
+                ("export", True),
             ],
         ),
+        ("Demo", [("demo", True)]),
         ("Antennas", [("beam_pattern", True)]),
         (
             "System",
@@ -577,10 +615,16 @@ class UIPanelManager:
             "create_interactive_preview_panel",
         )
         self.panels["mpc"] = MPCVisualizationPanel(self.parent)
-        self.panels["range_filters"] = _RangeFiltersProxy(self.panels["mpc"])
+        # Preserve the section key used by existing workspaces and control search.
+        self.panels["range_filters"] = _PathFilteringProxy(self.panels["mpc"])
         self.panels["beam_pattern"] = BeamPatternPanel(self.parent)
         self.panels["coverage"] = CoverageMapPanel(self.parent)
         self.panels["camera"] = CameraControlPanel(self.parent)
+        self.panels["advanced_camera"] = (
+            AdvancedCameraPanel(self.parent)
+            if getattr(getattr(self.parent, "renderer", None), "renderer_id", None) == "pygfx"
+            else None
+        )
         self.panels["objects"] = ObjectManagementPanel(self.parent)
         self.panels["performance"] = PerformancePanel(self.parent)
         self.panels["render"] = RenderPanel(self.parent)
@@ -593,8 +637,8 @@ class UIPanelManager:
         self.panels["lighting"] = _RenderSubPanelProxy(
             self.panels["render"], "create_lighting_panel"
         )
-        self.panels["figure_capture"] = _RenderSubPanelProxy(
-            self.panels["render"], "create_figure_capture_panel"
+        self.panels["image_quality"] = _RenderSubPanelProxy(
+            self.panels["render"], "create_image_quality_panel"
         )
         self.panels["viewport_hud"] = (
             _RenderSubPanelProxy(self.panels["render"], "create_viewport_hud_panel")
@@ -602,6 +646,10 @@ class UIPanelManager:
             else None
         )
         self.panels["materials"] = MaterialsPanel(self.parent)
+        from ..panels.appearance_panel import AppearancePanel
+
+        if getattr(self.parent, "appearance_preset_service", None) is not None:
+            self.panels["appearance"] = AppearancePanel(self.parent, self)
         self.panels["rf_xray"] = (
             _SharedPanelSectionProxy(
                 self.panels["materials"],
@@ -612,11 +660,16 @@ class UIPanelManager:
         )
         self.panels["data_source"] = DataSourcePanel(self.parent)
         self.panels["export"] = ExportPanel(self.parent, self.total_steps)
+        self.panels["demo"] = (
+            DemoPanel(self.parent)
+            if getattr(getattr(self.parent, "renderer", None), "renderer_id", None) == "pygfx"
+            else None
+        )
 
         for extension in self._runtime_extensions.values():
             self.panels[extension.key] = (
                 extension.panel_factory(self.parent)
-                if bool(extension.enabled(self.parent))
+                if extension.panel_factory is not None and bool(extension.enabled(self.parent))
                 else None
             )
 
@@ -641,53 +694,61 @@ class UIPanelManager:
             ("materials", False),
             ("interactive_preview", True),
             ("mpc", True),
-            ("range_filters", False),
+            ("range_filters", True),
             ("coverage", False),
             ("statistics", True),
             ("trajectory", False),
             ("rf_xray", False),
             ("scene_style", True),
             ("scene_view", False),
-            ("lighting", False),
+            ("lighting", True),
             ("viewport_hud", False),
-            ("figure_capture", False),
+            ("image_quality", False),
             ("beam_pattern", True),
             ("data_source", True),
             ("performance", False),
             ("export", False),
+            ("demo", True),
         ]
         self.panel_sequence.extend(
             (extension.key, extension.start_open) for extension in self._runtime_extensions.values()
         )
 
+        from ..widgets.input_guard import protect_controls
+
         ctrl_panel = QWidget()
+        protect_controls(ctrl_panel)
         root_layout = QVBoxLayout(ctrl_panel)
         root_layout.setSpacing(4)
         root_layout.setContentsMargins(6, 6, 6, 6)
         self.ctrl_panel = ctrl_panel
         self.ctrl_layout = root_layout
 
-        # Animation and camera stay outside workflow tabs so the active tab can
-        # change without hiding transport or viewpoint controls.
-        top_bar = QWidget()
-        top_layout = QHBoxLayout(top_bar)
+        # Shared controls stay outside workflow tabs; their headers let users
+        # reclaim space without changing playback, scope, or the active workflow.
+        top_bar = ResponsiveRow()
+        top_layout = top_bar.row
         top_layout.setSpacing(8)
         top_layout.setContentsMargins(0, 0, 0, 0)
 
-        anim_widget = self.panels["animation"].create_panel()
-        if hasattr(anim_widget, "setTitle"):
-            anim_widget.setTitle("")
-        top_layout.addWidget(anim_widget, stretch=1)
+        player_section = self._create_persistent_section(
+            "animation", "Player", "Show or hide playback and frame controls. Playback continues."
+        )
+        top_layout.addWidget(player_section, stretch=1, alignment=Qt.AlignTop)
 
-        camera_widget = self.panels["camera"].create_panel()
-        if hasattr(camera_widget, "setTitle"):
-            camera_widget.setTitle("")
-        top_layout.addWidget(camera_widget, stretch=0)
+        camera_section = self._create_persistent_section(
+            "camera", "Camera", "Show or hide camera views, tracking and saved viewpoints."
+        )
+        top_layout.addWidget(camera_section, stretch=0, alignment=Qt.AlignTop)
 
         root_layout.addWidget(top_bar)
 
-        context_widget = self.panels["context"].create_panel()
-        root_layout.addWidget(context_widget)
+        context_section = self._create_persistent_section(
+            "context",
+            "Context",
+            "Show or hide TX/RX scope and viewport layers. Settings stay active.",
+        )
+        root_layout.addWidget(context_section)
 
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
@@ -699,17 +760,23 @@ class UIPanelManager:
         tab_toolbar.setContentsMargins(0, 0, 0, 0)
         tab_toolbar.setSpacing(4)
         collapse_btn = QPushButton("\u25b2 Collapse All")
+        collapse_btn.setToolTip("Collapse all sections in the current workflow tab.")
         collapse_btn.setFlat(True)
         collapse_btn.setFixedHeight(20)
         collapse_btn.setStyleSheet("QPushButton { font-size: 10px; padding: 1px 4px; }")
         collapse_btn.clicked.connect(self._collapse_all_sections)
         tab_toolbar.addWidget(collapse_btn)
         expand_btn = QPushButton("\u25bc Expand All")
+        expand_btn.setToolTip("Expand all sections in the current workflow tab.")
         expand_btn.setFlat(True)
         expand_btn.setFixedHeight(20)
         expand_btn.setStyleSheet("QPushButton { font-size: 10px; padding: 1px 4px; }")
         expand_btn.clicked.connect(self._expand_all_sections)
         tab_toolbar.addWidget(expand_btn)
+        find_btn = QPushButton("Find…")
+        find_btn.setToolTip("Find a control (Ctrl+K)")
+        find_btn.clicked.connect(self.show_control_search)
+        tab_toolbar.addWidget(find_btn)
         tab_toolbar.addStretch()
         screenshot_btn = QPushButton("\U0001f4f7 Screenshot")
         screenshot_btn.setFlat(True)
@@ -722,19 +789,51 @@ class UIPanelManager:
         self._tab_widget = QTabWidget()
         self._tab_map: Dict[str, str] = {}
         self._tab_widget_by_panel: Dict[str, QWidget] = {}
-        self.sections = {}
+        self.sections = {
+            "animation": player_section,
+            "camera": camera_section,
+            "context": context_section,
+        }
 
-        for tab_label, panel_defs in self._CORE_TABS:
+        core_labels = {label for label, _ in self._CORE_TABS}
+        extra_by_tab = dict(self._conditional_tabs)
+        for tab_label, core_defs in self._CORE_TABS:
+            panel_defs = list(core_defs) + extra_by_tab.get(tab_label, [])
             if any(self.panels.get(panel_key) is not None for panel_key, _ in panel_defs):
                 self._add_tab(tab_label, panel_defs)
 
         for tab_label, panel_defs in self._conditional_tabs:
+            if tab_label in core_labels:
+                continue
             has_any = any(self.panels.get(pk) is not None for pk, _ in panel_defs)
             if has_any:
                 self._add_tab(tab_label, panel_defs)
 
+        workflow_menu = QMenu(self._tab_widget)
+        workflow_button = QToolButton(self._tab_widget)
+        workflow_button.setText("Tabs ▾")
+        workflow_button.setToolTip("Choose any available workflow tab")
+        workflow_button.setPopupMode(QToolButton.InstantPopup)
+        workflow_button.setMenu(workflow_menu)
+        workflow_menu.aboutToShow.connect(lambda: self._populate_workflow_menu(workflow_menu))
+        self._tab_widget.setCornerWidget(workflow_button, Qt.TopRightCorner)
         root_layout.addWidget(self._tab_widget, stretch=1)
+        advanced_section = self.sections.get("advanced_camera")
+        if advanced_section is not None:
+            advanced_section.hide()
+
+            def show_advanced(visible):
+                advanced_section.setVisible(visible)
+                self.panels["camera"].sync_from_state(self.parent.app_state)
+                if visible:
+                    self.panels["advanced_camera"].refresh()
+                    advanced_section.expand()
+                    self._tab_widget.setCurrentWidget(self._tab_widget_by_panel["advanced_camera"])
+
+            self.panels["camera"].widgets["advanced_camera_cb"].toggled.connect(show_advanced)
         self.set_coverage_data_available(self._coverage_data_available)
+        if self.panels.get("appearance") is not None:
+            self.panels["appearance"].connect_customization()
         self.refresh_global_context()
 
         # Render sub-panels share one RenderPanel; sync after every widget has
@@ -748,6 +847,82 @@ class UIPanelManager:
             self._deferred_render_sync_timer = timer
 
         return ctrl_panel
+
+    def _create_persistent_section(self, key: str, title: str, tooltip: str) -> CollapsibleSection:
+        """Wrap shared controls in a header whose manual choice survives tab changes."""
+        widget = self._create_panel_widget(key)
+        widget.setProperty("scenePanel", True)
+        section = CollapsibleSection(title, start_open=True, flat_header=True)
+        section.setProperty("sceneSection", True)
+        section.setToolTip(tooltip)
+        section.content_layout().setContentsMargins(0, 0, 0, 0)
+        section.content_layout().addWidget(widget)
+        section._lazy_content_created = True
+        if not QSettings().value(f"layout/sections/{key}", True, type=bool):
+            section.collapse()
+        section.toggled.connect(
+            lambda opened: QSettings().setValue(f"layout/sections/{key}", opened)
+        )
+        return section
+
+    def _populate_workflow_menu(self, menu) -> None:
+        menu.clear()
+        for index in range(self._tab_widget.count()):
+            if self._tab_available_at(index):
+                action = menu.addAction(self._tab_widget.tabText(index))
+                action.setCheckable(True)
+                action.setChecked(index == self._tab_widget.currentIndex())
+                action.triggered.connect(
+                    lambda checked=False, i=index: self._tab_widget.setCurrentIndex(i)
+                )
+
+    def show_control_search(self) -> None:
+        from ..widgets.control_search import ControlSearchDialog
+
+        dialog = ControlSearchDialog(self, self.ctrl_panel)
+        dialog.exec()
+
+    def reveal_control(self, key, widget=None) -> None:
+        """Reveal hidden customization sections before navigating to a match."""
+        if key == "advanced_camera":
+            self.panels["camera"].widgets["advanced_camera_cb"].setChecked(True)
+        if key in {"scene_style", "lighting"} and "appearance" in self.panels:
+            self.panels["appearance"].customize.setChecked(True)
+        self.show_panel(key)
+        ancestor = widget.parentWidget() if widget is not None else None
+        while ancestor is not None:
+            if isinstance(ancestor, CollapsibleSection):
+                ancestor.expand()
+            ancestor = ancestor.parentWidget()
+        section = self.sections.get(key)
+        target = widget or section
+        scroll = self._tab_widget_by_panel.get(key)
+
+        def focus():
+            if target is not None:
+                if isinstance(scroll, QScrollArea):
+                    scroll.ensureWidgetVisible(target)
+                target.setFocus(Qt.ShortcutFocusReason)
+
+        QTimer.singleShot(0, focus)
+
+    def reset_layout(self) -> None:
+        """Restore navigation and section defaults without changing scene settings."""
+        for section in self.ctrl_panel.findChildren(CollapsibleSection):
+            section.expand() if section.property("defaultExpanded") else section.collapse()
+        QSettings().remove("layout/sections")
+        camera = self.panels.get("camera")
+        if camera is not None and "advanced_camera_cb" in camera.widgets:
+            camera.widgets["advanced_camera_cb"].setChecked(False)
+        appearance = self.panels.get("appearance")
+        if appearance is not None:
+            appearance.customize.setChecked(True)
+        self.restore_active_tab(label="Scene")
+        workspace = getattr(self.parent, "_visualization_workspace", None)
+        if workspace is not None:
+            width = workspace.width()
+            sidebar = min(680, max(420, int(width * 0.42)))
+            workspace.splitter.setSizes([sidebar, max(320, width - sidebar)])
 
     def cleanup(self) -> None:
         """Stop panel-owned work and detach process-wide subscriptions once."""
@@ -791,8 +966,13 @@ class UIPanelManager:
 
         page = QWidget()
         page_layout = QVBoxLayout(page)
-        page_layout.setSpacing(6)
-        page_layout.setContentsMargins(4, 4, 4, 4)
+        page.setProperty("workflowWorkspace", True)
+        page_layout.setSpacing(10)
+        page_layout.setContentsMargins(10, 10, 10, 10)
+        if label in {"Scene", "Rendering", "Demo"}:
+            page.setObjectName("renderingWorkspace" if label == "Rendering" else "sceneWorkspace")
+            page_layout.setContentsMargins(10, 10, 10, 10)
+            page_layout.setSpacing(10)
 
         for panel_key, start_open in panel_defs:
             panel = self.panels.get(panel_key)
@@ -802,7 +982,16 @@ class UIPanelManager:
             lazy = self._should_lazy_build_section(panel_key, start_open)
             panel_widget = None if lazy else self._create_panel_widget(panel_key)
             section_title = self._section_title(panel_key, panel_widget)
-            section = CollapsibleSection(section_title, start_open=start_open)
+            expand_content = bool(getattr(panel, "expand_in_tab", False))
+            section = CollapsibleSection(
+                section_title,
+                start_open=start_open,
+                expand_content=expand_content,
+                flat_header=True,
+            )
+            section.setProperty("sceneSection", True)
+            if panel_widget is not None:
+                panel_widget.setProperty("scenePanel", True)
             if panel_widget is not None:
                 section.content_layout().addWidget(panel_widget)
                 section._lazy_content_created = True
@@ -813,7 +1002,14 @@ class UIPanelManager:
                         self._realize_lazy_section(key, sec) if checked else None
                     )
                 )
-            page_layout.addWidget(section)
+            section.setProperty("defaultExpanded", start_open)
+            saved_open = QSettings().value(f"layout/sections/{panel_key}", start_open, type=bool)
+            if saved_open != start_open:
+                section.expand() if saved_open else section.collapse()
+            section.toggled.connect(
+                lambda opened, key=panel_key: QSettings().setValue(f"layout/sections/{key}", opened)
+            )
+            page_layout.addWidget(section, int(expand_content))
             self.sections[panel_key] = section
             self._tab_map[panel_key] = label
             self._tab_widget_by_panel[panel_key] = scroll
@@ -823,7 +1019,8 @@ class UIPanelManager:
 
         page_layout.addStretch()
         scroll.setWidget(page)
-        self._tab_widget.addTab(scroll, label)
+        # Tab labels are literal text; Qt otherwise treats '&' as a mnemonic.
+        self._tab_widget.addTab(scroll, label.replace("&", "&&"))
 
     def _should_lazy_build_section(self, panel_key: str, start_open: bool) -> bool:
         """Return whether a collapsed panel body can be built on first expansion."""
@@ -865,6 +1062,7 @@ class UIPanelManager:
         if panel is None:
             return
         panel_widget = self._create_panel_widget(panel_key)
+        panel_widget.setProperty("scenePanel", True)
         section.content_layout().addWidget(panel_widget)
         section._lazy_content_created = True
 
@@ -890,9 +1088,21 @@ class UIPanelManager:
         if hasattr(panel_widget, "setTitle"):
             panel_widget.setTitle("")
 
-        section = CollapsibleSection(section_title, start_open=start_open)
+        section = CollapsibleSection(section_title, start_open=start_open, flat_header=True)
+        section.setProperty("sceneSection", True)
+        panel_widget.setProperty("scenePanel", True)
         section.content_layout().addWidget(panel_widget)
         return section
+
+    def show_panel(self, key: str) -> None:
+        """Reveal a panel when another tool links to its embedded workspace."""
+        self.ensure_panel(key)
+        section = self.sections.get(key)
+        if section is not None:
+            section.expand()
+        tab = self._tab_widget_by_panel.get(key)
+        if tab is not None:
+            self._tab_widget.setCurrentWidget(tab)
 
     def ensure_panel(self, key: str) -> None:
         """Create and insert an optional panel that became available later.
@@ -904,7 +1114,7 @@ class UIPanelManager:
             return
 
         extension = self._runtime_extensions.get(key)
-        if extension is None:
+        if extension is None or extension.panel_factory is None:
             return
         self.panels[key] = extension.panel_factory(self.parent)
 
@@ -915,7 +1125,7 @@ class UIPanelManager:
         tab_label = extension.tab_label
 
         for i in range(self._tab_widget.count()):
-            if self._tab_widget.tabText(i) == tab_label:
+            if self._normalize_tab_label(self._tab_widget.tabText(i)) == tab_label:
                 section = self._create_section(key, start_open=start_open)
                 if section is None:
                     return
@@ -1311,6 +1521,12 @@ class UIPanelManager:
 
         if hasattr(parent, "reset_camera_btn") and parent.reset_camera_btn:
             parent.reset_camera_btn.clicked.connect(parent.reset_camera_to_overview)
+
+        camera_panel = self.panels.get("camera")
+        if camera_panel is not None:
+            fov = camera_panel.widgets.get("camera_fov_spin")
+            if fov is not None:
+                fov.valueChanged.connect(parent.camera_controller.set_field_of_view)
 
         if hasattr(parent, "view_top_btn") and parent.view_top_btn:
             parent.view_top_btn.clicked.connect(lambda: parent.apply_camera_view("top"))
@@ -1720,6 +1936,7 @@ class UIPanelManager:
             parent.pov_axis_combo = self.panels["camera"].widgets.get("pov_axis_combo")
             parent.fly_mode_cb = self.panels["camera"].widgets.get("fly_mode_cb")
             parent.camera_minimap_cb = self.panels["camera"].widgets.get("camera_minimap_cb")
+            parent.advanced_camera_cb = self.panels["camera"].widgets.get("advanced_camera_cb")
             parent.target_focus_dropdown = self.panels["camera"].widgets.get(
                 "target_focus_dropdown"
             )

@@ -45,14 +45,17 @@ def _compute_vertex_normals(vertices: np.ndarray, triangles: np.ndarray) -> Opti
     if len(vertices) == 0 or len(triangles) == 0:
         return None
     normals = np.zeros_like(vertices, dtype=float)
-    for tri in np.asarray(triangles, dtype=np.int64):
-        if np.any(tri < 0) or np.any(tri >= len(vertices)):
-            continue
-        a, b, c = vertices[tri]
-        normal = np.cross(b - a, c - a)
-        length = float(np.linalg.norm(normal))
-        if length > 0.0:
-            normals[tri] += normal / length
+    faces = np.asarray(triangles, dtype=np.int64)
+    faces = faces[np.all((faces >= 0) & (faces < len(vertices)), axis=1)]
+    corners = vertices[faces]
+    face_normals = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+    face_lengths = np.linalg.norm(face_normals, axis=1)
+    usable = face_lengths > 0.0
+    # Preserve equal face weighting and original face/corner accumulation order.
+    # Ordinary advanced-index += loses contributions when adjacent faces share
+    # vertices; add.at performs the required repeated-index accumulation.
+    unit_normals = face_normals[usable] / face_lengths[usable, None]
+    np.add.at(normals, faces[usable].ravel(), np.repeat(unit_normals, 3, axis=0))
     lengths = np.linalg.norm(normals, axis=1)
     valid = lengths > 0.0
     if not np.any(valid):
@@ -370,6 +373,9 @@ def _load_ply_payload(path: Path) -> MeshPayload:
     header, data_start = _read_ply_header(path)
     ply_format, elements = _parse_ply_header(header)
     if ply_format == "ascii":
+        payload = _load_ascii_triangle_payload(path, elements, data_start)
+        if payload is not None:
+            return payload
         return _load_ascii_ply_payload(path)
     if ply_format == "binary_little_endian":
         return _load_binary_ply_payload(path, elements, data_start, "<")
@@ -601,6 +607,74 @@ def _skip_binary_ply_element(
                 _ = values
             else:
                 _skip_binary_scalar(handle, str(prop.get("type", "")), endian)
+
+
+def _load_ascii_triangle_payload(
+    path: Path, elements: list[dict[str, object]], data_start: int
+) -> Optional[MeshPayload]:
+    """Parse ordinary ASCII triangle meshes in bulk during target prefetch.
+
+    Animated meshes can have tens of thousands of rows per pose. Python
+    scalar/face loops compete with the GUI thread even in a background worker.
+    NumPy's text parser preserves the same float64 vertices and int32 indices.
+    Polygons and less common element layouts retain the general loader.
+    """
+    if [element.get("name") for element in elements] != ["vertex", "face"]:
+        return None
+    vertex, face = elements
+    vertex_props = vertex["properties"]
+    face_props = face["properties"]
+    if not isinstance(vertex_props, list) or not isinstance(face_props, list):
+        return None
+    if not all(isinstance(prop, dict) and prop.get("kind") == "scalar" for prop in vertex_props):
+        return None
+    if len(face_props) != 1 or not isinstance(face_props[0], dict):
+        return None
+    face_prop = face_props[0]
+    if face_prop.get("kind") != "list" or face_prop.get("name") not in {
+        "vertex_indices",
+        "vertex_index",
+    }:
+        return None
+    names = [str(prop["name"]) for prop in vertex_props]
+    if not {"x", "y", "z"}.issubset(names):
+        return None
+    vertex_count, face_count = int(vertex["count"]), int(face["count"])
+    if vertex_count <= 0 or face_count <= 0:
+        return None
+    with path.open("rb") as handle:
+        handle.seek(data_start)
+        try:
+            values = np.loadtxt(handle, max_rows=vertex_count, ndmin=2, comments=None)
+            faces = np.loadtxt(handle, max_rows=face_count, ndmin=2, comments=None, dtype=np.int32)
+        except ValueError:
+            return None  # Variable polygon lengths need the general reader.
+    if values.shape != (vertex_count, len(names)) or faces.shape != (face_count, 4):
+        return None
+    if not np.all(faces[:, 0] == 3):
+        return None
+
+    def columns(keys: tuple[str, str, str]) -> Optional[np.ndarray]:
+        if not set(keys).issubset(names):
+            return None
+        return np.ascontiguousarray(values[:, [names.index(key) for key in keys]])
+
+    vertices = columns(("x", "y", "z"))
+    assert vertices is not None
+    triangles = np.ascontiguousarray(faces[:, 1:])
+    normals = columns(("nx", "ny", "nz"))
+    if normals is None:
+        normals = _compute_vertex_normals(vertices, triangles)
+    colors = columns(("red", "green", "blue"))
+    if colors is not None and np.any(colors > 1.0):
+        colors = colors / 255.0
+    return MeshPayload(
+        vertices=vertices,
+        triangles=triangles,
+        normals=normals,
+        vertex_colors=colors,
+        cache_key=str(path),
+    )
 
 
 def _load_ascii_ply_payload(path: Path) -> MeshPayload:

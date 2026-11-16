@@ -24,7 +24,7 @@ from typing import Any, Optional
 import numpy as np
 from PySide6.QtCore import QTimer
 
-from shared.frames import StandardMPCFrame
+from shared.frames import FrameComponent, FrameReadRequest, StandardMPCFrame
 from shared.source_identity import (
     SourceIdentity,
     loaded_source_identity,
@@ -34,6 +34,7 @@ from shared.source_identity import (
 from ..io.packed_frame_payload import (
     standard_frame_to_visual_frame,
     visual_frame_read_request,
+    visualizer_frame_provider,
 )
 from ..model import RenderObjectState, render_state_center
 from ..renderers.protocol import renderer_capabilities
@@ -99,10 +100,12 @@ class LivePreviewService(BaseService):
 
         self._worker_process: Optional[subprocess.Popen[str]] = None
         self._worker_temp_dir: Optional[tempfile.TemporaryDirectory[str]] = None
+        self._worker_outputs: dict[int, Path] = {}
         self._worker_queue: queue.Queue[dict[str, Any]] = queue.Queue()
         self._worker_stdout_thread: Optional[threading.Thread] = None
         self._worker_stderr_thread: Optional[threading.Thread] = None
         self._worker_ready = False
+        self._worker_identified = False
         self._worker_busy = False
         self._pending_profile: Optional[str] = None
         self._stderr_tail: list[str] = []
@@ -490,6 +493,7 @@ class LivePreviewService(BaseService):
         self._worker_queue = queue.Queue()
         self._stderr_tail = []
         self._worker_ready = False
+        self._worker_identified = False
         self._worker_busy = False
         self._pending_profile = None
         self._worker_temp_dir = tempfile.TemporaryDirectory(prefix="orchav_live_preview_")
@@ -505,7 +509,8 @@ class LivePreviewService(BaseService):
 
         self._start_worker_readers(self._worker_process)
         self._poll_timer.start()
-        self._send_init_request()
+        # Wait for the child's identity before constructing its Sionna scene.
+        # A GUI left open across a checkout update must not mix runtime versions.
         return True
 
     def _launch_worker_process(self) -> subprocess.Popen[str]:
@@ -535,7 +540,7 @@ class LivePreviewService(BaseService):
         if proc.stdout is not None:
             self._worker_stdout_thread = threading.Thread(
                 target=self._read_worker_stdout,
-                args=(proc.stdout,),
+                args=(proc.stdout, self._worker_queue),
                 name="orchav-preview-stdout",
                 daemon=True,
             )
@@ -549,8 +554,8 @@ class LivePreviewService(BaseService):
             )
             self._worker_stderr_thread.start()
 
-    def _read_worker_stdout(self, stream: Any) -> None:
-        """Decode JSON-line worker messages into the thread-safe queue."""
+    def _read_worker_stdout(self, stream: Any, messages: queue.Queue[dict[str, Any]]) -> None:
+        """Keep a worker's messages on its own queue even after a restart."""
         try:
             for line in stream:
                 text = str(line).strip()
@@ -562,9 +567,9 @@ class LivePreviewService(BaseService):
                     logger.debug("Ignoring non-protocol preview worker output: %s", text)
                     continue
                 if isinstance(message, dict):
-                    self._worker_queue.put(message)
+                    messages.put(message)
         finally:
-            self._worker_queue.put({"type": "stdout_closed"})
+            messages.put({"type": "stdout_closed"})
 
     def _read_worker_stderr(self, stream: Any) -> None:
         """Keep a bounded stderr tail for failure status messages."""
@@ -602,6 +607,7 @@ class LivePreviewService(BaseService):
         proc = self._worker_process
         self._worker_process = None
         self._worker_ready = False
+        self._worker_identified = False
         self._worker_busy = False
         self._pending_profile = None
         if proc is not None and proc.poll() is None:
@@ -626,6 +632,7 @@ class LivePreviewService(BaseService):
         """Remove temporary pickle outputs owned by the current worker."""
         tmp = self._worker_temp_dir
         self._worker_temp_dir = None
+        self._worker_outputs.clear()
         if tmp is not None:
             tmp.cleanup()
 
@@ -685,10 +692,22 @@ class LivePreviewService(BaseService):
             self._set_status(f"Preview solving {label} with panel settings...")
 
     def _worker_output_path(self, sequence: int) -> Path:
-        """Return the pickle path where the worker should store a result."""
+        """Reserve a service-owned pickle path for one worker request."""
         if self._worker_temp_dir is None:
             self._worker_temp_dir = tempfile.TemporaryDirectory(prefix="orchav_live_preview_")
-        return Path(self._worker_temp_dir.name) / f"preview_{int(sequence)}.pkl"
+        path = Path(self._worker_temp_dir.name) / f"preview_{int(sequence)}.pkl"
+        self._worker_outputs[int(sequence)] = path
+        return path
+
+    def _discard_worker_output(self, sequence: int) -> None:
+        """Retire a completed request's pickle without trusting worker paths."""
+        path = self._worker_outputs.pop(sequence, None)
+        if path is not None:
+            try:
+                # Unlink the owned directory entry, never a resolved symlink target.
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove live preview result %s", path, exc_info=True)
 
     def _merge_pending_profile(self, profile: str) -> str:
         """Prefer a pending release solve over any drag-quality solve."""
@@ -718,15 +737,34 @@ class LivePreviewService(BaseService):
     def _handle_worker_message(self, message: dict[str, Any]) -> None:
         """Dispatch one protocol message from the preview worker."""
         message_type = str(message.get("type", ""))
-        if message_type == "ready":
+        if message_type in {"identity", "ready"}:
             try:
                 child_identity = SourceIdentity.from_mapping(message.get("source_identity"))
             except (TypeError, ValueError) as exc:
                 self._handle_worker_failure(f"Preview worker source identity is invalid: {exc}")
                 return
             if not self._source_identity.matches(child_identity):
+                expected = self._source_identity.to_dict()
+                actual = child_identity.to_dict()
+                differences = "; ".join(
+                    f"{key}: visualizer={value!r}, worker={actual[key]!r}"
+                    for key, value in expected.items()
+                    if value != actual[key]
+                )
                 self._handle_worker_failure(
-                    "Preview worker source identity does not match the running visualizer"
+                    "Preview worker source identity does not match the running visualizer. "
+                    f"Restart the visualizer from {self._source_identity.source_root}. "
+                    f"Differences: {differences}"
+                )
+                return
+            if message_type == "identity":
+                if not self._worker_identified:
+                    self._worker_identified = True
+                    self._send_init_request()
+                return
+            if not self._worker_identified:
+                self._handle_worker_failure(
+                    "Preview worker became ready before source identity was verified"
                 )
                 return
             self._worker_ready = True
@@ -744,6 +782,9 @@ class LivePreviewService(BaseService):
         if message_type == "error":
             detail = str(message.get("error", "Preview worker error"))
             self._last_error = detail
+            # The stdio worker reports exceptions without a sequence. Only one
+            # solve can be in flight, so its output may contain a partial pickle.
+            self._discard_worker_output(self._requested_sequence)
             self._worker_busy = False
             self._solving = False
             self._set_status(f"Preview failed: {detail}")
@@ -753,16 +794,23 @@ class LivePreviewService(BaseService):
             self._poll_timer.stop()
 
     def _handle_worker_result(self, message: dict[str, Any]) -> None:
-        """Apply only the newest worker result when no newer solve is pending."""
+        """Consume or discard a result, then release its on-disk payload."""
         self._worker_busy = False
         self._solving = False
         sequence = self._coerce_int(message.get("sequence"), default=-1)
+        try:
+            self._consume_worker_result(message, sequence)
+        finally:
+            self._discard_worker_output(sequence)
+        self._send_pending_if_available()
+
+    def _consume_worker_result(self, message: dict[str, Any], sequence: int) -> None:
+        """Apply only the newest worker result when no newer solve is pending."""
         status = str(message.get("status", "ok"))
         if status != "ok":
             detail = str(message.get("error", "Preview worker failed"))
             self._last_error = detail
             self._set_status(f"Preview failed: {detail}")
-            self._send_pending_if_available()
             return
 
         output = message.get("output_path")
@@ -771,7 +819,10 @@ class LivePreviewService(BaseService):
             and self._pending_profile is None
             and isinstance(output, str)
         ):
-            expected_output = self._worker_output_path(sequence)
+            expected_output = self._worker_outputs.get(sequence)
+            if expected_output is None:
+                self._handle_worker_failure("Preview worker reported an unrequested result")
+                return
             try:
                 reported_output = Path(output).resolve()
                 resolved_expected_output = expected_output.resolve()
@@ -795,7 +846,6 @@ class LivePreviewService(BaseService):
                     self._apply_preview_frame(frame, sequence)
                 else:
                     self._set_status("Preview failed: invalid worker frame")
-        self._send_pending_if_available()
 
     def _send_pending_if_available(self) -> None:
         """Send a coalesced pending solve once the worker is idle and ready."""
@@ -842,7 +892,29 @@ class LivePreviewService(BaseService):
             "project_root": str(project_root) if project_root else None,
             "solver_settings": self._solver_settings(str(quality)),
             "quality": str(quality),
+            **self._recorded_clock_fields(step),
         }
+
+    def _recorded_clock_fields(self, step: int) -> dict[str, float | None]:
+        """Carry the recorded scene clock without reading propagation/sensing arrays."""
+        cache = getattr(self.visualizer, "cache_service", None)
+        get_frame = getattr(cache, "get_frame", None)
+        frame = get_frame(step) if callable(get_frame) else None
+        if isinstance(frame, dict) and "timestamp_s" in frame:
+            value = frame["timestamp_s"]
+        else:
+            provider = visualizer_frame_provider(self.visualizer)
+            if provider is None or not provider.has_frame(step):
+                return {}
+            request = FrameReadRequest(components=frozenset({FrameComponent.PROVENANCE}))
+            value = provider.load_frame_projection(step, request).frame.timestamp_s
+        if value is None:
+            # A recording with no timestamp must not acquire an invented clock.
+            return {"scene_time_s": None}
+        timestamp = float(value)
+        if not np.isfinite(timestamp):
+            raise ValueError("Recorded preview scene time must be finite")
+        return {"scene_time_s": timestamp}
 
     def _solver_settings(self, quality: str) -> dict[str, Any]:
         """Return shared panel settings for release or scaled drag preview."""

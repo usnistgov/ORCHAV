@@ -1,17 +1,15 @@
 # Mesh Targets
 
-[Scenarios](../../../README.md) > [Generator](../../README.md) > Mesh Targets
-
 This scenario adds physical [targets](../../../../docs/reference/glossary.md#target)
 to the mobility models used in the basic Generator examples. It includes a
-walking pedestrian and a parked car so the generated frames contain object
-interactions as well as actor-to-actor paths.
+walking pedestrian and a parked car so you can inspect when their surfaces
+contribute paths between transmitters and receivers.
 
 To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scenario overview](../../../../docs/assets/scenarios/scenarios_generator_targets_mesh_targets_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_generator_targets_mesh_targets_topology.png)
 
 | Element | Role |
 | --- | --- |
@@ -20,7 +18,12 @@ To run it, see [Running](#running).
 | `Pedestrian` | Moving walking target |
 | `ParkedCar` | Static vehicle target |
 
+The pedestrian walks 1.876 m in 5.286 s using all 38 supplied NIST poses at
+7 fps. Its center is 0.98 m above the flat ground, leaving a small foot clearance.
+
 ## Configuration Walkthrough
+
+See [scenario.yaml](scenario.yaml) for the complete configuration.
 
 ```yaml
 actors:
@@ -28,12 +31,13 @@ actors:
     - name: Pedestrian
       asset:
         source: directory
-        path: libraries/targets/nist_human_walking
-        pattern: "fitted_*.ply"
+        path: libraries/targets/digital_twin_update1
+        pattern: "DT_Pjh_02_*.ply"
+        mesh_end_behavior: hold_last
       mobility:
         type: linear
-        start_m: [-15, 5, 0.85]
-        end_m: [15, 5, 0.85]
+        start_m: [-0.938, 5, 0.98]
+        end_m: [0.938, 5, 0.98]
       orientation:
         type: align_motion
         allow_pitch: false
@@ -41,7 +45,7 @@ actors:
     - name: ParkedCar
       asset:
         source: directory
-        path: libraries/targets/car
+        path: libraries/targets/procedural_car
         pattern: car.ply
         switch_meshes: false
       mobility:
@@ -49,16 +53,29 @@ actors:
         position_m: [5, -8, 0.79]
 ```
 
-The pedestrian uses a time-varying mesh sequence selected by `asset.pattern`,
-while the car uses one static mesh. `orientation.type: align_motion` makes the
-pedestrian face its direction of motion. The pedestrian uses the default
-`glass` radio material. The full YAML explicitly assigns `metal` to the car.
+The vehicle uses the ORCHAV
+[procedural car-shaped prism](../../../../libraries/targets/procedural_car/README.md).
+It is not a calibrated vehicle RCS.
+
+The pedestrian uses the bundled
+[NIST walking sequence](../../../../libraries/targets/digital_twin_update1/README.md),
+selected by `asset.pattern`, while the car uses one static mesh.
+`orientation.type: align_motion` combines the route heading with the mesh's
+front-direction metadata. `mesh_end_behavior: hold_last` avoids wrapping the
+finite clip. The pedestrian uses the default `glass` radio material as an
+uncalibrated scattering placeholder. The full YAML assigns `metal` to the car.
 
 ## Running
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/targets/mesh_targets
 orchav-generator scenarios/generator/targets/mesh_targets
+```
+
+Open the scenario in the Visualizer:
+
+```bash
 orchav-visualizer --scenario scenarios/generator/targets/mesh_targets
 ```
 
@@ -67,8 +84,8 @@ orchav-visualizer --scenario scenarios/generator/targets/mesh_targets
 - Target actors are listed separately from transmitter and receiver actors.
 - Moving targets use the same mobility and orientation concepts as other actors.
 - The default ultra-low ray budget keeps the example fast, so target interactions are intentionally sparse.
-- Specular rays do not hit the target in every frame. This is expected for
-  small or faceted target meshes.
+- A visible target may contribute no recorded paths. Its presence alone does
+  not guarantee a reflection reaches a receiver.
 - Path records can identify which object was involved in an interaction.
 
 ## Outputs
@@ -82,42 +99,36 @@ environmental interactions, and target-related interactions:
 orchav-inspect scenarios/generator/targets/mesh_targets --frame 0
 ```
 
-With the default `ultra-low` preset, frame 0 stays small:
-
-```text
-TX: 1, RX: 4, Targets: 2
-Pairs: 4
-Total MPCs: 8
-Paths per pair: [2, 2, 2, 2]
-```
-
-Those paths confirm that the frame is valid and that the targets are present, but they do not mean that every frame contains a target hit. In the default run, target-impinging specular paths appear only in favorable frames. Inspect frames around the moving pedestrian crossing:
+Inspect the midpoint pose:
 
 ```bash
-orchav-inspect scenarios/generator/targets/mesh_targets --frame 9
-orchav-inspect scenarios/generator/targets/mesh_targets --frame 10
-orchav-inspect scenarios/generator/targets/mesh_targets --frame 11
+orchav-inspect scenarios/generator/targets/mesh_targets --frame 18
 ```
 
-A representative run reports one additional specular MPC in the `MainTransmitter` to `RX_Linear` pair:
+Inspect the final pose:
 
-```text
-TX: 1, RX: 4, Targets: 2
-Pairs: 4
-Total MPCs: 9
-Paths per pair: [2, 3, 2, 2]
-Interaction segments: code 1 (specular)=5
-Paths with interaction: code 1 (specular)=5
+```bash
+orchav-inspect scenarios/generator/targets/mesh_targets --frame 37
 ```
 
-Direct paths have no physical bounce rows, so they do not appear in the
-interaction-code counts.
+Each frame contains one transmitter, four receivers and two targets. Target
+metadata confirms the objects are present; an object contributes a propagation
+path only when the solver finds a valid interaction. Direct paths have no
+physical bounce rows, and ground reflections are not target hits.
 
-This sparsity is normal. A one-bounce specular target path must satisfy the mirror law and visibility checks for the current transmitter, target facet, and receiver geometry. Targets are much smaller than scene walls, and animated meshes expose different facets over time, so a fast tutorial ray budget should not be expected to hit the target in every frame.
+A specular target path must satisfy the reflection law and visibility checks
+for the transmitter, target surface and receiver. A target can therefore
+contribute no reflected path to a receiver, even when it is present and visible
+in the scene. Increasing the ray budget improves path discovery but cannot
+create a geometrically impossible reflection. See
+[ray tracing](../../../../docs/reference/propagation.md) for the relationship
+between ray budget and path discovery.
+
+The [Target Diffuse Scattering](../target_diffuse_scattering/README.md) example
+shows how to allow scattering beyond the mirror-reflection direction. Diffuse
+paths still require an illuminated surface and a visible route to the receiver.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) | [Generator](../../README.md) |
-> Current: **Mesh Targets**
->
-> Track: **Targets** | Next: [Target Orientation](../target_orientation/README.md)
+Up: [Generator](../../README.md) ·
+[Target Orientation](../target_orientation/README.md)

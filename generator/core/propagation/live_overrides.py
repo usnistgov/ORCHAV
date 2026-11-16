@@ -152,7 +152,7 @@ def _scale_from_value(value: Any, name: str | None) -> float | None:
 
 
 def normalize_live_overrides(live_overrides: Sequence[Any] | None) -> LiveOverrideMap:
-    """Normalize override payloads by category and lower-cased actor name."""
+    """Normalize payloads while preserving case-sensitive actor identities."""
     normalized = _empty_override_map()
     if not live_overrides:
         return normalized
@@ -186,7 +186,7 @@ def normalize_live_overrides(live_overrides: Sequence[Any] | None) -> LiveOverri
                 logger.debug("Ignoring non-target scale override for %s", name)
                 scale = None
 
-            normalized[category][name.lower()] = LiveActorOverride(
+            normalized[category][name] = LiveActorOverride(
                 name=name,
                 category=category,
                 position=position,
@@ -197,6 +197,38 @@ def normalize_live_overrides(live_overrides: Sequence[Any] | None) -> LiveOverri
             logger.warning("Failed to process override %s: %s", override, exc)
 
     return normalized
+
+
+def resolve_live_actor_name(
+    category: LiveActorCategory,
+    requested_name: str,
+    configured_names: Sequence[str],
+) -> str:
+    """Resolve one actor, preferring exact names over compatibility aliases.
+
+    Names are case-sensitive in the scenario schema. Case-insensitive names and
+    one-based aliases such as ``tx1``/``tx_1`` remain accepted only when their
+    combined candidates identify a single actor. Unknown or ambiguous requests
+    raise ``ValueError`` so callers can reject the edit before changing state.
+    """
+    requested_name = requested_name.strip()
+    if requested_name in configured_names:
+        return requested_name
+
+    folded_name = requested_name.casefold()
+    matches = {
+        name
+        for index, name in enumerate(configured_names, start=1)
+        if folded_name in {name.casefold(), f"{category}{index}", f"{category}_{index}"}
+    }
+    if len(matches) == 1:
+        return matches.pop()
+    if matches:
+        raise ValueError(
+            f"Ambiguous {category.upper()} actor {requested_name!r}; "
+            f"use an exact configured name from {sorted(matches)!r}"
+        )
+    raise ValueError(f"Unknown {category.upper()} actor {requested_name!r}")
 
 
 def apply_live_overrides(
@@ -216,58 +248,31 @@ def apply_live_overrides(
     This function does not touch Sionna scene objects. It edits the plain Python
     position/orientation lists that ``compute_ray_tracing_step`` later passes to
     ``apply_transceiver_state_to_scene`` and ``apply_target_state_to_scene``.
+    All actor names are resolved before any list is modified.
     """
     override_map = normalize_live_overrides(live_overrides)
     applied = _empty_override_map()
 
-    def _apply(
+    def _resolve(
         category: LiveActorCategory,
         configs: list[Any],
         positions: list[Any],
-        orientations: list[Any],
     ) -> None:
         overrides_for_category = override_map.get(category, {})
         if not overrides_for_category:
             return
 
-        unmatched_keys = set(overrides_for_category.keys())
-        limit = min(len(configs), len(positions))
-        for idx in range(limit):
-            cfg = configs[idx]
-            cfg_name = str(getattr(cfg, "name", f"{category}_{idx + 1}"))
-            possible_keys = [cfg_name.lower(), f"{category}_{idx + 1}", f"{category}{idx + 1}"]
-            override_data = None
-            matched_key = None
-            for key in possible_keys:
-                key_l = key.lower()
-                if key_l in overrides_for_category:
-                    override_data = overrides_for_category[key_l]
-                    matched_key = key_l
-                    break
-
-            if override_data is None:
-                continue
-
-            if matched_key is not None:
-                unmatched_keys.discard(matched_key)
-            unmatched_keys.discard(cfg_name.lower())
-
-            if override_data.position is not None:
-                positions[idx] = override_data.position
-                logger.debug(
-                    "Applied %s %s position override -> %s",
-                    category.upper(),
-                    cfg_name,
-                    override_data.position,
-                )
-
-            if (
-                override_data.orientation is not None
-                and orientations is not None
-                and idx < len(orientations)
-            ):
-                orientations[idx] = override_data.orientation
-
+        names = [
+            str(
+                (cfg.get("name") if isinstance(cfg, Mapping) else getattr(cfg, "name", None))
+                or f"{category}_{idx + 1}"
+            )
+            for idx, cfg in enumerate(configs)
+        ]
+        for override_data in overrides_for_category.values():
+            cfg_name = resolve_live_actor_name(category, override_data.name, names)
+            if names.index(cfg_name) >= len(positions):
+                raise ValueError(f"Missing frame state for {category.upper()} actor {cfg_name!r}")
             applied[category][cfg_name] = LiveActorOverride(
                 name=cfg_name,
                 category=category,
@@ -275,10 +280,6 @@ def apply_live_overrides(
                 orientation=override_data.orientation,
                 scale=override_data.scale,
             )
-
-        for override_name in unmatched_keys:
-            original = overrides_for_category[override_name].name
-            logger.warning("Override references unknown %s '%s'", category.upper(), original)
 
     override_targets: tuple[
         tuple[LiveActorCategory, list[Any], list[Any], list[Any]],
@@ -289,6 +290,19 @@ def apply_live_overrides(
         ("target", target_configs, target_positions, target_orientations),
     )
     for category, cfg_list, pos_list, ori_list in override_targets:
-        _apply(category, cfg_list, pos_list, ori_list)
+        _resolve(category, cfg_list, pos_list)
+    for category, cfg_list, pos_list, ori_list in override_targets:
+        for idx, cfg in enumerate(cfg_list):
+            cfg_name = str(
+                (cfg.get("name") if isinstance(cfg, Mapping) else getattr(cfg, "name", None))
+                or f"{category}_{idx + 1}"
+            )
+            override_data = applied[category].get(cfg_name)
+            if override_data is None:
+                continue
+            if override_data.position is not None:
+                pos_list[idx] = override_data.position
+            if override_data.orientation is not None and idx < len(ori_list):
+                ori_list[idx] = override_data.orientation
 
     return applied

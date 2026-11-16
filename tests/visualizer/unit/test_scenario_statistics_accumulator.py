@@ -267,7 +267,7 @@ def test_interaction_orders_six_and_above_share_the_six_plus_bucket() -> None:
 
     stats = ScenarioStatisticsAccumulator().collect_from_projections([projection])
 
-    assert SCENARIO_STATISTICS_SCHEMA_VERSION == 3
+    assert SCENARIO_STATISTICS_SCHEMA_VERSION == 5
     assert stats["reflection_order_dist"] == {0: 1, 5: 1, 6: 3}
     assert stats["reflection_order_evolution_per_frame"][6] == [3]
 

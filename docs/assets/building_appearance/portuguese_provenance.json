@@ -1,0 +1,29 @@
+{
+  "description": "Original procedural Portuguese-inspired artwork, rendered on the existing reusable three-building fixture. No geographic or third-party texture data.",
+  "image": "portuguese_fixture.png",
+  "sha256": "45c8b4f4eb8ea390aafb6af98cb6b5fe1e28eae858d7c157ffbf7dfbbea970b7",
+  "scenario": "scenarios/generator/building_appearance",
+  "theme": "portuguese",
+  "renderer": "pygfx",
+  "camera": {
+    "position": [
+      30,
+      -48,
+      23
+    ],
+    "target": [
+      0,
+      0,
+      6
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ],
+    "fov_deg": 45
+  },
+  "mpc_visibility": false,
+  "capture_date": "2026-09-25",
+  "texture_code": "visualizer/src/materials/scene_variation.py"
+}

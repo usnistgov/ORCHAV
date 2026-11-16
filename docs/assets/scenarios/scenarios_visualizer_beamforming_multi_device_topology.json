@@ -1,0 +1,453 @@
+{
+  "scenario": "scenarios/visualizer/beamforming/multi_device/scenario.yaml",
+  "scene_source": {
+    "source": "library",
+    "id": "ground/ground_60x50.xml"
+  },
+  "source_files": {
+    "libraries/scenes/ground/ground_60x50.ply": "ac6fde51be56692107e71a2faa61ca661a47e171bd9244b58523b2cc01dcd0fa",
+    "libraries/scenes/ground/ground_60x50.xml": "17359e5bee8e7bbd1b3340dbf6c20ece66636db0431d745d818947499445ef46",
+    "scenarios/visualizer/beamforming/multi_device/scenario.yaml": "603e5caa81946685ff8234ed278623f389f19a83f353505144302f8edabaad0c"
+  },
+  "sample_indices": [
+    0,
+    23
+  ],
+  "sample_times_s": [
+    0.0,
+    6.0
+  ],
+  "steps": 24,
+  "actors": [
+    {
+      "name": "WestTX",
+      "role": "tx",
+      "members": [
+        "WestTX"
+      ],
+      "sample_positions_m": [
+        [
+          -8.0,
+          0.0,
+          8.0
+        ],
+        [
+          -8.0,
+          0.0,
+          8.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -8.0,
+            0.0,
+            8.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "EastTX",
+      "role": "tx",
+      "members": [
+        "EastTX"
+      ],
+      "sample_positions_m": [
+        [
+          8.0,
+          0.0,
+          8.0
+        ],
+        [
+          8.0,
+          0.0,
+          8.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            8.0,
+            0.0,
+            8.0
+          ],
+          "rotation_matrix": [
+            [
+              -1.0,
+              -1.2246467991473532e-16,
+              0.0
+            ],
+            [
+              1.2246467991473532e-16,
+              -1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -1.0,
+            1.2246467991473532e-16,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OrbitRX",
+      "role": "rx",
+      "members": [
+        "OrbitRX"
+      ],
+      "sample_positions_m": [
+        [
+          7.347880794884119e-16,
+          12.0,
+          1.5
+        ],
+        [
+          -2.204364238465236e-15,
+          12.0,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            7.347880794884119e-16,
+            12.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              -0.5057116329928113,
+              0.8320502943378436,
+              0.22792115291927606
+            ],
+            [
+              -0.7585674494892165,
+              -0.5547001962252294,
+              0.34188172937891403
+            ],
+            [
+              0.4108907018066593,
+              2.7755575615628914e-17,
+              0.9116846116771035
+            ]
+          ],
+          "forward_direction": [
+            -0.5057116329928113,
+            -0.7585674494892165,
+            0.4108907018066593
+          ]
+        },
+        {
+          "index": 12,
+          "time_s": 3.1304347826086953,
+          "position_m": [
+            -1.6339997891549576,
+            -11.88823135243597,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              -0.4252456731265877,
+              -0.8815631477238514,
+              0.20496959301889334
+            ],
+            [
+              0.7941279887391249,
+              -0.47206611462295767,
+              -0.38277189150450575
+            ],
+            [
+              0.4341967929272024,
+              5.551115123125783e-17,
+              0.9008180421215664
+            ]
+          ],
+          "forward_direction": [
+            -0.4252456731265877,
+            0.7941279887391249,
+            0.4341967929272024
+          ]
+        },
+        {
+          "index": 23,
+          "time_s": 6.0,
+          "position_m": [
+            -2.204364238465236e-15,
+            12.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              -0.5057116329928106,
+              0.832050294337844,
+              0.22792115291927573
+            ],
+            [
+              -0.758567449489217,
+              -0.5547001962252285,
+              0.3418817293789141
+            ],
+            [
+              0.4108907018066592,
+              -5.551115123125783e-17,
+              0.9116846116771036
+            ]
+          ],
+          "forward_direction": [
+            -0.5057116329928106,
+            -0.758567449489217,
+            0.4108907018066592
+          ]
+        }
+      ]
+    },
+    {
+      "name": "StaticNorthRX",
+      "role": "rx",
+      "members": [
+        "StaticNorthRX"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          18.0,
+          1.5
+        ],
+        [
+          0.0,
+          18.0,
+          1.5
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            18.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              -0.38568215712151654,
+              0.913811548620257,
+              0.1272702922379832
+            ],
+            [
+              -0.8677848535234111,
+              -0.40613846605344817,
+              0.28635815753546157
+            ],
+            [
+              0.3133667526612322,
+              -1.1102230246251565e-16,
+              0.9496321805449488
+            ]
+          ],
+          "forward_direction": [
+            -0.38568215712151654,
+            -0.8677848535234111,
+            0.3133667526612322
+          ]
+        }
+      ]
+    },
+    {
+      "name": "StaticSouthRX",
+      "role": "rx",
+      "members": [
+        "StaticSouthRX"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          -18.0,
+          1.5
+        ],
+        [
+          0.0,
+          -18.0,
+          1.5
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            -18.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              0.3856821571215159,
+              -0.9138115486202573,
+              -0.1272702922379829
+            ],
+            [
+              0.8677848535234115,
+              0.4061384660534474,
+              -0.28635815753546146
+            ],
+            [
+              0.31336675266123193,
+              -1.1102230246251565e-16,
+              0.9496321805449488
+            ]
+          ],
+          "forward_direction": [
+            0.3856821571215159,
+            0.8677848535234115,
+            0.31336675266123193
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "6ef0834e4f5886bd81ccea5456320c202997dbc34883c377ef38230b73d11536",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (concrete)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    }
+  ],
+  "output_sha256": "efcbd134eb1faf93bcd13c9634973d33d47e827ea3ca70828d567b71a488eeaa",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -32.4,
+        -27.0,
+        -0.32
+      ],
+      [
+        32.4,
+        27.0,
+        8.32
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "8832ee6a74cf03bfac1434a265d6ca1d887e04f7f95394323e31955b255118e1",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/visualizer/beamforming/multi_device"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

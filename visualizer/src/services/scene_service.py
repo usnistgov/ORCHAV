@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PySide6.QtCore import QTimer
 
+from shared.scenarios.paths import find_asset_project_root
+
 from ..app.renderer_lifecycle import boot_visualizer_empty
 from ..materials.appearance import AppearanceIntent, resolve_appearance
 from ..materials.catalog import ResolvedMaterial, resolve_pbr_material
@@ -44,11 +46,14 @@ from ..types.render_payloads import (
 )
 from .base import BaseService
 from .cache_service import CacheInvalidationScope
+from .geographic_layer_service import GeographicLayerService
+from .map_layer_service import MapLayerService
 from .object_identity import (
     ensure_target_entry_identity,
     make_component_geometry_name,
     make_target_entry_geometry_name,
 )
+from .plan_view_service import PlanViewService
 from .pov_visibility_service import is_hidden_for_pov
 from .scene_batches import PreparedSceneMember, SceneBatch, SceneBatchRegistry
 from .scene_render_sync import (
@@ -57,6 +62,7 @@ from .scene_render_sync import (
     scene_mesh_has_triangle_uvs,
     scene_mesh_payload,
 )
+from .street_name_service import StreetNameService
 
 if TYPE_CHECKING:
     from ...visualizer import OrchavVisualizer
@@ -64,7 +70,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("orchav.scene")
 
 # Path to texture library
-TEXTURE_LIBRARY_PATH = Path(__file__).parent.parent.parent.parent / "libraries" / "textures"
+TEXTURE_LIBRARY_PATH = find_asset_project_root(Path(__file__).parent) / "libraries" / "textures"
 
 _PYGFX_MESH_BUFFER_CACHE_VERSION = "20260605_pygfx_mesh_material_color_v2"
 TEXTURE_MAP_PROP_KEYS = TEXTURE_MAP_KEYS
@@ -78,6 +84,10 @@ class SceneService(BaseService):
         super().__init__()
         self.visualizer = visualizer
         self.scene_path: str | None = None
+        self.street_names = StreetNameService(visualizer)
+        self.geographic_layers = GeographicLayerService(visualizer)
+        self.map_layer = MapLayerService(visualizer)
+        self.plan_view = PlanViewService(visualizer)
 
         # One typed registry owns canonical batch membership, reverse indexes,
         # individual exceptions, and retry state.  Compatibility properties
@@ -257,8 +267,16 @@ class SceneService(BaseService):
             "source_ctime_ns": source_ctime_ns,
             "transform_state": scene_entry.get("transform_state") or {},
             "uv_scale_meters": round(float(effective_props.get("uv_scale_meters", 2.0)), 9),
+            "building_style": scene_entry.get("_building_style_key"),
             "color_source": SurfaceColorSource(color_source).value,
         }
+        # Different visual partitions share one source file and transform.
+        # Their selected faces and UV mappings need distinct buffer identities.
+        # Omit this field for ordinary entries to preserve existing cache keys.
+        if scene_entry.get("_visual_surface_key") is not None:
+            payload["visual_surface"] = scene_entry["_visual_surface_key"]
+        if scene_entry.get("_geographic_layer_key") is not None:
+            payload["geographic_layer"] = scene_entry["_geographic_layer_key"]
         digest = hashlib.sha1(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
@@ -434,6 +452,7 @@ class SceneService(BaseService):
         geometry: MeshPayload,
         material: dict[str, Any] | MaterialPayload,
         visible: bool = True,
+        color_source: SurfaceColorSource | None = None,
     ) -> bool:
         """Ensure a merged aggregate through its stable render state."""
         state = self._merged_group_render_state(
@@ -445,7 +464,9 @@ class SceneService(BaseService):
         )
         if state is None:
             return False
-        return self._render_sync.ensure_object(state, effective_visible=bool(visible))
+        return self._render_sync.ensure_object(
+            state, effective_visible=bool(visible), snapshot_color_source=color_source
+        )
 
     @staticmethod
     def _remember_resolved_texture_maps(
@@ -460,7 +481,7 @@ class SceneService(BaseService):
         clearing an explicitly resolved texture when a scalar like clearcoat
         changes.
         """
-        if not isinstance(entry, dict):
+        if not isinstance(entry, dict) or entry.get("_building_style_key"):
             return
         resolved = {
             key: effective_props.get(key)
@@ -545,12 +566,30 @@ class SceneService(BaseService):
         """Publish one parsed scene to UI and optional renderer consumers."""
 
         viz = self.visualizer
+        self.street_names.set_scene(xml_path)
+        self.geographic_layers.set_scene()
+        self.map_layer.set_scene(xml_path)
+        self.plan_view.set_scene(xml_path)
+        configure_compass = getattr(getattr(viz, "renderer", None), "configure_compass", None)
+        if callable(configure_compass):
+            from ..scene.geographic_north import geographic_north
+
+            # StreetNameService already parsed the geographic sidecar, even
+            # when no street graph is present. North uses only its CRS/origin.
+            north = geographic_north(self.street_names.metadata)
+            configure_compass(north.direction_xy, label=north.label, reason=north.reason)
+            render_panel = getattr(getattr(viz, "ui_manager", None), "panels", {}).get("render")
+            if render_panel is not None:
+                render_panel.sync_scene_guides()
 
         ui_controller = getattr(viz, "ui_controller", None)
         if ui_controller is not None:
             ui_controller.populate_controls()
 
         self.scene_path = xml_path
+        materials = getattr(getattr(viz, "ui_manager", None), "panels", {}).get("materials")
+        if materials is not None:
+            materials.sync_procedural_controls()
 
         if render_immediately:
             if not getattr(viz, "vis_initialized", False):
@@ -608,6 +647,19 @@ class SceneService(BaseService):
         """Clean up previous scene data and UI elements."""
         viz = self.visualizer
         logger.info("Starting scene cleanup")
+        demo = getattr(viz, "demo_service", None)
+        if demo is not None:
+            demo.stop(reason="Demo stopped: the scene changed.", restore_playback=False)
+        self.street_names.clear()
+        self.geographic_layers.clear()
+        self.map_layer.clear()
+        self.plan_view.clear()
+        configure_compass = getattr(getattr(viz, "renderer", None), "configure_compass", None)
+        if callable(configure_compass):
+            configure_compass(None)
+            render_panel = getattr(getattr(viz, "ui_manager", None), "panels", {}).get("render")
+            if render_panel is not None:
+                render_panel.sync_scene_guides()
 
         viz.xml_root = None
         viz.xml_path = None
@@ -629,6 +681,7 @@ class SceneService(BaseService):
             except (RuntimeError, ValueError) as exc:
                 logger.warning("Scene-owner retirement failed during cleanup: %s", exc)
         self._scene_batches.clear()
+        self._render_sync.clear_snapshot_cache()
         self._merge_enabled = False
 
         # TargetService owns target meshes separately from scene aggregation.
@@ -654,6 +707,10 @@ class SceneService(BaseService):
                     if mesh is not None:
                         ensure_target_entry_identity(entry, index)
                         _remove_entry_geometry(entry)
+                    for point in entry.get("_native_scattering_points", ()):
+                        if point.id not in removed_render_ids:
+                            self._render_sync.remove_object(point)
+                            removed_render_ids.add(point.id)
 
                 # Remove any cached target handle not already owned by an entry.
                 target_meshes = getattr(viz, "target_meshes", {})
@@ -1132,6 +1189,11 @@ class SceneService(BaseService):
         if capture_startup_breakdown and breakdown:
             viz.set_startup_detail_timing("render_initial_scene_breakdown_ms", dict(breakdown))
 
+        if self.street_names.enabled:
+            self.street_names.set_enabled(True)
+        self.map_layer.publish()
+        self.plan_view.publish()
+
         # Don't call run() - let the timer handle updates
 
     # Mesh-merging helpers
@@ -1175,6 +1237,36 @@ class SceneService(BaseService):
         predicted_owners = max(1, len(material_groups))
         owner_reduction = 1.0 - (predicted_owners / max(1, mesh_count))
         return owner_reduction >= 0.25
+
+    def prepare_texture_map_defaults(self) -> None:
+        """Discover deferred material-ID maps before an in-app texture opt-in.
+
+        Initial texture-free publication deliberately skips these defaults.
+        Remember only missing fallbacks, leaving authored/profile/manual maps
+        and any previously resolved paths under the material owner's control.
+        """
+        viz = self.visualizer
+        if self._textures_disabled() or not renderer_capabilities(viz.renderer).pbr:
+            return
+        scenario = getattr(viz, "scenario", None)
+        if scenario is not None and not scenario.view_defaults.get("auto_generate_uvs", True):
+            return
+        if self._texture_cache is None:
+            self._texture_cache = {}
+            if TEXTURE_LIBRARY_PATH.is_dir():
+                for tex_file in TEXTURE_LIBRARY_PATH.iterdir():
+                    if tex_file.suffix.lower() in (".png", ".jpg", ".jpeg"):
+                        self._texture_cache[tex_file.stem.lower()] = str(tex_file)
+        for entry in getattr(viz, "mesh_entries", []) or []:
+            defaults = self._discover_scene_texture_defaults(
+                entry, auto_generate_uvs=True, texture_cache=self._texture_cache
+            )
+            if defaults:
+                remembered = dict(entry.get("_resolved_texture_maps") or {})
+                for key, value in defaults.items():
+                    if not remembered.get(key):
+                        remembered[key] = value
+                entry["_resolved_texture_maps"] = remembered
 
     @staticmethod
     def _discover_scene_texture_defaults(
@@ -1262,6 +1354,11 @@ class SceneService(BaseService):
         source_path = self._uv_cache_source_path(entry)
         source_signature = entry.get("_source_signature")
         transform_state = entry.get("transform_state")
+        partition_key = entry.get("_geographic_layer_key") or entry.get("_visual_surface_key")
+        if partition_key:
+            # Equal-sized display pieces can share a source file but need
+            # different UV selections. Extra identity fields do not transform geometry.
+            transform_state = {**(transform_state or {}), "display_partition": partition_key}
         auto_uvs = load_or_generate_box_projection_uvs(
             state.payload,
             scale=uv_scale,
@@ -1428,18 +1525,20 @@ class SceneService(BaseService):
 
     def _render_merged(self, members: list[PreparedSceneMember]) -> None:
         """Publish compatible prepared members through bounded static batches."""
-        groups: dict[tuple[str, MaterialPayload], list[PreparedSceneMember]] = {}
+        groups: dict[tuple, list[PreparedSceneMember]] = {}
         individual: list[PreparedSceneMember] = []
         for member in members:
             if member.entry is None or member.resolved_material is None:
                 individual.append(member)
                 continue
-            groups.setdefault(member.material_signature, []).append(member)
+            # Category switches must not rebuild batches shared with buildings.
+            key = (member.material_signature, member.entry.get("geographic_layer"))
+            groups.setdefault(key, []).append(member)
 
         self._render_individual(individual)
         aggregate_count = 0
         aggregated_member_count = 0
-        for signature, compatible_members in groups.items():
+        for (signature, _layer), compatible_members in groups.items():
             for chunk in self._batch_member_chunks(compatible_members):
                 if len(chunk) == 1:
                     self._render_individual(chunk)
@@ -1907,8 +2006,12 @@ class SceneService(BaseService):
         resolve = getattr(appearance, "resolve_entry_runtime_appearance", None)
         if callable(resolve):
             return resolve(entry)
-        material = self._scene_entry_base_material(entry).payload
         mesh = entry.get("mesh")
+        material = (
+            mesh.material
+            if isinstance(mesh, RenderObjectState)
+            else self._scene_entry_base_material(entry).payload
+        )
         color_source = (
             mesh.payload.color_source
             if isinstance(mesh, RenderObjectState) and isinstance(mesh.payload, MeshPayload)
@@ -2005,9 +2108,12 @@ class SceneService(BaseService):
     ) -> bool:
         """Synchronize an unmerged mesh and outline inside its caller's batch."""
         self._individual_scene_owner_ids.add(mesh.id)
+        resolved = self._resolved_scene_appearance(entry)
         if not self._render_sync.ensure_object(
             mesh,
             effective_visible=effective_visible,
+            snapshot_material=resolved.material,
+            snapshot_color_source=getattr(resolved, "color_source", None),
         ):
             return False
         visible = bool(entry.get("visible", True))
@@ -2262,13 +2368,18 @@ class SceneService(BaseService):
                 group_info["geometry"] = merged
                 aggregate_material = partition.aggregate_material
                 if aggregate_material is None:
-                    aggregate_material = group_info.material_signature[1]
+                    aggregate_material = resolved_by_mesh_id[
+                        partition.aggregate_member_ids[0]
+                    ].material
                 if not self._ensure_merged_material_geometry(
                     group_name=group_name,
                     group_info=group_info,
                     geometry=merged,
                     material=aggregate_material,
                     visible=True,
+                    color_source=getattr(
+                        resolved_by_mesh_id[partition.aggregate_member_ids[0]], "color_source", None
+                    ),
                 ):
                     self._pending_merged_group_syncs.add(group_name)
                     return False
@@ -2378,14 +2489,13 @@ class SceneService(BaseService):
         group_name = self._mesh_id_to_group.get(id(mesh))
         if group_name is not None:
             return True
-        if not resolved.highlighted:
-            return True
         mesh.material = base_material
         self._individual_scene_owner_ids.add(mesh.id)
         return self._render_sync.ensure_object(
             mesh,
             effective_visible=bool(resolved.visible),
             snapshot_material=resolved.material,
+            snapshot_color_source=getattr(resolved, "color_source", None),
         )
 
     def sync_scene_resolved_appearance_batch(
@@ -2443,11 +2553,12 @@ class SceneService(BaseService):
         with self.visualizer.renderer.batch_updates():
             for entry, resolved, mesh in individual:
                 self._individual_scene_owner_ids.add(mesh.id)
-                snapshot_material = resolved.material if resolved.highlighted else None
+                snapshot_material = resolved.material
                 if not self._render_sync.ensure_object(
                     mesh,
                     effective_visible=bool(resolved.visible),
                     snapshot_material=snapshot_material,
+                    snapshot_color_source=getattr(resolved, "color_source", None),
                 ):
                     all_synced = False
                     continue

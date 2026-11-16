@@ -6,13 +6,22 @@ The smallest ORCHAV Generator workflow uses one stationary transmitter, one
 stationary receiver, and one static frame in `etoile`, a
 [Sionna RT](https://nvlabs.github.io/sionna/)-provided scene representing the
 Arc de Triomphe roundabout in Paris. Use it to verify installation, inspect the
-first generated HDF5 frame, and understand YAML-only authoring.
+first generated HDF5 frame, and open it in the Visualizer.
+
+There are two main ways to define a scenario: put its settings and actors in
+YAML, or add Python scripts for calculations such as custom trajectories.
+Hello World introduces [YAML-only authoring](../../../docs/generator/scenario_authoring.md#start-with-yaml):
+everything needed for this run is in one configuration file. The next example,
+[Hello World Scripted](../hello_world_scripted/README.md), adds Python to that
+same workflow.
 
 To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scene layout](../../../docs/assets/scenarios/scenarios_getting_started_hello_world_summary2d.png)
+![Scenario topology](../../../docs/assets/scenarios/scenarios_getting_started_hello_world_topology.png)
+
+*Scene geometry from Sionna RT’s Étoile example. Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).*
 
 | Element | Configuration |
 |---|---|
@@ -22,13 +31,12 @@ To run it, see [Running](#running).
 | Targets | None |
 
 TX1 is placed slightly inside the central opening of the Arc de Triomphe. RX1
-is at street level about 100 m away. The layout is a standalone Generator
-summary figure. See [Summary and Coverage
-Figures](../../../docs/generator/generated_figures.md).
+is at street level about 100 m away.
 
 ## Configuration Walkthrough
 
-`scenario.yaml` contains the complete authored input:
+Open [`scenario.yaml`](scenario.yaml) alongside this walkthrough. It contains
+the complete scenario definition:
 
 | Setting | Value |
 |---|---|
@@ -55,7 +63,8 @@ how to create this directory and add actors.
 If you arrived from the Quickstart, you have already completed these commands.
 Continue at [Generated Files](#generated-files).
 
-From the repository root, validate the YAML before starting ray tracing:
+From the repository root, optionally validate the YAML before starting ray tracing,
+especially after editing `scenario.yaml`:
 
 ```bash
 orchav-validate scenarios/getting_started/hello_world
@@ -70,7 +79,7 @@ Generate the frame:
 orchav-generator scenarios/getting_started/hello_world/
 ```
 
-Inspect frame 0 from the terminal:
+Optionally inspect frame 0 from the terminal:
 
 ```bash
 orchav-inspect scenarios/getting_started/hello_world --frame 0

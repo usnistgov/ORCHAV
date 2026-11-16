@@ -1,0 +1,84 @@
+{
+  "license_spdx": "GPL-3.0-only",
+  "tutorial_scenario": "scenarios/sensing/applications/drone_tracking/munich/scenario.yaml",
+  "tutorial_scenario_sha256": "95a96043b510b36e772f08d1f155c0948c72b51b1a9cdf5da98510d5bb11aad7",
+  "authored_scenarios": {
+    "scenarios/sensing/applications/drone_tracking/munich/scenario.yaml": "95a96043b510b36e772f08d1f155c0948c72b51b1a9cdf5da98510d5bb11aad7",
+    "scenarios/sensing/applications/drone_tracking/munich/south/scenario.yaml": "dadedd9a715b332c4ee4880bcf142bf9d4b6da1614c430209bd8afbefa5a5511"
+  },
+  "authored_experiment": "scenarios/sensing/applications/drone_tracking/munich/experiment.json",
+  "authored_experiment_sha256": "e62baecc5f848d0d476984989e06d3b88baf9763f35e4fb477caa96915628032",
+  "acquisition_configuration_equal_to_authored": true,
+  "execution_scenarios_sha256": {
+    "west": "6ea4a6e9e2a6367ee61b4e97cc842b2780dfc9375b1a97f261c4139d6beab636",
+    "south": "159c72c4ce1c509a785de7e56139b62a149d33628cfd4f4236852c0572040520"
+  },
+  "fusion_results_sha256": "dfc2b752138e5d3e1b0bd23a74cba568e07b762fb09d20e58cc169e3ba06df77",
+  "run_id": "ffc77f7a-0763-416e-affd-71f62ae58839",
+  "source_unchanged": true,
+  "native_sources": {
+    "West": {
+      "generation_id": "60063bdf-7c40-4bea-9749-28940e4ac278",
+      "frame_set_id": "c07d74b0aec1f55aa341db8014e5ff2d4409e9886bf82143d35d7d192007b824",
+      "pair_id": "c8e28d3556435e74585d94db08ce740735d64712a36930d032ae6c4dcc44c5da"
+    },
+    "South": {
+      "generation_id": "f7a5ae38-8b3e-433d-a70b-f011094b6ff7",
+      "frame_set_id": "611df7f6cde053744a7ee0233dfbb4691632c654c19a1ed228ef00684c397669",
+      "pair_id": "c8002465105fa76604d827c5ce19a098ee6b25e7eff29877a79db3d49c96af47"
+    }
+  },
+  "image": "drone_tracking_munich_availability.png",
+  "sha256": "de1af7f5317ec82d6faea3e6c8e75d1027d34fb02a4897b4f77817e716091957",
+  "mode": "all",
+  "coordinate_frame": "world",
+  "kind": "saved_fusion_track_availability",
+  "plotting_source_sha256": {
+    "shared/sensing_viz.py": "45def40892a71ec9fddf952ae697673174d8d3bcf4646b67ee79206b61175ef1",
+    "shared/sensing_fusion_figures.py": "2bde8b4fecee80b9120cad98ecc9c572dba822a199d9d59b0c4cc29646bfa152",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "reproduction_command": "python -m shared.sensing_fusion_figures analysis/drone-tracking/munich-fusion --output-dir analysis/drone-tracking/munich-fusion",
+  "evaluation_sha256": "d77eccc050978a574841de0c2a1090705b70bd6e237055ff8fb851c09849d848",
+  "position_gate_m": 0.75,
+  "metrics": {
+    "South": {
+      "matched_outputs": 90,
+      "target_epoch_opportunities": 128,
+      "missed_target_epochs": 38,
+      "unmatched_confirmed_outputs": 0,
+      "evaluation_id_switches": 0,
+      "position_rmse_m": 0.31368249388788955,
+      "velocity_vector_rmse_m_s": 0.8760720543781625,
+      "target_present_epochs": 128,
+      "all_targets_matched_epochs": 90,
+      "all_targets_coverage": 0.703125
+    },
+    "West": {
+      "matched_outputs": 84,
+      "target_epoch_opportunities": 128,
+      "missed_target_epochs": 44,
+      "unmatched_confirmed_outputs": 13,
+      "evaluation_id_switches": 1,
+      "position_rmse_m": 0.3639472760339686,
+      "velocity_vector_rmse_m_s": 1.1037280532610623,
+      "target_present_epochs": 128,
+      "all_targets_matched_epochs": 84,
+      "all_targets_coverage": 0.65625
+    },
+    "fused": {
+      "matched_outputs": 126,
+      "target_epoch_opportunities": 128,
+      "missed_target_epochs": 2,
+      "unmatched_confirmed_outputs": 0,
+      "evaluation_id_switches": 0,
+      "position_rmse_m": 0.23275629822286334,
+      "velocity_vector_rmse_m_s": 0.38448194105318423,
+      "target_present_epochs": 128,
+      "all_targets_matched_epochs": 126,
+      "all_targets_coverage": 0.984375
+    }
+  },
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "90ab039b479e62fa04a32844d48bf5bd527f2285be02d87b88cd0ca509c96cdf"
+}

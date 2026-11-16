@@ -1,0 +1,25 @@
+{
+  "original": {
+    "author": "Mike Pan and Morgan McGuire",
+    "license": "CC0/Public Domain",
+    "source": "https://casual-effects.com/g3d/data10/index.html",
+    "license_evidence": "https://casual-effects.com/g3d/data10/research/model/bmw/info.js",
+    "download": "https://casual-effects.com/g3d/data10/research/model/bmw/bmw.zip",
+    "retrieved_utc": "2026-10-21",
+    "sha256": "644d48ad8381c4e1e96be34a9900574b4df08d348e35a3394870e23c3baeffa6"
+  },
+  "modifications": "Removed hood and rear roundels, all four wheel roundels, and rear model emblem. All remaining geometry retained.",
+  "removed_face_groups": {
+    "RoundelBack": 4640,
+    "RoundelFront": 4640,
+    "MStreak": 1536,
+    "Tire3_TireRoundel_Dupli_2": 4640,
+    "Tire3_TireRoundel_Dupli_003": 4640,
+    "Tire3_TireRoundel_Dupli_004": 4640,
+    "Tire3_TireRoundel_Dupli_005": 4640
+  },
+  "removed_face_count": 29376,
+  "retained_face_count": 355786,
+  "source_obj_sha256": "3804f593e0c172610de92b395f0f79d3a0a3c877b4b5ed9480c3d1cf1736f2c3",
+  "output_obj_sha256": "8905c3c0f362e51f738bdaeec1f3190b4907ec12dc8cbc387c57b6bfc7a1d1c5"
+}

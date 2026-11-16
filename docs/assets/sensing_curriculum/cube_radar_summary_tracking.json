@@ -1,0 +1,179 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "analysis/cube-radar-tracking/tracks",
+  "source_identity": {
+    "generation_id": "b3557768-87d7-4e86-a96e-c549680c0d2e",
+    "frame_set_id": "4bb96d92d78468a2ba3eb2096edb35515f51ab7783cbae86d6a5ccc059f764c3"
+  },
+  "manifest_sha256": "a7b6dc9faa901e061c45de36e02d44e121ff56b19d967b1bfb007fc88dabfca8",
+  "source_files_sha256": {
+    "frames_manifest.json": "a7b6dc9faa901e061c45de36e02d44e121ff56b19d967b1bfb007fc88dabfca8",
+    "mpc_frames_00063-00063.h5": "c468d3326c40e8b7b7faf3637420b1c39877e87555cf6ea6645e2faffcfdee87",
+    "mpc_frames_00127-00127.h5": "df9492d7e072093d7d8aed54e1bfcfb08a12a0b59a1759c0d8a96164479b3dda",
+    "mpc_frames_00191-00191.h5": "1bc92cfc0c882bb7e78df31c9ff988f6e20f4f76c73e08fef3c621f3c7028ef9",
+    "mpc_frames_00255-00255.h5": "b7ce542943a178eb016c8f1e3dc0c422ce53dbbe7ab9265e6116f32f617e1d00",
+    "mpc_frames_00319-00319.h5": "1361bd8b066240fbf5b5a694f09fc26d6b636dd2cd2483b859a7629364cace96",
+    "mpc_frames_00383-00383.h5": "faad0dea9f34e3929974bf6fefb5963fac76526549c7c6f56d8080649c7afe16",
+    "mpc_frames_00447-00447.h5": "c0ae5a33eede79851fb6e32e1901c0dfae00d3aa1301eef222fd01398dfe2b29",
+    "mpc_frames_00511-00511.h5": "d41f1d5788c46f4850eca913e11d0296af246825d8303b5887b6abbff7c97b8c",
+    "mpc_frames_00575-00575.h5": "e26e61b23b6cbeba826767c6c1aec8653bca417b321e4f02d051bea9bc189363",
+    "mpc_frames_00639-00639.h5": "5cd84ebc3fc321893347acb98b3f9099c8880b6701aa7181f60beda12a07b277",
+    "mpc_frames_00703-00703.h5": "097d67a8b32f90e3cdcfda3b8b416e8604bfb290325a239c05033abe7ac850d7",
+    "mpc_frames_00767-00767.h5": "86c1512e3b0f79944809a4db382607e1c227cf74edc0071d696894ce7c75d5b9",
+    "mpc_frames_00831-00831.h5": "3ccdd97201915b0454a5dc6799fbd4967e3cb8201161f6e1cf2acd668fbb84b6",
+    "mpc_frames_00895-00895.h5": "ccd39426f733e3d2900a6cde6b999ef40c764c021af167352f651811fadf988d",
+    "mpc_frames_00959-00959.h5": "f9d23b9dc69114c8eff96b5736f165f85a2aca9e845e2673f6e14a4903433a66",
+    "mpc_frames_01023-01023.h5": "7201fe2e15af738d6f5fafce0332a4714ed1f0498fdba8c25fee56442a4223c0"
+  },
+  "figures": [
+    "tracking"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 16,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "cf5cb247-1db3-5f17-b87c-eea64f348729",
+      "processing_recipe_id": "eae6830a1fc9ae55e6b36819bc6a69d428a9c6ed2a6f62dc15e1b072000a00fe",
+      "detection_count": 0
+    },
+    {
+      "frame_index": 127,
+      "reference_time_s": 0.06399999999999999,
+      "acquisition_id": "7251e1d1-1138-5372-8695-da23332af62e",
+      "processing_recipe_id": "667e13c1e1a52931e973ae818989363e9429b90394a76565f19ff962003964d5",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 191,
+      "reference_time_s": 0.12799999999999997,
+      "acquisition_id": "67ff499b-66f5-56ae-b88b-3d3498d7da4c",
+      "processing_recipe_id": "d2620290a3c241ad49d8462a0bf7285824a55e92a61beb4349d72f1663026c3b",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 255,
+      "reference_time_s": 0.19199999999999995,
+      "acquisition_id": "7f7a5812-3c4e-540d-8f4d-44ae7bc2e05d",
+      "processing_recipe_id": "bb33feb3df005d0c0227073688cc66364738d348418e442e920a37c05ca84acb",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 319,
+      "reference_time_s": 0.25599999999999995,
+      "acquisition_id": "211fccb3-5930-524f-85c1-5930ddb21a85",
+      "processing_recipe_id": "ac661d31983593949a62e8b18728627413d7e099a45da215d67f4f938cb1322c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 383,
+      "reference_time_s": 0.31999999999999995,
+      "acquisition_id": "c83c3949-4ea5-5829-8716-66c69d95e664",
+      "processing_recipe_id": "e1baf9f9c6eb671fb189b855869259cbda886dd54e69cb59675897e7752f7f75",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 447,
+      "reference_time_s": 0.3839999999999999,
+      "acquisition_id": "1c1ab65e-0090-5a20-a9d8-0476e2c9c80e",
+      "processing_recipe_id": "adfcf1148057eadd8edfb50254a328c67ff8f25645341a2a1579d82281029571",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 511,
+      "reference_time_s": 0.4479999999999999,
+      "acquisition_id": "c7c79fec-efb4-5567-ab10-57545de02301",
+      "processing_recipe_id": "d604a1f49b01df4e6eb7c8f4056756ef8fdb75878b0d5818b644b9b6ae103435",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 575,
+      "reference_time_s": 0.5119999999999999,
+      "acquisition_id": "333260ee-5ef8-55e0-b362-729d351103bf",
+      "processing_recipe_id": "125d9bc4bd47590d274d6778c5ae04d01308caac5893f5599f26c4ef353de628",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 639,
+      "reference_time_s": 0.5759999999999998,
+      "acquisition_id": "0e98a263-5764-5286-8555-7e5ce2a43747",
+      "processing_recipe_id": "f807e5c6079c16d453520cb66a97f4a33da2f72983d0c1b47562a14549ef5118",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 703,
+      "reference_time_s": 0.6399999999999999,
+      "acquisition_id": "23347056-7bef-5dd4-bae6-71b05fa2c698",
+      "processing_recipe_id": "1b0a3050ef3f1e69830e3f1df6ec5a1d81e875ae435a3ae75ab9628f092be1b5",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 767,
+      "reference_time_s": 0.7039999999999998,
+      "acquisition_id": "50f151e6-170b-5ff8-a383-edd41c0a8ab2",
+      "processing_recipe_id": "cd9d269a8fb84cdb998ecc3bfd9cc00a10604b5324ccb6ef2f5606e0a813d654",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 831,
+      "reference_time_s": 0.7679999999999998,
+      "acquisition_id": "7ed752d2-2a80-5711-8a86-c3d2985a8fc0",
+      "processing_recipe_id": "2f9bfc3ed3ede2a0fbeea5249bb26b42556564ab89cd5bae18a34d8064f44f78",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 895,
+      "reference_time_s": 0.8319999999999999,
+      "acquisition_id": "731ee9e4-3c39-5a30-b002-61d53427735e",
+      "processing_recipe_id": "723bf8b0017982ee47295a4525d14f739993080df32c6e74e23c196ae68d9479",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 959,
+      "reference_time_s": 0.8959999999999998,
+      "acquisition_id": "6d3d1ca7-58a6-5f61-8887-53fd0a1c4769",
+      "processing_recipe_id": "654bb6b076da0925a026ea81aa054a914a74cab2f5b2eb78795ca913c4b46651",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 1023,
+      "reference_time_s": 0.9599999999999999,
+      "acquisition_id": "dd182c0a-eebc-565c-8448-adbcbfdba08b",
+      "processing_recipe_id": "a4009a671df97b7f42f187afc34512500f163423f7c2b08fa2c7c5fda74843e4",
+      "detection_count": 1
+    }
+  ],
+  "outputs": [
+    "sensing/tracking.png"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "summary_output": "sensing/tracking.png",
+  "output": "docs/assets/sensing_curriculum/cube_radar_summary_tracking.png",
+  "output_sha256": "d0e2d2a8c286ce6f3391ce84dd6969a5ef42a75cadfe5024a3bff19136d115a4",
+  "plotting_source_sha256": {
+    "generator/figures/summary/sensing.py": "68714c70423f25301376c173a5b54bd34b640b28aad113d5993120d4bdec9537",
+    "generator/figures/summary/saved_sensing.py": "93c189d60bb2b71ad65a7a454c4379d7830f1b77285dec8daec04781fd0abcd1",
+    "shared/sensing_viz.py": "45def40892a71ec9fddf952ae697673174d8d3bcf4646b67ee79206b61175ef1",
+    "shared/sensing_doppler_summary.py": "673a30d11deef54429c768cc09c61a15b0db00010cd4ce9d594db3edbb2208a3",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.summary.saved_sensing",
+    "analysis/cube-radar-tracking/tracks",
+    "-o",
+    "analysis/public-figure-refresh/summary-5",
+    "--figure",
+    "tracking"
+  ],
+  "path_convention": "Repository-relative source paths and reproducible output-directory names.",
+  "image": "cube_radar_summary_tracking.png",
+  "sha256": "d0e2d2a8c286ce6f3391ce84dd6969a5ef42a75cadfe5024a3bff19136d115a4",
+  "tutorial_scenario": "scenarios/sensing/cube_radar/moving/scenario.yaml",
+  "tutorial_scenario_sha256": "523463b867f5c9ae245dc4dcd00b46eebce161a5812677e17ccfbd0f7dc5f763",
+  "license_spdx": "GPL-3.0-only",
+  "execution_backend": "CPU LLVM"
+}

@@ -1,19 +1,19 @@
-"""Lazy MPC Explorer session, query worker, and presented-frame lifecycle.
+"""Shared Path Explorer session, query worker, and presented-frame lifecycle.
 
 Nothing in this module is imported during normal visualizer startup. The
-session exists only while the user has opened the MPC Explorer, and canonical
+session exists only while the user has opened a path view, and canonical
 arrays are not wrapped or queried until the renderer accepts a frame.
 """
 
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol
 
 import numpy as np
-from PySide6.QtCore import QObject, QSignalBlocker, QTimer, Signal
+from PySide6.QtCore import QObject, QSignalBlocker, Qt, QTimer, Signal
 
 from shared.logging import get_logger
 
@@ -80,6 +80,7 @@ class _QueryRequest:
     catalog: Any
     spec: Any
     query_engine_type: Any
+    matching_path_ids: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +109,15 @@ class _RowLookupResultBridge(QObject):
 def _execute_query_request(request: _QueryRequest) -> Any:
     """Execute one immutable catalog query in a worker thread."""
     engine = request.query_engine_type(request.catalog)
-    return engine.execute(request.spec, generation=request.generation)
+    result = engine.execute(request.spec, generation=request.generation)
+    if request.matching_path_ids is not None:
+        # Intersect after sorting in the worker; never build thousands of Qt
+        # row selections or scan a large permutation on the GUI thread.
+        result = replace(
+            result,
+            path_ids=result.path_ids[np.isin(result.path_ids, request.matching_path_ids)],
+        )
+    return result
 
 
 def _execute_row_lookup_request(request: _RowLookupRequest) -> Optional[int]:
@@ -126,10 +135,13 @@ def _execute_row_lookup_request(request: _RowLookupRequest) -> Optional[int]:
 
 
 class MpcExplorerSession(QObject):
-    """Own the Explorer only while its separate window is visibly active."""
+    """Own one catalog and selection while either linked path view is open."""
 
     closed = Signal()
     pathSelectionRequested = Signal(object, int, str)
+    scopeChanged = Signal(str)
+    selectedDetailsChanged = Signal(object)
+    matchingPathsCleared = Signal()
 
     def __init__(
         self,
@@ -180,6 +192,9 @@ class MpcExplorerSession(QObject):
         self._selection_signal_origin: Optional[str] = None
         self._active = False
         self._finished = False
+        self._analysis_open = False
+        self._matching_path_ids: Optional[np.ndarray] = None
+        self._matching_description = ""
 
         self._scope_key = "all"
         self._grouping_key = "tx_rx"
@@ -207,8 +222,75 @@ class MpcExplorerSession(QObject):
 
     @property
     def is_active(self) -> bool:
-        """Return whether the Explorer is visible and subscribed."""
+        """Return whether a path view retains the presented-frame subscription."""
         return self._active and not self._finished
+
+    @property
+    def catalog(self) -> Any:
+        """Borrow the accepted frame catalog from either linked view."""
+        return self._catalog
+
+    @property
+    def scope(self) -> str:
+        """Return the common All/Filtered/Rendered population for both views."""
+        return self._scope_key
+
+    def retain_analysis(self) -> None:
+        """Keep frame identity and selection alive even if the table is closed."""
+        self._analysis_open = True
+        if self.window is not None:
+            self.window.setAttribute(Qt.WA_DeleteOnClose, False)
+        self._activate()
+
+    def release_analysis(self) -> None:
+        """Release analysis ownership; the table may continue using the session."""
+        self._analysis_open = False
+        self.clear_matching_paths()
+        if self.window is not None:
+            self.window.setAttribute(Qt.WA_DeleteOnClose, True)
+        if self.window is None or self.window.isHidden():
+            self.shutdown()
+
+    def set_matching_paths(self, token: Any, path_ids: np.ndarray, description: str) -> None:
+        """Restrict table rows to a plot's matching set for this accepted frame."""
+        if token != self._frame_token or not self.is_active:
+            return
+        ids = np.array(path_ids, dtype=np.int32, copy=True)
+        ids.setflags(write=False)
+        self._matching_path_ids = ids
+        self._matching_description = str(description)
+        if self.window is not None:
+            self.window.set_matching_paths(self._matching_description)
+        self._queue_query(debounce=False, clear_model=True)
+
+    def clear_matching_paths(self) -> None:
+        """Remove the analysis restriction without clearing individual selection."""
+        if self._matching_path_ids is None:
+            return
+        self._matching_path_ids = None
+        self._matching_description = ""
+        if self.window is not None:
+            self.window.set_matching_paths("")
+        self._queue_query(debounce=False, clear_model=True)
+
+    def _clear_matching_from_table(self) -> None:
+        self.clear_matching_paths()
+        self.matchingPathsCleared.emit()
+
+    def clear_selected_path(self) -> None:
+        """Clear individual inspection while keeping the frame and matching group."""
+        self._selected_path_id = None
+        self._invalidate_row_lookup()
+        self._call_selection_port(self._selection_port, "clear_selection", reason="path deselected")
+        if self.window is not None:
+            self.window.clear_path_selection()
+            self.window.clear_details()
+        self.selectedDetailsChanged.emit(None)
+
+    def _open_analysis(self) -> None:
+        service = getattr(self.visualizer, "extension_services", {}).get("experiments")
+        if service is not None:
+            service.open()
 
     def bind_selection_port(
         self,
@@ -288,7 +370,7 @@ class MpcExplorerSession(QObject):
             self._selected_path_id = None
             self._invalidate_row_lookup()
             if self.window is not None:
-                self.window.table.clearSelection()
+                self.window.clear_path_selection()
             return
         token = getattr(selection, "frame_token", None)
         path_id = getattr(selection, "canonical_path_id", None)
@@ -303,15 +385,17 @@ class MpcExplorerSession(QObject):
 
     def _on_selection_details_changed(self, details: Any) -> None:
         """Render authoritative selected-path details from the selection owner."""
-        if self.window is None:
-            return
         if details is None:
-            self.window.clear_details()
+            self.selectedDetailsChanged.emit(None)
+            if self.window is not None:
+                self.window.clear_details()
             return
         token = getattr(details, "frame_token", None)
         if token != self._frame_token:
             return
-        self.window.set_details(self._format_selection_details(details))
+        self.selectedDetailsChanged.emit(details)
+        if self.window is not None:
+            self.window.set_details(self._format_selection_details(details))
 
     @staticmethod
     def _format_selection_details(details: Any) -> list[tuple[str, Any]]:
@@ -389,7 +473,19 @@ class MpcExplorerSession(QObject):
             "render_status",
             "delay_is_estimated",
             "path_loss_is_estimated",
+            "sensing_points",
         }
+        sensing_points = getattr(details, "sensing_points", ())
+        if sensing_points:
+            values.append(
+                (
+                    "Sensing points",
+                    "; ".join(
+                        f"Bounce {order}: {target} / point {point}"
+                        for order, target, point in sensing_points
+                    ),
+                )
+            )
         for field in fields(details):
             if field.name not in known:
                 values.append((field.name.replace("_", " ").title(), getattr(details, field.name)))
@@ -421,7 +517,7 @@ class MpcExplorerSession(QObject):
         return "provenance unavailable"
 
     def open(self) -> None:
-        """Create and show the separate window on explicit user request."""
+        """Create or raise the table dock on explicit user request."""
         if self._finished:
             return
         window = self._ensure_window()
@@ -481,6 +577,8 @@ class MpcExplorerSession(QObject):
         except TypeError:
             window = factory()
         self.window = window
+        if self._analysis_open:
+            window.setAttribute(Qt.WA_DeleteOnClose, False)
         window.activityChanged.connect(self._on_window_activity_changed)
         window.closing.connect(self._on_window_closing)
         window.destroyed.connect(self._on_window_destroyed)
@@ -495,6 +593,20 @@ class MpcExplorerSession(QObject):
         window.pathSelectionRequested.connect(
             lambda path_id: self._select_path(path_id, origin="table")
         )
+        window.pathSelectionCleared.connect(self.clear_selected_path)
+        window.analysisRequested.connect(self._open_analysis)
+        window.matchingPathsCleared.connect(self._clear_matching_from_table)
+        analysis = getattr(self.visualizer, "extension_services", {}).get("experiments")
+        window.analysis_button.setVisible(analysis is not None)
+        with QSignalBlocker(window.scope_combo):
+            window.scope_combo.setCurrentIndex(window.scope_combo.findData(self._scope_key))
+        window.set_matching_paths(self._matching_description)
+        if self._model is not None:
+            window.set_model(self._model, optional_start_column=len(self._default_columns))
+            window.set_counts(self._model.total_row_count, self._catalog.path_count)
+        details = getattr(self._selection_port, "details", None)
+        if details is not None:
+            self._on_selection_details_changed(details)
         return window
 
     def _on_window_activity_changed(self, active: bool) -> None:
@@ -502,17 +614,19 @@ class MpcExplorerSession(QObject):
             return
         if active:
             self._activate()
-        else:
+        elif not self._analysis_open:
             self._deactivate(reason="Explorer hidden")
 
     def _on_window_closing(self) -> None:
-        if not self._finished:
+        if not self._finished and not self._analysis_open:
             self._deactivate(reason="Explorer closed")
 
     def _on_window_destroyed(self, _object: Any = None) -> None:
         if self._finished:
             return
         self.window = None
+        if self._analysis_open:
+            return
         self._deactivate(reason="Explorer destroyed")
         self._shutdown_selection_port()
         self._finished = True
@@ -638,6 +752,10 @@ class MpcExplorerSession(QObject):
 
         had_catalog = self._catalog is not None
         if frame_changed:
+            self._matching_path_ids = None
+            self._matching_description = ""
+            if self.window is not None:
+                self.window.set_matching_paths("")
             self._clear_selection(reason="presented frame changed")
         self._frame_token = token
         self._render_packet = render_packet
@@ -903,6 +1021,7 @@ class MpcExplorerSession(QObject):
             catalog=self._catalog,
             spec=self._build_query_spec(),
             query_engine_type=self._query_engine_type,
+            matching_path_ids=self._matching_path_ids,
         )
 
     def _submit_query(self, request: _QueryRequest) -> None:
@@ -1211,7 +1330,13 @@ class MpcExplorerSession(QObject):
         return self._query_types["sort_spec_for_preset"](preset)
 
     def _on_scope_changed(self, scope: str) -> None:
+        if str(scope) == self._scope_key:
+            return
         self._scope_key = str(scope)
+        if self.window is not None:
+            with QSignalBlocker(self.window.scope_combo):
+                self.window.scope_combo.setCurrentIndex(self.window.scope_combo.findData(scope))
+        self.scopeChanged.emit(self._scope_key)
         self._queue_query(debounce=True)
 
     def _on_grouping_changed(self, grouping: str) -> None:
@@ -1354,6 +1479,19 @@ class MpcExplorerSession(QObject):
                     continue
                 details.append((label, " -> ".join(map(str, sequence)) or "None"))
         details.extend(self._scope_status_details(catalog, path_id))
+        sensing_sequence = getattr(catalog, "sensing_sequence", None)
+        if callable(sensing_sequence):
+            references = sensing_sequence(path_id)
+            if references:
+                details.append(
+                    (
+                        "Sensing points",
+                        "; ".join(
+                            f"Bounce {order}: {target} / point {point}"
+                            for order, target, point in references
+                        ),
+                    )
+                )
         return details
 
     def _scope_status_details(self, catalog: Any, path_id: int) -> list[tuple[str, str]]:
@@ -1446,6 +1584,8 @@ class MpcExplorerSession(QObject):
             clear_overlay()
 
     def _clear_presented_data(self, *, reason: str) -> None:
+        self._matching_path_ids = None
+        self._matching_description = ""
         self._query_generation += 1
         self._query_debounce_timer.stop()
         self._pending_request = None
@@ -1461,6 +1601,7 @@ class MpcExplorerSession(QObject):
         model = self._model
         self._model = None
         if self.window is not None:
+            self.window.set_matching_paths("")
             self.window.release_model()
             self.window.set_counts(0, 0)
         if model is not None:
@@ -1509,11 +1650,10 @@ class MpcExplorerSession(QObject):
             self.visualizer._mpc_explorer_session = None
 
 
-def toggle_mpc_explorer(visualizer: Any) -> MpcExplorerSession:
-    """Toggle the one lazy Explorer session owned by a visualizer root."""
+def ensure_mpc_explorer(visualizer: Any) -> MpcExplorerSession:
+    """Get the shared path session without changing either view's visibility."""
     session = getattr(visualizer, "_mpc_explorer_session", None)
     if isinstance(session, MpcExplorerSession) and not session._finished:
-        session.toggle()
         return session
     from .mpc_selection_service import MpcSelectionService
 
@@ -1524,5 +1664,11 @@ def toggle_mpc_explorer(visualizer: Any) -> MpcExplorerSession:
         selection_port_owned=True,
     )
     visualizer._mpc_explorer_session = session
-    session.open()
+    return session
+
+
+def toggle_mpc_explorer(visualizer: Any) -> MpcExplorerSession:
+    """Toggle the table in the visualizer's lazy path workspace."""
+    session = ensure_mpc_explorer(visualizer)
+    session.toggle()
     return session

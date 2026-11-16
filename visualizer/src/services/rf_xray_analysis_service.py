@@ -180,6 +180,17 @@ class RFXRayAnalysisService:
         opacity = normalize_rf_xray_opacity(
             getattr(state, "rf_xray_opacity", DEFAULT_RF_XRAY_OPACITY)
         )
+        # Disabled presentation needs only a stable clear-state token. In
+        # particular it must not walk materials or poll a manifest per frame.
+        if not enabled or packet is None:
+            return RFXRayAnalysisSnapshot(
+                enabled=False,
+                mode=mode,
+                signature=(False, mode, opacity),
+                overlay_opacity=opacity,
+                summary="RF X-Ray off",
+            )
+
         scene_materials = self._collect_scene_materials()
         rf_properties, scattering_preset = self._collect_scenario_material_properties()
         signature = self._signature(
@@ -193,15 +204,6 @@ class RFXRayAnalysisService:
             selected_property,
             opacity,
         )
-
-        if not enabled or packet is None:
-            return RFXRayAnalysisSnapshot(
-                enabled=False,
-                mode=mode,
-                signature=signature,
-                overlay_opacity=opacity,
-                summary="RF X-Ray off",
-            )
 
         if mode == RFXRAY_MODE_MPC_USAGE:
             return self._build_mpc_usage_snapshot(
@@ -423,13 +425,17 @@ class RFXRayAnalysisService:
                     )
                 )
 
-        top_paths = self._select_top_paths(
-            canon,
-            packet.segment_mask,
-            int(getattr(state, "rf_xray_max_top_paths", 12)),
+        top_paths = (
+            self._select_top_paths(
+                canon,
+                packet.segment_mask,
+                int(getattr(state, "rf_xray_max_top_paths", 12)),
+            )
+            if bool(getattr(state, "rf_xray_show_top_paths", False))
+            else ()
         )
         top_path_points = top_path_lines = top_path_colors = None
-        if bool(getattr(state, "rf_xray_show_top_paths", False)) and top_paths:
+        if top_paths:
             top_path_points, top_path_lines, top_path_colors = self._build_top_path_lines(
                 canon,
                 top_paths,

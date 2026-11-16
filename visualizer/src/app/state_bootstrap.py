@@ -177,6 +177,7 @@ def initialize_runtime_state(viz: Any, *, default_animation_cache_size: int) -> 
 
     # Raw frame cache lives in CacheService; these fields track current app mode.
     viz.current_scenario_path = None
+    viz.current_scenario_config_path = None
     viz.scenario_config = None  # Active ScenarioConfiguration (set after loading)
     viz._live_preview_enabled = False
     viz._live_preview_frame = None

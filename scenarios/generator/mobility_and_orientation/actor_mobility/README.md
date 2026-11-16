@@ -1,7 +1,5 @@
 # Actor Mobility
 
-[Scenarios](../../../README.md) > [Generator](../../README.md) > Actor Mobility
-
 This is the first Generator scenario to inspect after getting started. One
 stationary transmitter and five receiver mobility cases share a simple ground
 scene so the effect of each model is easy to see: one fixed reference receiver
@@ -11,7 +9,7 @@ To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scene layout](../../../../docs/assets/scenarios/scenarios_generator_mobility_and_orientation_actor_mobility_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_generator_mobility_and_orientation_actor_mobility_topology.png)
 
 | Element | Role |
 | --- | --- |
@@ -24,20 +22,15 @@ To run it, see [Running](#running).
 
 ## Configuration Walkthrough
 
+The following excerpt from [`scenario.yaml`](scenario.yaml) focuses on the
+four moving receivers. The stationary transmitter and reference receiver are
+omitted here. All four routes share the same timeline: 32 frames over 8 s.
+
 For mobility semantics and the exact field reference, see
 [Mobility Models](../../../../docs/generator/mobility_and_orientation.md#mobility-models)
 and [Scenario YAML Reference](../../../../docs/reference/scenario_yaml.md#mobility).
 
 ```yaml
-timeline:
-  steps: 32
-  duration_s: 8.0
-
-raytracing:
-  enabled: true
-  quality:
-    preset: ultra-low
-
 actors:
   rx:
     - name: RX_Linear
@@ -73,15 +66,20 @@ The waypoint interpolation is linear by default. The circular receiver starts
 at `0 deg` and completes one turn, while the grid scan uses snake traversal
 from the bottom-left corner. Those defaults do not need YAML fields.
 
-The full YAML also requests the scene-layout and receiver-speed [summary
-figures](../../../../docs/generator/generated_figures.md) shown on this page.
+The full YAML also requests scene-layout and receiver-speed [summary
+figures](../../../../docs/generator/generated_figures.md) after generation.
 
 ## Running
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/mobility_and_orientation/actor_mobility
 orchav-generator scenarios/generator/mobility_and_orientation/actor_mobility
-orchav-inspect scenarios/generator/mobility_and_orientation/actor_mobility --frame 0
+```
+
+Open the scenario in the Visualizer:
+
+```bash
 orchav-visualizer --scenario scenarios/generator/mobility_and_orientation/actor_mobility
 ```
 
@@ -105,7 +103,5 @@ The speed figure summarizes the receiver motion over time. After generation:
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) | [Generator](../../README.md) |
-> Current: **Actor Mobility**
->
-> Track: **Mobility and Orientation** | Next: [Actor Orientation](../actor_orientation/README.md)
+Up: [Generator](../../README.md) ·
+[Actor Orientation](../actor_orientation/README.md)

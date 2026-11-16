@@ -1,0 +1,17 @@
+schema_version: null
+processing_strategy: analytic_path_doppler_oracle
+rd_source: path_doppler
+rd_model: analytic_path_power_oracle_nonwaveform
+frame_role: analytic_oracle_ready
+pair_index: 0
+raw_payload_policy: none
+rd_required_history: 1
+rd_ready: true
+rd_map_frames_used: 1
+rd_fresh: false
+rp_fresh: false
+source_frame_step: 7
+range_mode: bistatic
+config_resolved:
+  raw_payload_policy: none
+  rd_required_history: 1

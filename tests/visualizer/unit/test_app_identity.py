@@ -46,6 +46,8 @@ def test_build_orchav_icon_returns_icon():
     assert {size.width() for size in icon.availableSizes()} == set(APPLICATION_ICON_SIZES)
     for size in (16, 32, 48, 64, 128, 256):
         pixmap = icon.pixmap(size, size)
-        assert pixmap.size().width() == size
-        assert pixmap.size().height() == size
+        # QIcon requests use logical pixels; native high-DPI screens can return
+        # a larger backing pixmap with its device pixel ratio attached.
+        assert pixmap.deviceIndependentSize().width() == size
+        assert pixmap.deviceIndependentSize().height() == size
         assert pixmap.toImage().hasAlphaChannel()

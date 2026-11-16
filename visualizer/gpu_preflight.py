@@ -92,7 +92,7 @@ def reject_unsupported_macos_open3d(
         and _uses_open3d_renderer(argv)
     ):
         raise SystemExit(
-            "The Open3D/Filament renderer is not supported on macOS in ORCHAV v0.1. "
+            "The Open3D/Filament renderer is not supported on macOS. "
             "Use --renderer pygfx (the default)."
         )
 

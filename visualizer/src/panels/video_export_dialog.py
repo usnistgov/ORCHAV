@@ -81,18 +81,18 @@ class VideoExportDialog(QDialog):
         range_layout.addWidget(QLabel("Frame Range:"))
 
         self.start_frame_spin = QSpinBox()
-        self.start_frame_spin.setMinimum(0)
-        self.start_frame_spin.setMaximum(self.total_frames - 1)
-        self.start_frame_spin.setValue(0)
+        self.start_frame_spin.setMinimum(1)
+        self.start_frame_spin.setMaximum(max(1, self.total_frames))
+        self.start_frame_spin.setValue(1)
         self.start_frame_spin.setPrefix("Start: ")
         range_layout.addWidget(self.start_frame_spin)
 
         range_layout.addWidget(QLabel("to"))
 
         self.end_frame_spin = QSpinBox()
-        self.end_frame_spin.setMinimum(0)
-        self.end_frame_spin.setMaximum(self.total_frames - 1)
-        self.end_frame_spin.setValue(self.total_frames - 1)
+        self.end_frame_spin.setMinimum(1)
+        self.end_frame_spin.setMaximum(max(1, self.total_frames))
+        self.end_frame_spin.setValue(max(1, self.total_frames))
         self.end_frame_spin.setPrefix("End: ")
         range_layout.addWidget(self.end_frame_spin)
 
@@ -119,8 +119,9 @@ class VideoExportDialog(QDialog):
         self.resolution_spin.setSingleStep(0.1)
         self.resolution_spin.setValue(1.0)
         self.resolution_spin.setToolTip(
-            "Post-capture bilinear resize (1.0 keeps native renderer pixels; "
-            "larger values do not add scene detail)"
+            "1.0 keeps native renderer pixels. With pygfx, larger scales render "
+            "additional scene detail and take longer; other backends may resize. "
+            "Scales below 1.0 downsample."
         )
         resolution_layout.addWidget(self.resolution_spin)
         resolution_layout.addStretch()
@@ -135,6 +136,18 @@ class VideoExportDialog(QDialog):
             renderer_capabilities(getattr(self.parent_viz, "renderer", None)).viewport_hud
         )
         layout.addWidget(self.include_hud_cb)
+
+        self.camera_sequence_cb = QCheckBox("Use saved camera sequence")
+        pygfx = getattr(getattr(self.parent_viz, "renderer", None), "renderer_id", None) == "pygfx"
+        self.camera_sequence_cb.setVisible(pygfx)
+        layout.addWidget(self.camera_sequence_cb)
+        self.camera_hold_cb = QCheckBox("Hold current data frame (camera moves only)")
+        self.camera_hold_cb.setChecked(True)
+        self.camera_hold_cb.setVisible(False)
+        layout.addWidget(self.camera_hold_cb)
+        self.camera_sequence_cb.toggled.connect(self.camera_hold_cb.setVisible)
+        self.camera_sequence_cb.toggled.connect(self._update_info)
+        self.camera_hold_cb.toggled.connect(self._update_info)
 
         # Info label
         self.info_label = QLabel("")
@@ -248,6 +261,25 @@ class VideoExportDialog(QDialog):
         total = len(range(start, end + 1, stride)) if start <= end else 0
 
         duration = total / fps if fps > 0 else 0.0
+        if self.camera_sequence_cb.isChecked():
+            from math import ceil
+
+            tools = self.parent_viz.camera_controller.presentation()
+            duration = tools.sequence_duration() if tools is not None else 0
+            total = ceil(duration * fps)
+            behavior = (
+                "one retained data frame"
+                if self.camera_hold_cb.isChecked()
+                else "stepped retained data frames"
+            )
+            self.info_label.setText(
+                f"Camera sequence: {total} frames at {fps} FPS ({duration:.2f} s), {behavior}. No interpolation of scientific data."
+            )
+            self.start_frame_spin.setEnabled(not self.camera_hold_cb.isChecked())
+            self.end_frame_spin.setEnabled(not self.camera_hold_cb.isChecked())
+            return
+        self.start_frame_spin.setEnabled(True)
+        self.end_frame_spin.setEnabled(True)
         stride_text = f" with stride x{stride}" if stride > 1 else ""
         self.info_label.setText(
             f"Will export {total} frames at {fps} FPS{stride_text} "
@@ -261,8 +293,8 @@ class VideoExportDialog(QDialog):
             QMessageBox.warning(self, "No Output File", "Please select an output file path.")
             return
 
-        start_frame = self.start_frame_spin.value()
-        end_frame = self.end_frame_spin.value()
+        start_frame = self.start_frame_spin.value() - 1
+        end_frame = self.end_frame_spin.value() - 1
         fps = self.fps_spin.value()
         resolution_scale = self.resolution_spin.value()
         stride = self._resolve_export_stride()
@@ -275,6 +307,12 @@ class VideoExportDialog(QDialog):
 
         logger.info(f"Exporting video: {output_path} (frames {start_frame}-{end_frame}, {fps} FPS)")
 
+        camera_options = {}
+        if self.camera_sequence_cb.isChecked():
+            camera_options = {
+                "camera_sequence": True,
+                "camera_hold_frame": self.camera_hold_cb.isChecked(),
+            }
         success = self.parent_viz.export_video(
             output_path=output_path,
             fps=fps,
@@ -283,6 +321,7 @@ class VideoExportDialog(QDialog):
             stride=stride,
             resolution_scale=resolution_scale,
             include_hud=self.include_hud_cb.isChecked(),
+            **camera_options,
         )
 
         if success:

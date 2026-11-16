@@ -1,17 +1,21 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 import generator.core.runtime.on_demand as on_demand
 from generator.core.scenario_actors.state import ActorStateCache
 
 
-def test_build_on_demand_objects_uses_scene_service(monkeypatch):
+@pytest.mark.parametrize("rate", [None, 30.0])
+def test_build_on_demand_objects_uses_scene_service(monkeypatch, rate):
     tx_config = SimpleNamespace(name="tx")
     rx_config = SimpleNamespace(name="rx")
     target_config = SimpleNamespace(name="target")
     simulation_config = MagicMock()
     simulation_config.num_steps = 2
     simulation_config.duration = 1.0
+    simulation_config.scene_sample_rate_hz = rate
     simulation_config.get_quality_profile.return_value = {"max_depth": 1}
 
     scene = object()
@@ -62,6 +66,7 @@ def test_build_on_demand_objects_uses_scene_service(monkeypatch):
         2,
         1.0,
         "step",
+        sample_rate_hz=rate,
     )
     assert result.scene is scene
     assert result.tx_list == [tx_obj]

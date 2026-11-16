@@ -16,6 +16,7 @@ scene:
 
 raytracing:
   enabled: true
+  export_path_metrics: false
   quality:
     preset: ultra-low
 
@@ -66,7 +67,7 @@ actors:
 
 generator_summary:
   enabled: true
-  create: [scene2d, speed, orientation]
+  create: [topology, speed, orientation]
   visualization:
     scene2d_mode: auto
     actor_label_mode: name

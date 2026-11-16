@@ -10,7 +10,6 @@ scene:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
 
 timeline:
   steps: 50

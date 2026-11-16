@@ -1,0 +1,290 @@
+{
+  "scenario": "scenarios/sensing/targets_motion/marching_person/rigid/scenario.yaml",
+  "scene_source": {
+    "id": "empty/empty.xml",
+    "source": "library"
+  },
+  "source_files": {
+    "libraries/scenes/empty/empty.xml": "cad4eee6d9d4902909746d583904e156f27f3b022d08a2055d3ccc24666b7742",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply": "4f09bd84384eb5abe0fa2d2518e503c0891bebcc2a5e5e3524785fcee2e50798",
+    "libraries/targets/digital_twin_update1/target_metadata.json": "cc20d833c61e7dad2b19198167f9ce7b0b6b443f34144bcd0e88e7bef4c95870",
+    "scenarios/sensing/targets_motion/marching_person/rigid/scenario.yaml": "7e084f22a96a355c84ebd6b34cf8681bf6fb80cb0a0e26a129ca4a0c593dc7be"
+  },
+  "sample_indices": [
+    0,
+    383
+  ],
+  "sample_times_s": [
+    0.0,
+    0.384
+  ],
+  "steps": 384,
+  "actors": [
+    {
+      "name": "Monostatic radar",
+      "role": "radar",
+      "members": [
+        "RadarTX",
+        "RadarRX"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          0.0,
+          1.2
+        ],
+        [
+          0.0,
+          0.0,
+          1.2
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            0.0,
+            1.2
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Human",
+      "role": "target",
+      "members": [
+        "Human"
+      ],
+      "sample_positions_m": [
+        [
+          5.6,
+          0.8,
+          0.98
+        ],
+        [
+          4.9,
+          0.8,
+          0.98
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 192,
+          "mesh_index": 0,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply",
+          "time_s": 0.1925013054830287,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 383,
+          "mesh_index": 0,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply",
+          "time_s": 0.384,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            5.6,
+            0.8,
+            0.98
+          ],
+          "rotation_matrix": [
+            [
+              0.7673763924964729,
+              0.6411969059806036,
+              0.0
+            ],
+            [
+              -0.6411969059806036,
+              0.7673763924964729,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -0.9999999999999999,
+            1.0009696358736232e-16,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "display_groups": [],
+  "material_legend": [],
+  "output_sha256": "3be7fa62472d9358cc579a3a96436400b6b4effc6d12c36efe767e15fe2e00d2",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -0.2312782165897747,
+        -0.043899117457695314,
+        -0.05919566690921785
+      ],
+      [
+        6.013233631334143,
+        1.141377053900078,
+        2.019195666909218
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 30,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [
+    {
+      "name": "Human",
+      "projection_axes": [
+        "X",
+        "Z"
+      ],
+      "displacement_m": 0.6999999999999993,
+      "start_position_m": [
+        5.6,
+        0.8,
+        0.98
+      ],
+      "end_position_m": [
+        4.9,
+        0.8,
+        0.98
+      ],
+      "start_time_s": 0.0,
+      "end_time_s": 0.384,
+      "pose_times_s": {
+        "Start": 0.0,
+        "Middle": 0.1925013054830287,
+        "End": 0.384
+      }
+    }
+  ],
+  "mesh_snapshot_styles": [
+    {
+      "name": "Human",
+      "index": 383,
+      "time_s": 0.384,
+      "style": "filled",
+      "label": "End",
+      "opacity": 0.88
+    },
+    {
+      "name": "Human",
+      "index": 192,
+      "time_s": 0.1925013054830287,
+      "style": "filled",
+      "label": "Middle",
+      "opacity": 0.42
+    },
+    {
+      "name": "Human",
+      "index": 0,
+      "time_s": 0.0,
+      "style": "filled",
+      "label": "Start",
+      "opacity": 0.16
+    }
+  ],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "077c6c55d104403a84b34169fe50aeb171dc177a740258aa388cb27e0b566b1e",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "motion_renderer_sha256": "8fea0d9a9ed108fe662e2941ee7b19df5b36b935bd1ac67b13769c343795aa58",
+  "versions": {
+    "numpy": "2.5.3",
+    "matplotlib": "3.11.2",
+    "sionna-rt": "2.2.0",
+    "open3d": "0.20.0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.topology",
+    "--scenario",
+    "scenarios/sensing/targets_motion/marching_person/rigid",
+    "--output",
+    "docs/assets/scenarios/scenarios_sensing_targets_motion_marching_person_rigid_topology.png"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schema": "orchav.sensing-source-relocation-bindings.v1",
+  "scope": "Preserve existing figure receipts and exact previous authored bytes. Only the declared sensing import modules and source-file locator strings change; numerical statements, defaults, inputs, images, and historical execution identities remain unchanged. This binding is not evidence of a new acquisition or render.",
+  "sources": {
+    "scenarios/sensing/foundations/finite_bandwidth_response/compare.py": {
+      "previous_authored_sha256": "82656b5e2bf2a9f8c70d4a6119bdba77c11daf91bbfc82d3e812d37c781daab2",
+      "current_authored_sha256": "45623b0432b99271b1df2a46c601399e7060614744ee67f9e3bc42f9006ed3c9",
+      "replacements": [
+        {
+          "previous": "from shared.sensing_range_response import (",
+          "current": "from shared.sensing.range_response import ("
+        },
+        {
+          "previous": "from shared.sensing_viz import create_range_profile_plot",
+          "current": "from shared.sensing.plotting.viz import create_range_profile_plot"
+        },
+        {
+          "previous": "(\"shared/sensing_viz.py\", \"shared/sensing_figure_style.py\")",
+          "current": "(\n                        \"shared/sensing/plotting/viz.py\",\n                        \"shared/sensing/plotting/style.py\",\n                    )"
+        }
+      ]
+    },
+    "scenarios/sensing/targets_motion/finite_bandwidth_targets/generate.py": {
+      "previous_authored_sha256": "dcbcafff38fc77c8d0642682e18d42a72461a68eadc1fd64d77184db895ddafb",
+      "current_authored_sha256": "7c2a91cf4fdb90ea51168f0cc42387a8b3462f2a3cdee305bd6fa2ea1d9c5ed2",
+      "replacements": [
+        {
+          "previous": "from shared.sensing_loader import load_frames_sensing",
+          "current": "from shared.sensing.loader import load_frames_sensing"
+        }
+      ]
+    }
+  }
+}

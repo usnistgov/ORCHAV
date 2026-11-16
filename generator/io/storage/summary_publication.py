@@ -3,7 +3,8 @@
 Summary figures are disposable derived output, not part of the authoritative
 frame-set manifest.  This module therefore gives ``<scenario>/summary`` its own
 small lifecycle: a versioned cache key derived from normalized YAML can skip
-unchanged work, regeneration uses one private sibling directory, and the prior
+unchanged generic work, sensing summaries additionally bind to their frame-set
+generation, regeneration uses one private sibling directory, and the prior
 summary is replaced only after every requested figure has been built
 successfully.
 """
@@ -24,10 +25,9 @@ from shared.logging import get_logger
 logger = get_logger(__name__)
 
 SUMMARY_HASH_MARKER = ".orchav-summary-yaml.sha256"
-# Version 2 publishes every requested coverage figure family at every configured
-# height and identifies each file by height. Bump this whenever code changes the
-# names or required set of files in an otherwise unchanged summary tree.
-SUMMARY_OUTPUT_CONTRACT_VERSION = 2
+# Version 3 displays saved Doppler products instead of automatically applying
+# a separate STFT/MTI diagnostic. Invalidate previously cached summary trees.
+SUMMARY_OUTPUT_CONTRACT_VERSION = 3
 
 
 class SummaryPublicationError(RuntimeError):
@@ -38,11 +38,21 @@ def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _summary_cache_key(yaml_hash: str) -> str:
-    """Bind normalized scenario YAML to the summary-output contract version."""
-    payload = (f"orchav-summary-output-v{SUMMARY_OUTPUT_CONTRACT_VERSION}\0{yaml_hash}").encode(
-        "ascii"
-    )
+def _summary_cache_key(
+    yaml_hash: str,
+    *,
+    frame_generation_id: str | None = None,
+) -> str:
+    """Bind configuration and optional authoritative-frame lineage to output.
+
+    Omitting ``frame_generation_id`` intentionally preserves the version-2
+    generic-summary cache identity byte for byte.
+    """
+
+    identity = f"\0frame-generation\0{frame_generation_id}" if frame_generation_id else ""
+    payload = (
+        f"orchav-summary-output-v{SUMMARY_OUTPUT_CONTRACT_VERSION}\0{yaml_hash}{identity}"
+    ).encode("ascii")
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -65,6 +75,7 @@ def _summary_products_requested(configuration: Any) -> bool:
     generator_requested = enabled and bool(
         create
         & {
+            "topology",
             "scene2d",
             "scene3d",
             "speed",
@@ -117,7 +128,12 @@ def _remove_owned_path(path: Path) -> None:
 class SummaryPublication:
     """Own one requested fixed-summary build and its explicit commit point."""
 
-    def __init__(self, configuration: Any) -> None:
+    def __init__(
+        self,
+        configuration: Any,
+        *,
+        frame_generation_id: str | None = None,
+    ) -> None:
         self.requested = _summary_products_requested(configuration)
         self.sensing_requested = _sensing_summary_requested(configuration)
         root_value = getattr(configuration, "root", None)
@@ -135,7 +151,17 @@ class SummaryPublication:
             raise SummaryPublicationError(
                 "Requested summary is missing its normalized scenario YAML identity"
             )
-        self.cache_key = _summary_cache_key(self.yaml_hash)
+        if self.sensing_requested and (
+            not isinstance(frame_generation_id, str) or not frame_generation_id.strip()
+        ):
+            raise SummaryPublicationError(
+                "A sensing summary requires the authoritative frame generation identity"
+            )
+        self.frame_generation_id = frame_generation_id if self.sensing_requested else None
+        self.cache_key = _summary_cache_key(
+            self.yaml_hash,
+            frame_generation_id=self.frame_generation_id,
+        )
 
         token = compact_uuid_token()
         self._staging = self.scenario_root / f".orchav-summary-s-{token}"

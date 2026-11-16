@@ -37,7 +37,7 @@ class StatisticsCollectionCancelled(RuntimeError):
 class ScenarioStatisticsResult:
     """One completed cache lookup or provider scan."""
 
-    stats: dict[str, Any]
+    stats: dict[str, Any] | None
     from_cache: bool
     generation: int
 
@@ -74,7 +74,9 @@ class ScenarioStatisticsService(BaseService):
         *,
         scenario: Any | None = None,
         steps: Iterable[int] | None = None,
+        pair: tuple[int, int] | None = None,
         force: bool = False,
+        cache_only: bool = False,
         on_progress: StatisticsProgressCallback | None = None,
         cancel_event: threading.Event | None = None,
         generation: int = 0,
@@ -89,7 +91,8 @@ class ScenarioStatisticsService(BaseService):
         cancellation = cancel_event or threading.Event()
         self._raise_if_cancelled(cancellation)
 
-        if not force:
+        whole_run = steps is None and pair is None
+        if not force and whole_run:
             cached = self.cache_service.load_cached_stats(
                 scenario,
                 provider=provider,
@@ -102,13 +105,16 @@ class ScenarioStatisticsService(BaseService):
                     generation=generation,
                 )
 
+        if cache_only:
+            return ScenarioStatisticsResult(stats=None, from_cache=False, generation=generation)
+
         frame_steps = (
             tuple(int(step) for step in provider.list_frames())
             if steps is None
             else tuple(int(step) for step in steps)
         )
         total_frames = len(frame_steps)
-        accumulator = ScenarioStatisticsAccumulator()
+        accumulator = ScenarioStatisticsAccumulator(pair=pair)
         projections = iter(
             provider.iter_frame_projections(
                 frame_steps,
@@ -142,12 +148,11 @@ class ScenarioStatisticsService(BaseService):
             )
 
         stats = accumulator.finalize()
+        stats["selection_scoped"] = not whole_run
         self._raise_if_cancelled(cancellation)
-        self.cache_service.save_cached_stats(
-            stats,
-            scenario,
-            provider=provider,
-        )
+        # A subset must never replace (or be mistaken for) the full-run cache.
+        if whole_run:
+            self.cache_service.save_cached_stats(stats, scenario, provider=provider)
         self._raise_if_cancelled(cancellation)
         return ScenarioStatisticsResult(
             stats=stats,
@@ -161,7 +166,9 @@ class ScenarioStatisticsService(BaseService):
         *,
         scenario: Any | None = None,
         steps: Iterable[int] | None = None,
+        pair: tuple[int, int] | None = None,
         force: bool = False,
+        cache_only: bool = False,
         on_progress: StatisticsProgressCallback | None = None,
         on_complete: Callable[[ScenarioStatisticsResult], None] | None = None,
         on_error: Callable[[Exception], None] | None = None,
@@ -178,8 +185,9 @@ class ScenarioStatisticsService(BaseService):
             self._cancel_event = cancellation
 
             def _publish_progress(current: int, total: int) -> None:
-                if self._is_current(generation, cancellation) and on_progress is not None:
-                    on_progress(current, total)
+                with self._lock:
+                    if self._is_current(generation, cancellation) and on_progress is not None:
+                        on_progress(current, total)
 
             def _worker() -> None:
                 try:
@@ -187,7 +195,9 @@ class ScenarioStatisticsService(BaseService):
                         provider,
                         scenario=scenario,
                         steps=frame_steps,
+                        pair=pair,
                         force=force,
+                        cache_only=cache_only,
                         on_progress=_publish_progress,
                         cancel_event=cancellation,
                         generation=generation,
@@ -196,8 +206,9 @@ class ScenarioStatisticsService(BaseService):
                     logger.debug("Statistics generation %d was cancelled", generation)
                     return
                 except Exception as exc:  # provider boundary: report without killing Qt
-                    if self._is_current(generation, cancellation) and on_error is not None:
-                        on_error(exc)
+                    with self._lock:
+                        if self._is_current(generation, cancellation) and on_error is not None:
+                            on_error(exc)
                     return
 
                 if self._is_current(generation, cancellation) and on_complete is not None:

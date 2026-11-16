@@ -20,6 +20,18 @@ def _load_generator_cli_module():
 generator_cli = _load_generator_cli_module()
 
 
+def test_catalog_uses_matching_working_checkout(tmp_path, monkeypatch):
+    checkout = tmp_path / "working_checkout"
+    (checkout / "libraries").mkdir(parents=True)
+    scenario = checkout / "scenarios" / "getting_started" / "working_only"
+    scenario.mkdir(parents=True)
+    (scenario / "scenario.yaml").write_text("scene: {}\n", encoding="utf-8")
+    monkeypatch.chdir(checkout)
+
+    out = generator_cli.format_scenario_catalog()
+    assert "orchav-generator scenarios/getting_started/working_only/" in out
+
+
 def test_help_uses_argparse(capsys):
     with pytest.raises(SystemExit) as exc:
         generator_cli.main(["--help"])
@@ -227,7 +239,7 @@ def test_live_transport_overrides_require_scenario(capsys):
     assert "require a scenario path" in capsys.readouterr().err
 
 
-def test_yaml_runner_applies_data_mode_before_building_simulation(tmp_path, monkeypatch):
+def test_yaml_runner_applies_data_mode_before_building_simulation(tmp_path, monkeypatch, capsys):
     import generator
     import shared.scenarios
     import shared.scenarios.paths
@@ -241,11 +253,13 @@ def test_yaml_runner_applies_data_mode_before_building_simulation(tmp_path, monk
     simulation = SimpleNamespace(start_step=0, num_steps=0)
     built_modes = []
 
-    monkeypatch.setattr(
-        shared.scenarios,
-        "load_scenario_configuration",
-        lambda _path: scenario,
-    )
+    def load_scenario(_path):
+        output = capsys.readouterr()
+        assert output.out == ""
+        assert f"Preparing scenario: {tmp_path}" in output.err
+        return scenario
+
+    monkeypatch.setattr(shared.scenarios, "load_scenario_configuration", load_scenario)
     monkeypatch.setattr(shared.scenarios.paths, "find_project_root", lambda _path: tmp_path)
     monkeypatch.setitem(
         generator._LOADED,
@@ -463,7 +477,7 @@ def test_geometry_only_jsonl_run_can_complete_without_step_callbacks(tmp_path, m
     assert source_identity == actual_identity.to_dict()
     assert "parent_only_marker" not in source_identity
     assert Path(source_identity["source_root"]).samefile(Path(__file__).resolve().parents[3])
-    assert source_identity["version"] == "0.1.0"
+    assert source_identity["version"] == "0.2.0"
     assert records[0]["first_step"] == 0
     assert records[0]["frame_set_mode"] == "fresh_full"
     assert records[-1]["completed_steps"] == 0
@@ -631,3 +645,50 @@ def test_geometry_only_requires_scenario():
         generator_cli.main(["--geometry-only"])
 
     assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("progress_format", ["text", "jsonl"])
+def test_campaign_callback_receives_progress_without_builtin_text_bar(
+    tmp_path, monkeypatch, capsys, progress_format
+):
+    import generator
+    import shared.scenarios
+    import shared.scenarios.paths
+    from generator.core.pipeline.progress import ProgressInfo
+
+    scenario = SimpleNamespace(raytracing={"enabled": True})
+    simulation = SimpleNamespace(start_step=0, num_steps=2)
+    monkeypatch.setattr(shared.scenarios, "load_scenario_configuration", lambda _: scenario)
+    monkeypatch.setattr(shared.scenarios.paths, "find_project_root", lambda _: tmp_path)
+    monkeypatch.setitem(generator._LOADED, "build_simulation_config", lambda _: simulation)
+    frames = [ProgressInfo(i, 2, i + 1, 1) for i in range(2)]
+
+    def run(**kwargs):
+        assert kwargs["show_progress"] is False
+        for frame in frames:
+            kwargs["on_step_complete"](frame)
+        return "frames saved"
+
+    monkeypatch.setitem(generator._LOADED, "perform_pipeline", run)
+    received = []
+    assert (
+        generator_cli._run_from_yaml(
+            tmp_path, progress_format=progress_format, on_step_complete=received.append
+        )
+        == "frames saved"
+    )
+    assert received == frames
+    captured = capsys.readouterr()
+    assert "Preparing scenario:" not in captured.err
+    output = captured.out
+    if progress_format == "jsonl":
+        records = [json.loads(line) for line in output.splitlines()]
+        assert [r["event"] for r in records] == [
+            "run_started",
+            "step_completed",
+            "step_completed",
+            "run_completed",
+        ]
+        assert records[-1]["completed_steps"] == 2
+    else:
+        assert output == ""

@@ -183,6 +183,11 @@ def _install_scene_object_factory(
         return target
 
     monkeypatch.setattr(manager_module, "SceneObject", _factory)
+    monkeypatch.setattr(
+        manager_module,
+        "MeshPoseReference",
+        lambda _target: SimpleNamespace(restore=lambda _candidate: None),
+    )
     monkeypatch.setattr(manager_module, "_prepare_mesh_path_for_mitsuba", lambda path: path)
     monkeypatch.setattr(manager_module, "_ply_header_has_faces", lambda _path: True)
     monkeypatch.setattr(manager_module, "point3f", lambda value: tuple(value))

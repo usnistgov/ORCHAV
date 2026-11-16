@@ -12,10 +12,11 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
+from uuid import UUID
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 
-from .compiler import CompilationResult, ScenarioCompiler
+from .compiler import CompilationResult, ScenarioCompiler, ScenePreviewResult
 from .domain import AuthoringScenario
 
 
@@ -51,6 +52,7 @@ class _CompilationRequest:
     scenario: AuthoringScenario
     scenario_directory: Path
     token: int
+    subject_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +60,8 @@ class _CompilationOutcome:
     token: int
     result: CompilationResult | None = None
     failure: CompilationFailure | None = None
+    preview: ScenePreviewResult | None = None
+    progress: str | None = None
 
 
 class AuthoringCompilationScheduler(QObject):
@@ -77,6 +81,8 @@ class AuthoringCompilationScheduler(QObject):
 
     succeeded = Signal(object, object)
     failed = Signal(object, object)
+    scene_ready = Signal(object, object)
+    progress_changed = Signal(object, object)
 
     _outcome_ready = Signal(object)
 
@@ -130,6 +136,8 @@ class AuthoringCompilationScheduler(QObject):
         scenario: AuthoringScenario,
         scenario_directory: Path,
         token: int,
+        *,
+        subject_id: UUID | None = None,
     ) -> bool:
         """Queue a snapshot and return immediately.
 
@@ -146,6 +154,7 @@ class AuthoringCompilationScheduler(QObject):
             scenario=scenario,
             scenario_directory=Path(scenario_directory),
             token=token,
+            subject_id=subject_id,
         )
         should_start = False
         with self._state_condition:
@@ -207,6 +216,8 @@ class AuthoringCompilationScheduler(QObject):
                 if self._closed:
                     self._worker_running = False
                     self._worker_started = False
+                    if isinstance(compiler, ScenarioCompiler):
+                        compiler.close()
                     return
                 request = self._pending
                 self._pending = None
@@ -218,10 +229,30 @@ class AuthoringCompilationScheduler(QObject):
                 if compiler is None:
                     compiler = self._compiler_factory()
                 with self._compile_lock:
-                    result = compiler.compile(
-                        request.scenario,
-                        scenario_directory=request.scenario_directory,
-                    )
+                    if isinstance(compiler, ScenarioCompiler) and request.subject_id is not None:
+                        result = compiler.prepare_actor_preview(
+                            request.scenario,
+                            request.subject_id,
+                            scenario_directory=request.scenario_directory,
+                        )
+                    elif isinstance(compiler, ScenarioCompiler):
+                        token = request.token
+                        result = compiler.compile(
+                            request.scenario,
+                            scenario_directory=request.scenario_directory,
+                            preview_only=True,
+                            scene_ready=lambda preview: self._offer_outcome(
+                                _CompilationOutcome(token=token, preview=preview)
+                            ),
+                            progress=lambda message: self._offer_outcome(
+                                _CompilationOutcome(token=token, progress=message)
+                            ),
+                        )
+                    else:
+                        result = compiler.compile(
+                            request.scenario,
+                            scenario_directory=request.scenario_directory,
+                        )
             except Exception as exception:  # noqa: BLE001 - worker boundary
                 outcome = _CompilationOutcome(
                     token=request.token,
@@ -230,15 +261,24 @@ class AuthoringCompilationScheduler(QObject):
             else:
                 outcome = _CompilationOutcome(token=request.token, result=result)
 
-            with self._state_lock:
-                should_offer = not self._closed and request.token == self._latest_token
-            if should_offer:
-                try:
-                    self._outcome_ready.emit(outcome)
-                except RuntimeError:
-                    # The QObject may have been deleted just after close won
-                    # the state race.  There is no receiver left to notify.
-                    pass
+            self._offer_outcome(outcome)
+
+    def _offer_outcome(self, outcome: _CompilationOutcome) -> None:
+        with self._state_lock:
+            should_offer = not self._closed and outcome.token == self._latest_token
+        if should_offer:
+            try:
+                self._outcome_ready.emit(outcome)
+            except RuntimeError:
+                # The QObject may have been deleted just after close won.
+                self._discard_outcome(outcome)
+        else:
+            self._discard_outcome(outcome)
+
+    @staticmethod
+    def _discard_outcome(outcome: _CompilationOutcome) -> None:
+        if isinstance(outcome.result, CompilationResult) and outcome.result.recording is not None:
+            outcome.result.recording.close()
 
     @staticmethod
     def _validate_token(token: int) -> None:
@@ -256,8 +296,13 @@ class AuthoringCompilationScheduler(QObject):
         with self._state_lock:
             publish = not self._closed and outcome.token == self._latest_token
         if not publish:
+            self._discard_outcome(outcome)
             return
-        if outcome.failure is not None:
+        if outcome.progress is not None:
+            self.progress_changed.emit(outcome.token, outcome.progress)
+        elif outcome.preview is not None:
+            self.scene_ready.emit(outcome.token, outcome.preview)
+        elif outcome.failure is not None:
             self.failed.emit(outcome.token, outcome.failure)
         elif outcome.result is not None:
             self.succeeded.emit(outcome.token, outcome.result)

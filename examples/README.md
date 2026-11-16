@@ -1,19 +1,15 @@
 # ORCHAV Examples
 
-This folder contains source-level examples that complement the scenario
-catalog. Use scenarios when you want runnable end-to-end inputs. Use these
-examples when you want small Python patterns to copy into your own workflow.
+Use these examples to adapt a Python workflow or reproduce a Visualizer experiment.
+For a first end-to-end run, follow the [Quickstart](../docs/getting_started/quickstart.md).
 
-| Folder | Purpose |
-|--------|---------|
-| [`external_raytracer_import/`](external_raytracer_import/README.md) | Minimal adapter that converts external ray-path data to `StandardMPCFrame` and writes a normal ORCHAV frame set. |
-| [`notebook/`](notebook/README.md) | Minimal Jupyter cells for static pygfx images, interactive widgets, and notebook-driven regeneration. |
-| [`streaming/`](streaming/README.md) | Custom streaming mobility and orientation classes for Python-scripted Live Generator (gRPC) workflows. |
+| Folder | What you can do |
+|---|---|
+| [external_raytracer_import/](external_raytracer_import/README.md) | Convert external ray paths to `StandardMPCFrame` and write a frame set that opens in the Visualizer. |
+| [native_rcs/](native_rcs/README.md) | Acquire and replay a small native radar cross section (RCS) control with Sionna RT 2.2. |
+| [notebook/](notebook/README.md) | Render a frame as a static image, open an interactive widget, or regenerate a scenario from Jupyter. |
+| [streaming/](streaming/README.md) | Supply custom mobility and orientation to the Live Generator over gRPC. |
+| [visualizer/](visualizer/README.md) | Inspect materials, lighting, and transparency in the [PBR application reference](visualizer/pygfx_pbr_reference/README.md). |
+| [visualizer_experiments/](visualizer_experiments/README.md) | Generate four scenes for exploring arrival delay, angle, and monostatic or bistatic range geometry. |
 
-Most users should start with the [Quickstart](../docs/getting_started/quickstart.md) and the
-[included scenarios](../scenarios/README.md), then return here for smaller
-Python snippets.
-
----
-
-Home: [Documentation](../docs/README.md)
+[Scenario catalog](../scenarios/README.md) · [Documentation](../docs/README.md)

@@ -20,11 +20,9 @@ flowchart TB
     Helpers -.->|"selected core functions"| ScenarioStats
 ```
 
-The Python script and the Visualizer are
-[consumers](../reference/glossary.md#consumer). A
-[frame provider](../reference/glossary.md#frame-provider) retrieves data for
-them. The statistics helpers perform calculations on arrays that those
-consumers supply.
+The diagram separates data retrieval from calculation. The Python script and
+Visualizer supply arrays to the same numerical helpers, then present the
+results through their own output or interface.
 
 This is a Python API, not a standalone command-line tool. Use
 [`orchav-inspect`](frame_inspection.md) for a terminal summary or the Visualizer
@@ -32,7 +30,7 @@ for interactive charts.
 
 ## Choose A Workflow
 
-| Need | Start with |
+| Goal | Start with |
 |------|-------------|
 | Inspect generated frame contents in a terminal | [`orchav-inspect`](frame_inspection.md) |
 | Analyze one TX/RX link in Python | [Python example](#analyze-one-link-in-python) |
@@ -75,10 +73,8 @@ print(f"link: {frame.tx_names[int(tx_index)]} -> {frame.rx_names[int(rx_index)]}
 print(stats)
 ```
 
-The Python script is the consumer in this workflow. `Hdf5Provider` retrieves
-the frame, while `compute_mpc_statistics()` only receives ordinary arrays. The
-same function can analyze arrays from another source when they describe one
-TX/RX link and use the documented units.
+The same function can analyze arrays from another source when they describe
+one TX/RX link and use the documented units.
 
 ## What `compute_mpc_statistics()` Returns
 

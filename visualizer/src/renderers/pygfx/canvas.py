@@ -11,6 +11,8 @@ import logging
 import os
 from typing import Any
 
+from ..effect_settings import DEFAULT_BLOOM, validate_bloom
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -19,7 +21,23 @@ __all__ = [
     "display_renderer_kwargs",
     "export_renderer_kwargs",
     "load_physical_bloom_pass",
+    "retire_canvas_readback",
 ]
+
+
+def retire_canvas_readback(canvas: Any) -> None:
+    """Cancel and finish a pending bitmap transfer before Qt is destroyed.
+
+    rendercanvas 2.6 closes the presentation texture but leaves its downloader's
+    pending map callback alive. Its native completion can then call a deleted
+    Qt CallerHelper. Use the pinned backend's cancellation/drain operation while
+    Qt still exists. Screen presentation and uninitialized canvases have no
+    downloader. This is a teardown-only compatibility boundary, not a draw cost.
+    """
+    context = getattr(canvas, "_canvas_context", None)
+    downloader = getattr(context, "_downloader", None)
+    if downloader is not None:
+        downloader._clear_pending_download()
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -87,6 +105,22 @@ def load_physical_bloom_pass() -> Any | None:
             return None
 
 
+def bloom_from_environment() -> dict:
+    """Read launch defaults once; live renderer controls override them afterward."""
+    settings = dict(
+        enabled=_env_flag("ORCHAV_PYGFX_ENABLE_BLOOM", False),
+        bloom_strength=_env_float("ORCHAV_PYGFX_BLOOM_STRENGTH", 0.035),
+        max_mip_levels=_env_int("ORCHAV_PYGFX_BLOOM_MAX_MIP_LEVELS", 6),
+        filter_radius=_env_float("ORCHAV_PYGFX_BLOOM_FILTER_RADIUS", 0.005),
+        use_karis_average=_env_flag("ORCHAV_PYGFX_BLOOM_USE_KARIS_AVERAGE", False),
+    )
+    try:
+        return validate_bloom(settings)
+    except ValueError:
+        logger.warning("Invalid bloom launch settings; using the default effect settings")
+        return dict(DEFAULT_BLOOM)
+
+
 def _load_edl_pass() -> Any | None:
     """Return the optional Eye-Dome-Lighting pass when this pygfx exposes it."""
     try:
@@ -103,7 +137,7 @@ def _load_capture_passes() -> dict[str, Any]:
     try:
         from pygfx.renderers.wgpu.engine import effectpasses as _ep
 
-        for name in ("FXAAPass", "DDAAPass", "PPAAPass", "DepthPass"):
+        for name in ("FXAAPass", "DepthPass"):
             cls = getattr(_ep, name, None)
             if cls is not None:
                 found[name] = cls
@@ -112,7 +146,13 @@ def _load_capture_passes() -> dict[str, Any]:
     return found
 
 
-_AA_MODES = ("off", "fxaa", "ddaa", "ppaa")
+_AA_MODES = ("off", "fxaa")
+
+
+def _normalize_aa_mode(mode: str) -> str:
+    """Keep older workspace/environment AA selections on a concrete FXAA pass."""
+    normalized = str(mode).strip().lower()
+    return "fxaa" if normalized in {"ddaa", "ppaa"} else normalized
 
 
 def build_pygfx_effect_passes(
@@ -121,15 +161,16 @@ def build_pygfx_effect_passes(
     clear_color: tuple[float, float, float, float],
     aa_mode: str | None = None,
     depth_pass_enabled: bool | None = None,
+    bloom: dict | None = None,
 ) -> tuple[Any, ...]:
     """Build optional post-processing passes requested by pygfx env flags."""
     passes: list[Any] = []
 
     if aa_mode is None:
-        env_aa = os.environ.get("ORCHAV_PYGFX_AA_MODE", "").strip().lower()
+        env_aa = _normalize_aa_mode(os.environ.get("ORCHAV_PYGFX_AA_MODE", ""))
         aa_mode = env_aa if env_aa in _AA_MODES else "off"
     else:
-        aa_mode = str(aa_mode).strip().lower()
+        aa_mode = _normalize_aa_mode(aa_mode)
         if aa_mode not in _AA_MODES:
             aa_mode = "off"
     if depth_pass_enabled is None:
@@ -143,21 +184,14 @@ def build_pygfx_effect_passes(
             "scenes on the tested stack"
         )
 
-    if _env_flag("ORCHAV_PYGFX_ENABLE_BLOOM", False):
+    bloom = bloom_from_environment() if bloom is None else validate_bloom(bloom)
+    if bloom["enabled"]:
         bloom_cls = load_physical_bloom_pass()
         if bloom_cls is None:
             logger.warning("Bloom requested but unavailable in this pygfx install")
         else:
             passes.append(
-                bloom_cls(
-                    bloom_strength=_env_float("ORCHAV_PYGFX_BLOOM_STRENGTH", 0.035),
-                    max_mip_levels=max(
-                        1,
-                        int(_env_float("ORCHAV_PYGFX_BLOOM_MAX_MIP_LEVELS", 6.0)),
-                    ),
-                    filter_radius=_env_float("ORCHAV_PYGFX_BLOOM_FILTER_RADIUS", 0.005),
-                    use_karis_average=_env_flag("ORCHAV_PYGFX_BLOOM_USE_KARIS_AVERAGE", False),
-                )
+                bloom_cls(**{key: value for key, value in bloom.items() if key != "enabled"})
             )
 
     if _env_flag("ORCHAV_PYGFX_ENABLE_EDL", False):
@@ -178,13 +212,9 @@ def build_pygfx_effect_passes(
             )
 
     capture_classes = _load_capture_passes()
-    aa_cls_map = {
-        "fxaa": capture_classes.get("FXAAPass"),
-        "ddaa": capture_classes.get("DDAAPass"),
-        "ppaa": capture_classes.get("PPAAPass"),
-    }
     if aa_mode != "off":
-        cls = aa_cls_map.get(aa_mode)
+        # PPAAPass is pygfx's abstract marker class, not another AA algorithm.
+        cls = capture_classes.get("FXAAPass")
         if cls is None:
             logger.warning("AA mode %r requested but pass class unavailable", aa_mode)
         else:
@@ -219,7 +249,14 @@ def export_renderer_kwargs() -> dict[str, Any]:
 
     ppaa = os.environ.get("ORCHAV_PYGFX_EXPORT_PPAA")
     if ppaa:
-        kwargs["ppaa"] = False if ppaa.strip().lower() in {"0", "false", "no", "off"} else ppaa
+        normalized = _normalize_aa_mode(ppaa)
+        if normalized in {"0", "false", "no", "off", "none"}:
+            kwargs["ppaa"] = "none"
+        elif normalized in {"default", "fxaa"}:
+            kwargs["ppaa"] = "fxaa"
+        else:
+            logger.warning("Ignoring unknown export AA mode %r; using Off", ppaa)
+            kwargs["ppaa"] = "none"
 
     return kwargs
 
@@ -249,6 +286,7 @@ def _refresh_renderer_effect_passes(
     clear_color: tuple[float, float, float, float],
     aa_mode: str | None = None,
     depth_pass_enabled: bool | None = None,
+    bloom: dict | None = None,
 ) -> None:
     """Refresh renderer effect passes after renderer or GUI settings change."""
     if renderer is None or not hasattr(renderer, "effect_passes"):
@@ -258,6 +296,7 @@ def _refresh_renderer_effect_passes(
         clear_color=clear_color,
         aa_mode=aa_mode,
         depth_pass_enabled=depth_pass_enabled,
+        bloom=bloom,
     )
 
 

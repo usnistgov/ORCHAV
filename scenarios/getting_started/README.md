@@ -15,7 +15,8 @@ one-transmitter/one-receiver idea.
 
 YAML-only authoring is the default. Use a Python driver when a scenario needs
 calculated actor specifications, external preprocessing, generated case lists,
-or another behavior outside the YAML schema.
+or another behavior outside the YAML schema. Compare the two approaches in
+[Choose an authoring surface](../../docs/generator/scenario_authoring.md#choose-an-authoring-surface).
 
 ## Begin
 

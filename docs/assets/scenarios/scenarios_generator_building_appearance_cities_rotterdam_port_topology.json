@@ -1,0 +1,284 @@
+{
+  "scenario": "scenarios/generator/building_appearance/cities/rotterdam_port/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "generated_scene/scene.xml"
+  },
+  "source_files": {
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/buildings_brick.ply": "6f78b9d64832ac45a1b2996edb6aee7529e27865bcbd1bf594d28200acbc731b",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/buildings_concrete.ply": "3afeb90fded2be5b8d35bf46028fd6259354f8d0fa9a0158b6fb972fe1c64336",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/buildings_glass.ply": "b4770d92b0283e3c5b0ae428365359e171e267e9b099f69d608c89753c91d341",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/buildings_marble.ply": "5354a4ec89b368f977fe7c33d4d04d8de908fe990397c40d9a7d9242b8582fff",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/buildings_metal.ply": "da980aec8eb0942c3883c2f60e51c0a6edb20de16235c0a8772fbb06f82a5ae1",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/ground.ply": "1e67d93c4876a8d296098597f7140556290cc8fdfba3a33c0ebcc22ec6251e3b",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/streets_concrete.ply": "532f0bbb33252cad20bb1062f90687beaa4f5e9add09259eac1193245ea22d06",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/streets_medium_dry_ground.ply": "da8b2c33470d718ddd27ddd1cef65f450239fd1efd433c19de25237c1089d325",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/vegetation.ply": "d7a22fca154c5a6e3647b96efb5f1305423d26219500496bef5d62593ebc1335",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/mesh/water.ply": "b7cce7f34c59cd0fe94879d06be70bb96c380134319a1664eb29fd492a384d5f",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/generated_scene/scene.xml": "78b9c80efaf7d8151ce58dba47d13dcd2b6e07d0573afa79cf1f2202ace5a3e5",
+    "scenarios/generator/building_appearance/cities/rotterdam_port/scenario.yaml": "83bf0ef20bd65176b09c0bd0a9f4dac21e3bca76b55cf8b8c3eebb660320e082"
+  },
+  "sample_indices": [
+    0
+  ],
+  "sample_times_s": [
+    0.0
+  ],
+  "steps": 1,
+  "actors": [
+    {
+      "name": "ContextTX",
+      "role": "tx",
+      "members": [
+        "ContextTX"
+      ],
+      "sample_positions_m": [
+        [
+          -80.0,
+          -20.0,
+          25.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -80.0,
+            -20.0,
+            25.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ContextRX",
+      "role": "rx",
+      "members": [
+        "ContextRX"
+      ],
+      "sample_positions_m": [
+        [
+          150.0,
+          80.0,
+          2.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            150.0,
+            80.0,
+            2.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "1fb069623edc3916cc4ad2245a7bec7a3fd185a65963f5a29c55195d83ec0e08",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (mat-itu medium dry ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Ground (mat-itu wet ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Mat-Itu Brick",
+      "display_rgb": [
+        0.5920000000000001,
+        0.39480000000000004,
+        0.3812
+      ]
+    },
+    {
+      "label": "Mat-Itu Concrete",
+      "display_rgb": [
+        0.6872,
+        0.6872,
+        0.6872
+      ]
+    },
+    {
+      "label": "Mat-Itu Glass",
+      "display_rgb": [
+        0.6784313725490196,
+        0.7764705882352941,
+        0.803921568627451
+      ]
+    },
+    {
+      "label": "Mat-Itu Marble",
+      "display_rgb": [
+        0.796,
+        0.7552000000000001,
+        0.6532
+      ]
+    },
+    {
+      "label": "Mat-Itu Metal",
+      "display_rgb": [
+        0.4696,
+        0.4696,
+        0.49
+      ]
+    },
+    {
+      "label": "Mat-Itu Wood",
+      "display_rgb": [
+        0.6940000000000001,
+        0.558,
+        0.43560000000000004
+      ]
+    },
+    {
+      "label": "Road (mat-itu concrete)",
+      "display_rgb": [
+        0.6235294117647059,
+        0.6627450980392157,
+        0.6784313725490196
+      ]
+    }
+  ],
+  "output_sha256": "9da63c2f6d072a90b66c7a43c423158ca99a7b1407aac9f12287b4632c0a50ab",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -629.1113256835938,
+        -633.753955078125,
+        -1.0
+      ],
+      [
+        662.7110571289063,
+        633.783984375,
+        26.0
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "ef1158c348035b465264fffe0e89ec2f7ce041fa72adf21bba951cf058f35c7d",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/building_appearance/cities/rotterdam_port"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

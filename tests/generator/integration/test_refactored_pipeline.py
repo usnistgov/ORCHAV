@@ -44,6 +44,7 @@ def mock_simulation_config():
     cfg.duration = 1.0
     cfg.grpc_config = {}
     cfg.coverage = None
+    cfg.sensing = None
     cfg.cir_time_steps = 1
     cfg.get_quality_profile.return_value = {}
     return cfg
@@ -121,6 +122,7 @@ def test_perform_offline_pipeline_orchestration(
     mock_rt_service = mock_rt_cls.return_value
     mock_cov_service = mock_cov_cls.return_value
     mock_output = mock_hdf5_frame_output_cls.return_value
+    mock_output.generation_id = "test-frame-generation-id"
     mock_sensing_state = mock_sensing_state_cls.from_config.return_value
     mock_summary_publication = mock_summary_publication_cls.return_value
     mock_summary_publication.active = True
@@ -190,6 +192,10 @@ def test_perform_offline_pipeline_orchestration(
     # 3. Scene Built
     mock_scene_service.build_scene.assert_called_with(tx_configs, rx_configs, target_configs)
     mock_output.begin.assert_called_once_with()
+    mock_summary_publication_cls.assert_called_once_with(
+        scenario_cfg,
+        frame_generation_id="test-frame-generation-id",
+    )
 
     # 4. Actor state prepared
     mock_actor_state_service.prepare_actor_state.assert_called()
@@ -506,6 +512,10 @@ def test_rt_disabled_run_does_not_publish_an_empty_sensing_summary(
 
     publication.fail.assert_called()
     publication.finalize.assert_not_called()
+    mock_summary_publication_cls.assert_called_once_with(
+        scenario_cfg,
+        frame_generation_id=None,
+    )
 
 
 @patch("generator.core.pipeline.offline_pipeline.SceneService")

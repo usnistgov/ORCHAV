@@ -23,6 +23,7 @@ from ..config import MAX_VIEW_MODEL_CACHE_SIZE
 from ..coverage.analysis import (
     build_coverage_isoline,
     compute_coverage_threshold_mask,
+    coverage_isoline_levels,
     coverage_metric_color_scale,
     coverage_metric_colormap,
     coverage_metric_valid_mask,
@@ -32,7 +33,11 @@ from ..coverage.analysis import (
     serving_tx_valid_mask,
     supports_coverage_threshold,
 )
-from ..extensions import sync_runtime_extensions
+from ..extensions import (
+    prepare_runtime_render_packet,
+    present_runtime_extensions,
+    sync_runtime_extensions,
+)
 from ..io.packed_frame_payload import (
     PACKED_PROJECTION_KEY,
     packed_payload_satisfies,
@@ -120,6 +125,7 @@ def build_vm_cache_key(
         state.aod_el_filter_max_deg,
         # Distinct material colors
         state.use_distinct_material_colors,
+        state.show_mpc_frame_details,
     )
 
 
@@ -185,8 +191,8 @@ class FramePipeline:
             # presented renderer frame into a failed core pipeline update.
             logger.exception("MPC Explorer rejected a presented-frame notification")
 
-    def _sync_mpc_type_legend(self, render_packet: Any) -> None:
-        """Mirror rendered interaction types to the shared Paths panel."""
+    def _sync_mpc_panel(self, render_packet: Any) -> None:
+        """Mirror accepted-frame interaction types and angle availability to Paths."""
         ui_manager = getattr(self.visualizer, "ui_manager", None)
         panels = getattr(ui_manager, "panels", None)
         if not isinstance(panels, dict):
@@ -201,6 +207,12 @@ class FramePipeline:
                 # Legend synchronization is informative and must not invalidate
                 # a frame that is already visible.
                 logger.exception("Paths legend rejected a presented-frame update")
+        angle_setter = getattr(panel, "sync_angle_filter_availability", None)
+        if callable(angle_setter):
+            try:
+                angle_setter(getattr(render_packet, "canonical_data", None))
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                logger.exception("Paths angle controls rejected a presented-frame update")
 
     @staticmethod
     def _array_signature(values: Any) -> tuple[tuple[int, ...], bytes] | None:
@@ -276,7 +288,11 @@ class FramePipeline:
             return False
 
         view_model = self._empty_scene_view_model()
-        if bool(viz.app_state.show_coverage) and getattr(viz, "coverage_data", None) is not None:
+        if (
+            bool(viz.app_state.show_coverage)
+            and getattr(viz, "coverage_data", None) is not None
+            and not getattr(viz, "coverage_volume_active", False)
+        ):
             view_model = self._add_coverage_to_view_model(view_model)
         viz.current_view_model = view_model
 
@@ -307,7 +323,10 @@ class FramePipeline:
             return False
         accepted = apply_result and submission_result
         if accepted:
-            self._sync_mpc_type_legend(render_packet)
+            present_runtime_extensions(
+                viz, int(getattr(viz.app_state, "step", 0)), view_model, render_packet
+            )
+            self._sync_mpc_panel(render_packet)
             explorer_callback = self._mpc_explorer_presented_callback
             if explorer_callback is not None:
                 self._publish_mpc_explorer_presented_frame(
@@ -562,6 +581,20 @@ class FramePipeline:
 
         return tx_count, rx_count
 
+    def load_context_frame(self, step: int) -> tuple[dict[str, Any], Any] | None:
+        """Load a source frame with the current path filters for a labelled overlay.
+
+        This does not publish a current frame, move actors, or replace sensing
+        data. The normal frame and ViewModel caches retain ownership.
+        """
+        raw_frame = self.load_frame(step)
+        if raw_frame is None:
+            return None
+        view_model = self._derive_view_model(step, raw_frame)
+        if view_model is None:
+            return None
+        return raw_frame, view_model.to_render_packet()
+
     def update(self, step: int) -> bool:
         """Process one animation step and report accepted submission or no-op."""
 
@@ -688,7 +721,9 @@ class FramePipeline:
         # narrow shallow projection below.
         viz.current_view_model = view_model
         logger.debug("Pipeline: Set current_view_model early for camera focus")
-        render_packet = view_model.to_render_packet()
+        render_packet = prepare_runtime_render_packet(
+            viz, raw_frame, step, view_model.to_render_packet()
+        )
 
         # Camera, persistent objects, and frame-heavy payloads are one renderer
         # transaction for every supported backend.
@@ -828,23 +863,20 @@ class FramePipeline:
 
             beamforming_ui.apply_selector_state()
 
-            beamforming_ui.update_standalone_buttons_state()
-
             # Skip marker sync when neither position, orientation, nor inventory changed.
-            if _positions_changed or _orientations_changed or node_inventory_changed:
-                if hasattr(viz, "tx_markers") and hasattr(viz, "rx_markers"):
-                    if len(viz.tx_markers) > 0 or len(viz.rx_markers) > 0:
-                        logger.debug(
-                            "Pipeline: Updating marker transforms from ViewModel node state"
-                        )
-                        _record_entity_sync_result(
-                            node_service.update_tx_rx_positions(
-                                view_model.tx_positions,
-                                view_model.rx_positions,
-                            ),
-                            "TX/RX entity",
-                        )
-            elif getattr(viz, "tx_markers", None) or getattr(viz, "rx_markers", None):
+            if (_positions_changed or _orientations_changed or node_inventory_changed) and (
+                getattr(viz, "tx_markers", None) or getattr(viz, "rx_markers", None)
+            ):
+                logger.debug("Pipeline: Updating marker transforms from ViewModel node state")
+                _record_entity_sync_result(
+                    node_service.update_tx_rx_positions(
+                        view_model.tx_positions,
+                        view_model.rx_positions,
+                    ),
+                    "TX/RX entity",
+                )
+            else:
+                # Also drain removals after the last node disappears.
                 _record_entity_sync_result(
                     node_service.retry_pending_node_syncs(),
                     "TX/RX pending entity",
@@ -865,6 +897,11 @@ class FramePipeline:
                     "Target entity",
                 )
             t_after_targets = time.perf_counter()
+
+            nodes_panel = getattr(getattr(viz, "ui_manager", None), "panels", {}).get("nodes")
+            refresh_orientation = getattr(nodes_panel, "refresh_orientation_controls", None)
+            if callable(refresh_orientation):
+                refresh_orientation()
 
             if self._orientation_overlays_enabled(viz):
                 orientation_synced = node_service.create_orientation_frames(step)
@@ -962,7 +999,8 @@ class FramePipeline:
                 self._record_frame_timing(step, frame_start, completed=False)
                 return False
 
-            self._sync_mpc_type_legend(render_packet)
+            present_runtime_extensions(viz, step, view_model, render_packet)
+            self._sync_mpc_panel(render_packet)
 
             explorer_callback = self._mpc_explorer_presented_callback
             if explorer_callback is not None:
@@ -1353,6 +1391,7 @@ class FramePipeline:
                 aod_el_filter_max_deg=current_state.aod_el_filter_max_deg,
                 # Distinct material colors
                 use_distinct_material_colors=current_state.use_distinct_material_colors,
+                include_frame_details=current_state.show_mpc_frame_details,
             )
             if view_model is None:
                 logger.error("Failed to create ViewModel for frame %s", step)
@@ -1380,7 +1419,7 @@ class FramePipeline:
                 tx_count,
                 rx_count,
             )
-            viz.node_service.ensure_tx_rx_markers_created(tx_count, rx_count)
+            viz.node_service.ensure_tx_rx_markers_created(tx_count, rx_count, synchronize=False)
             logger.debug("Markers created - positions will be updated after ViewModel processing")
 
         if hasattr(viz, "_material_filter_dirty"):
@@ -1389,7 +1428,11 @@ class FramePipeline:
         if hasattr(viz, "_coverage_interpolation_dirty"):
             viz._coverage_interpolation_dirty = False
 
-        if current_state.show_coverage and viz.coverage_data is not None:
+        if (
+            current_state.show_coverage
+            and viz.coverage_data is not None
+            and not getattr(viz, "coverage_volume_active", False)
+        ):
             view_model = self._add_coverage_to_view_model(view_model)
         else:
             view_model.coverage_vertices = None
@@ -1489,20 +1532,7 @@ class FramePipeline:
         metric_name: str,
     ) -> list[float]:
         """Return isoline levels spaced according to the metric's color scale."""
-        values = np.asarray(values_2d, dtype=np.float32)
-        valid = values[coverage_metric_valid_mask(values, metric_name)]
-        if valid.size == 0:
-            return []
-        vmin = float(np.min(valid))
-        vmax = float(np.max(valid))
-        if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax == vmin:
-            return []
-        count = max(2, min(int(level_count), 12))
-        if coverage_metric_color_scale(metric_name) == "logarithmic":
-            levels = np.geomspace(vmin, vmax, count + 2)[1:-1]
-        else:
-            levels = np.linspace(vmin, vmax, count + 2)[1:-1]
-        return [float(level) for level in levels]
+        return coverage_isoline_levels(values_2d, level_count, metric_name)
 
     def _build_coverage_isolines(
         self,

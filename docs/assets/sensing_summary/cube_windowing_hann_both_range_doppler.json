@@ -1,0 +1,107 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "analysis/cube-windowing/hann_both",
+  "source_identity": {
+    "generation_id": "c9a86395-7ec0-4190-a33f-6b078402484f",
+    "frame_set_id": "04de12aa67f1135ba34aee9a6787f7c17c4b17030eb978bdd09ffd0a2f30b809"
+  },
+  "manifest_sha256": "10f267b69cba3bf9718f643dc44a6e294c4d500c521a58efd65b23766d85803a",
+  "source_files_sha256": {
+    "frames_manifest.json": "10f267b69cba3bf9718f643dc44a6e294c4d500c521a58efd65b23766d85803a",
+    "mpc_frames_00063-00063.h5": "aea1793fda0090e7229f4d7d6f2467b76124d6dc545bf40aa99eeabecf0a87ff",
+    "mpc_frames_00127-00127.h5": "36dcfc98abb792869e40233410d9d2c3a2836d503f1b7e7b33fce24c69407b85",
+    "mpc_frames_00191-00191.h5": "0265e53bab8db7414a477765f5142c940d43dbf0bb84ed171c62a3a9574fccef",
+    "mpc_frames_00255-00255.h5": "c6b55b035b02d541e3590fc3c688c9aeabaa986b602b801a9650f22243d373da",
+    "mpc_frames_00319-00319.h5": "b1b65cbd0a51b2d64f528daf415476caba620154d4bfb312c38b91b7ba3c733f",
+    "mpc_frames_00383-00383.h5": "762edee665edd8549498d946e4a2d103a024ce6f2d30cc69de772df4f33ccfd1",
+    "mpc_frames_00447-00447.h5": "ae5c624a493f288d5f752c51d11eb33ee230ba6348b37765c5e45bb7edfb4e71",
+    "mpc_frames_00511-00511.h5": "cc2fcc9c287b338d5f820692a738d065a6419bfa0fba85d56a79bbb67a292e27",
+    "mpc_frames_00575-00575.h5": "20d0eeec5ceb66e9f829cee0efd99292b850324ee3f18ebc80b9ccc6d49541de",
+    "mpc_frames_00639-00639.h5": "a33e3a2a72b7cd5ab4b85e3e2fcd10cefa79999f42e04787d1c2e64c1a231742",
+    "mpc_frames_00703-00703.h5": "d7d7a9f72394a1de8fe6724b75a7c9fd88583aab755440fa777632e2281d66c5",
+    "mpc_frames_00767-00767.h5": "7426f73e3b9d0ad49b6b8c30e144f92fea4d646535551b313c0a3aa5499c8dd3",
+    "mpc_frames_00831-00831.h5": "c6a5a3a351b9838c78c1a4b4876ac8ec750a7d02fed8364d2478a6e910689ffa",
+    "mpc_frames_00895-00895.h5": "b33fcf399c2313c93433dbc1c0ba2a2f1427c5264a2b3be94747dd34e94c6529",
+    "mpc_frames_00959-00959.h5": "6384a9a2892b3f4c9acaea7c9b1e0ebebd888c6a78b35c84896a47eaebc29b71",
+    "mpc_frames_01023-01023.h5": "22fa5d464fcf8880c8d11b8f2012f4bbe0cc8a507b5a042ccbfd6c71eb8fa410"
+  },
+  "figures": [
+    "range_doppler",
+    "range_profile"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 1,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "cf5cb247-1db3-5f17-b87c-eea64f348729",
+      "processing_recipe_id": "077981f3c0914a0ceea289d90b6f089d70df2d3ae7936fb16c55db16e4ba37a6",
+      "detection_count": 1
+    }
+  ],
+  "outputs": [
+    "sensing/range_profile.png",
+    "sensing/range_profile_full.png",
+    "sensing/range_doppler.png",
+    "sensing/range_doppler_full.png"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "display_limits": {
+    "range_limits_m": [
+      3,
+      6
+    ],
+    "velocity_limits_m_s": [
+      0,
+      2
+    ],
+    "power_limits_db": [
+      -140,
+      -60
+    ]
+  },
+  "summary_output": "sensing/range_doppler.png",
+  "output": "docs/assets/sensing_summary/cube_windowing_hann_both_range_doppler.png",
+  "output_sha256": "d4a8df765e02675fbb1c4af105e67f23e6fb328cd0d91de7a5bea8774922cf7d",
+  "plotting_source_sha256": {
+    "generator/figures/summary/sensing.py": "68714c70423f25301376c173a5b54bd34b640b28aad113d5993120d4bdec9537",
+    "generator/figures/summary/saved_sensing.py": "93c189d60bb2b71ad65a7a454c4379d7830f1b77285dec8daec04781fd0abcd1",
+    "shared/sensing_viz.py": "45def40892a71ec9fddf952ae697673174d8d3bcf4646b67ee79206b61175ef1",
+    "shared/sensing_doppler_summary.py": "673a30d11deef54429c768cc09c61a15b0db00010cd4ce9d594db3edbb2208a3",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.summary.saved_sensing",
+    "analysis/cube-windowing/hann_both",
+    "-o",
+    "analysis/public-figure-refresh/summary-2",
+    "--figure",
+    "range_doppler",
+    "--figure",
+    "range_profile",
+    "--frame-index",
+    "63",
+    "--range-limits",
+    "3",
+    "6",
+    "--velocity-limits",
+    "0",
+    "2",
+    "--power-limits",
+    "-140",
+    "-60"
+  ],
+  "path_convention": "Repository-relative source paths and reproducible output-directory names.",
+  "image": "cube_windowing_hann_both_range_doppler.png",
+  "sha256": "d4a8df765e02675fbb1c4af105e67f23e6fb328cd0d91de7a5bea8774922cf7d",
+  "tutorial_scenario": "scenarios/sensing/cube_radar/moving/scenario.yaml",
+  "tutorial_scenario_sha256": "523463b867f5c9ae245dc4dcd00b46eebce161a5812677e17ccfbd0f7dc5f763",
+  "license_spdx": "GPL-3.0-only",
+  "execution_backend": "CPU LLVM",
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "05ca780442ab8c9678988a0c7d7ae894032a9696d562b7676d2d4969ebfe5b3f"
+}

@@ -1044,6 +1044,47 @@ def test_mesh_switch_resyncs_common_object_with_pbr_material():
     mock_viz.renderer.ensure_named_geometry.assert_not_called()
 
 
+@pytest.mark.parametrize("custom_label", ["", "Walking subject", "target_1 (mesh_old)"])
+def test_mesh_switch_refreshes_default_label_and_preserves_custom_text(custom_label):
+    """The rendered label follows the applied pose in both playback directions."""
+    mock_viz, target_service = _setup_pygfx_target_service()
+    old_mesh = _make_mesh([0.0, 0.0, 0.0])
+    new_mesh = _make_mesh([1.0, 0.0, 0.0])
+    entry = _make_target_entry("target_1", old_mesh, index=0)
+    entry.update(name="target_1 (mesh_old)", mesh_file="mesh_old.ply")
+    new_mesh.id = old_mesh.id
+    mock_viz.target_entries = [entry]
+    mock_viz.app_state.target_labels = [custom_label]
+    label_name = make_target_entry_geometry_name(entry, "label")
+    label = make_text_label_state(label_name, custom_label or entry["name"], [0.8, 0.8, 0.8])
+    mock_viz.target_labels = [label]
+    original_label_payload = label.payload
+    _seed_target_asset(mock_viz, "target_1", "mesh_old.ply", old_mesh)
+    _seed_target_asset(mock_viz, "target_1", "mesh_new.ply", new_mesh)
+
+    for step, filename in [(64, "mesh_new.ply"), (0, "mesh_old.ply")]:
+        view_model = _make_view_model(
+            ["target_1"], [[2.0, 3.0, 4.0]], position_valid=[True], use_ply=[False]
+        )
+        view_model.target_mesh_files = [filename]
+        view_model.target_metadata[0]["mesh_file"] = filename
+        mock_viz.renderer.ensure_object.reset_mock()
+
+        assert target_service.process_targets_from_view_model(step, view_model)
+
+        expected_name = f"target_1 ({os.path.splitext(filename)[0]})"
+        assert entry["name"] == expected_name
+        assert entry["mesh_file"] == filename
+        assert label.payload == replace(original_label_payload, text=custom_label or expected_name)
+        rendered_labels = [
+            call.args[0]
+            for call in mock_viz.renderer.ensure_object.call_args_list
+            if call.args[0].id == label_name
+        ]
+        assert len(rendered_labels) == 1
+        assert rendered_labels[0].payload.text == (custom_label or expected_name)
+
+
 def test_failed_mesh_switch_preserves_native_object_and_retries_identical_frame():
     """Failed replacement stays pending and retries without service-side removal."""
     mock_viz, target_service = _setup_pygfx_target_service()
@@ -1975,11 +2016,14 @@ def test_cache_miss_no_metadata_corruption():
     old_mesh = _make_mesh([0.0, 0.0, 0.0])
 
     entry = _make_target_entry("target_1", old_mesh, index=0)
-    entry["mesh_file"] = "mesh_old.ply"
+    entry.update(name="target_1 (mesh_old)", mesh_file="mesh_old.ply")
     mock_viz.target_entries = [entry]
     # Only the old mesh is in cache — new mesh is missing
     _seed_target_asset(mock_viz, "target_1", "mesh_old.ply", old_mesh)
-    mock_viz.target_labels = []
+    label = make_text_label_state(
+        make_target_entry_geometry_name(entry, "label"), entry["name"], [0.8, 0.8, 0.8]
+    )
+    mock_viz.target_labels = [label]
     # Disable scenario policy so _load_mesh_on_demand uses mesh_directory directly
     mock_viz.current_scenario_policy = None
 
@@ -2002,6 +2046,7 @@ def test_cache_miss_no_metadata_corruption():
 
     # mesh_file must still be the OLD (actually rendered) file
     assert entry["mesh_file"] == "mesh_old.ply"
+    assert entry["name"] == label.payload.text == "target_1 (mesh_old)"
     # Mesh object must still be the old mesh
     assert entry["mesh"] is old_mesh
     # State cache must also record the old mesh file so change-detection retries
@@ -2255,3 +2300,49 @@ def test_transform_matches_sionna_aabb_convention():
     wrong_final = rotated_verts + wrong_translation
     wrong_aabb = (wrong_final.min(axis=0) + wrong_final.max(axis=0)) / 2.0
     assert not np.allclose(wrong_aabb, target_pos, atol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "direction,expected", [(1, ("pose_b.ply", "pose_c.ply")), (-1, ("pose_c.ply", "pose_b.ply"))]
+)
+@pytest.mark.parametrize(
+    "stride,steps", [(2, [10, 20, 30, 40, 50, 60]), (1, [0, 128, 256]), (1, [0, 1, 2])]
+)
+def test_mesh_lookahead_uses_actual_playback_frames(direction, expected, stride, steps):
+    viz, service = _setup_target_service()
+    viz.animation_controller = SimpleNamespace(get_current_stride=lambda: stride)
+    # Sparse scene IDs and ordinary scene rows need not identify adjacent meshes.
+    viz.get_available_animation_steps = lambda: steps
+    viz.animation_step = steps[0]
+    viz.play_direction = direction
+    data = {
+        steps[stride]: {"targets_metadata": [{"name": "person", "mesh_file": "pose_b.ply"}]},
+        steps[2 * stride]: {"targets_metadata": [{"name": "person", "mesh_file": "pose_c.ply"}]},
+        steps[-1]: {"targets_metadata": [{"name": "person", "mesh_file": "pose_c.ply"}]},
+        steps[-1 - stride]: {"targets_metadata": [{"name": "person", "mesh_file": "pose_b.ply"}]},
+    }
+    viz.cache_service = SimpleNamespace(get_frame=lambda step: data.get(step))
+    cache = viz.target_asset_cache
+    cache.prefetch_sources = Mock(return_value=2)
+    cache.prefetch_after = Mock()
+    entry = {
+        "target_name": "person",
+        "mesh_file": "pose_a.ply",
+        "_target_asset_build_spec": service._target_asset_build_spec(
+            scale=1, orientation=[0, 0, 0], use_ply_position=False, pbr_props={}
+        ),
+    }
+    service._schedule_target_lookahead(entry)
+    service._schedule_target_lookahead(entry)
+    assert cache.prefetch_sources.call_count == 1
+    assert cache.prefetch_sources.call_args.args == ("person", expected)
+    cache.prefetch_after.assert_not_called()
+    # A future pose can stay unchanged across several scene frames; no wasteful load.
+    for frame in data.values():
+        if frame["targets_metadata"][0]["mesh_file"] == "pose_b.ply":
+            frame["targets_metadata"][0]["mesh_file"] = "pose_a.ply"
+    assert service._cached_playback_meshes(entry, 2, direction) == ("pose_c.ply",)
+    # Missing cached metadata uses ordinary prefetch without loading HDF5 in the UI.
+    data.clear()
+    service._schedule_target_lookahead(entry)
+    cache.prefetch_after.assert_called_once()

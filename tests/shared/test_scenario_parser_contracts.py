@@ -13,6 +13,7 @@ from shared.scenarios import load_scenario_configuration, load_scenario_yaml
 from shared.scenarios.defaults import DEFAULT_COVERAGE_TX_MODE
 from shared.scenarios.model import CoverageTxModel
 from shared.scenarios.parsers import parse_coverage_config
+from shared.scenarios.paths import find_asset_project_root, find_project_root
 
 
 def _write_scenario(path: Path, **overrides: object) -> None:
@@ -27,9 +28,56 @@ def _write_scenario(path: Path, **overrides: object) -> None:
     )
 
 
+def test_asset_project_root_uses_working_checkout_without_changing_path_policy(
+    tmp_path, monkeypatch
+):
+    checkout = tmp_path / "checkout"
+    (checkout / "libraries").mkdir(parents=True)
+    (checkout / "scenarios" / "example").mkdir(parents=True)
+    standalone = tmp_path / "standalone"
+    standalone.mkdir()
+    package = tmp_path / "site-packages" / "visualizer"
+    package.mkdir(parents=True)
+    monkeypatch.chdir(checkout / "scenarios" / "example")
+
+    assert find_asset_project_root(package) == checkout
+    assert find_project_root(standalone) == standalone
+
+
+def test_asset_project_root_retains_source_checkout_fallback(tmp_path, monkeypatch):
+    checkout = tmp_path / "checkout"
+    (checkout / "libraries").mkdir(parents=True)
+    (checkout / "scenarios").mkdir()
+    package = checkout / "visualizer" / "src"
+    package.mkdir(parents=True)
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    assert find_asset_project_root(package) == checkout
+
+
 def test_coverage_tx_mode_has_one_schema_and_runtime_default(tmp_path: Path) -> None:
     assert CoverageTxModel().mode == DEFAULT_COVERAGE_TX_MODE
     assert parse_coverage_config({}, tmp_path)["tx_mode"] == DEFAULT_COVERAGE_TX_MODE
+
+
+@pytest.mark.parametrize(
+    "figures", [[], ["detection_stages"], ["detection_stages", "tracking_decisions"]]
+)
+def test_summary_inspection_requests_survive_yaml_runtime_parsing(tmp_path, figures):
+    _write_scenario(
+        tmp_path / "scenario.yaml",
+        generator_summary={"enabled": True, "create": ["sensing"], "inspection_figures": figures},
+    )
+    config = load_scenario_configuration(tmp_path, project_root=tmp_path)
+    assert config.generator_summary["inspection_figures"] == figures
+
+
+def test_summary_inspection_defaults_to_no_unrequested_figures(tmp_path):
+    _write_scenario(tmp_path / "scenario.yaml", generator_summary={"enabled": True})
+    config = load_scenario_configuration(tmp_path, project_root=tmp_path)
+    assert config.generator_summary["inspection_figures"] == []
 
 
 def test_coverage_figure_runtime_config_has_no_height_selector(tmp_path: Path) -> None:

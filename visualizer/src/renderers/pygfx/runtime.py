@@ -16,6 +16,12 @@ from typing import Any, Callable, Generator, Optional
 import numpy as np
 
 from .canvas import _env_flag
+from .compass import PygfxCompassMixin
+from .dusk import PygfxDuskMixin
+from .labels import PygfxLabelMixin
+from .scene_guides import PygfxSceneGuidesMixin
+from .section_contours import PygfxSectionContoursMixin
+from .target_silhouette import PygfxTargetSilhouetteMixin
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +31,40 @@ class PygfxRuntimeMixin:
 
     _RECENT_PRESENT_INTERVAL_LIMIT = 60
     _IDLE_PRESENT_GAP_S = 0.5
+    _RENDER_FAILURE_LOG_INTERVAL_S = 5.0
+
+    def _report_render_failure(self, exc: Exception, now: float) -> None:
+        """Keep failures visible while bounding repeated log and HUD updates."""
+        self._consecutive_render_failures += 1
+        previous = self._last_render_failure_log_at
+        if previous is None or now - previous >= self._RENDER_FAILURE_LOG_INTERVAL_S:
+            logger.warning(
+                "Scene rendering failed (%d consecutive attempts): %s",
+                self._consecutive_render_failures,
+                exc,
+                exc_info=True,
+            )
+            self._last_render_failure_log_at = now
+        if self._consecutive_render_failures == 1:
+            self.set_hud_overlay(
+                "render_error",
+                html="Scene rendering failed. See the application log for details.",
+                visible=True,
+                role="status",
+                corner="top_left",
+                priority=-100,
+            )
+
+    def _report_render_recovery(self) -> None:
+        """Clear the failure indicator after a complete successful draw."""
+        if not self._consecutive_render_failures:
+            return
+        logger.info(
+            "Scene rendering recovered after %d failures", self._consecutive_render_failures
+        )
+        self._consecutive_render_failures = 0
+        self._last_render_failure_log_at = None
+        self.clear_hud_overlay("render_error")
 
     @staticmethod
     def _read_max_fps() -> float:
@@ -139,19 +179,29 @@ class PygfxRuntimeMixin:
             )
 
         try:
+            PygfxDuskMixin._sync_dusk(self)
+            PygfxCompassMixin._sync_compass(self)
+            PygfxSectionContoursMixin._sync_section_contours(self)
+            PygfxTargetSilhouetteMixin._sync_target_silhouette(self)
+            self._update_camera_depth_precision()
+            PygfxSceneGuidesMixin._sync_scene_guides(self)
             self._update_headlight_pose()
+            self._update_shadow_quality()
+            PygfxLabelMixin._update_label_backgrounds(self)
             if _env_flag("ORCHAV_PYGFX_LIGHT_DEBUG", False):
                 self._dump_lighting_state()
             render_start = time.perf_counter()
-            minimap_drawn = False
             if self._minimap_enabled:
                 self._renderer.render(
                     self._scene,
                     self._camera,
                     flush=False,
                 )
-                minimap_drawn = self._render_minimap()
-            if not minimap_drawn:
+                if not self._render_minimap():
+                    # The main scene is already submitted. A hidden HUD,
+                    # missing bounds or unavailable minimap needs only a flush.
+                    self._renderer.flush()
+            else:
                 self._renderer.render(
                     self._scene,
                     self._camera,
@@ -159,6 +209,9 @@ class PygfxRuntimeMixin:
                 )
             render_end = time.perf_counter()
             self._render_successes += 1
+            target_views = getattr(self, "_target_views", None)
+            if target_views is not None:
+                target_views.scene_presented()
 
             draw_dur = render_end - render_start
             self._last_renderer_submit_ms = draw_dur * 1000.0
@@ -215,9 +268,10 @@ class PygfxRuntimeMixin:
                     getattr(self.visualizer, "animation_running", False)
                 )
             self._last_present_success_at = now
+            self._report_render_recovery()
         except Exception as exc:
             self._render_failures += 1
-            logger.debug("PygfxRenderer: render failed: %s", exc)
+            self._report_render_failure(exc, callback_start)
 
         callback_total = time.perf_counter() - callback_start
         self._last_draw_callback_total_ms = callback_total * 1000.0

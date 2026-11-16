@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "kind": "visualizer_gui_capture",
+  "image": "vehicle_multi_gui.png",
+  "sha256": "39b4432d3e6d64d129b3e03643c9c0e23f967ba30c3743130bc188446261f8af",
+  "image_sha256": "39b4432d3e6d64d129b3e03643c9c0e23f967ba30c3743130bc188446261f8af",
+  "output_sha256": "39b4432d3e6d64d129b3e03643c9c0e23f967ba30c3743130bc188446261f8af",
+  "tutorial_scenario": "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+  "tutorial_scenario_sha256": "bca8ab8e3693c6f513b95e4541d1996fca43185d7229ae6a4dc2d86867425d8d",
+  "documentation": "scenarios/sensing/foundations/RCS/06_vehicle_multi/README.md",
+  "captured_on": "2026-11-11",
+  "renderer": "pygfx",
+  "pygfx_version": "0.17.0",
+  "wgpu_version": "0.31.1",
+  "capture_method": "Unedited native pygfx viewport export with the native HUD. Existing saved recording, preserved target pose and camera, dark scene background. No acquisition or sensing processing rerun.",
+  "command": "python -m visualizer --renderer pygfx --scenario scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+  "source_root": "scenarios/sensing/foundations/RCS/06_vehicle_multi",
+  "source_sha256": {
+    "scenario.yaml": "bca8ab8e3693c6f513b95e4541d1996fca43185d7229ae6a4dc2d86867425d8d",
+    "frames/frames_manifest.json": "77f4a9e74b9ff3bb37ac255db63c7ec9068047a20adcf8bace80ce5093530bd5",
+    "frames/mpc_frames_00000-00062.h5": "06e617b4b13bd58d577b55713b1d0ae8e39167113544e005deb9491ae4b9a726",
+    "frames/mpc_frames_00063-00063.h5": "504c35ea2e57c6102fced20e5ff6a83a3f24408a73d1df490d96457cf779782f",
+    "frames/mpc_frames_00064-00126.h5": "90453a73e572dfc71728e48fee833780f8ed3fc23ed216a918734da18a09648e",
+    "frames/mpc_frames_00127-00127.h5": "ef43f9fc0f4fd1a3d52701918e4d0285973db177cf784fa2d392188a1208e44c",
+    "frames/mpc_frames_00128-00190.h5": "a50c8269959dc93f43503fdc627ca7400845c5888373c5c22fe91c3043c01702",
+    "frames/mpc_frames_00191-00191.h5": "be350b004f94c4157b82c17c1af6e994be4360cfc9446944f9813b3761f39a41",
+    "frames/mpc_frames_00192-00254.h5": "f800755ea158356e731f1d27d971cdd4dd2809bfca743ef8fddd15682ac7cda5",
+    "frames/mpc_frames_00255-00255.h5": "64d23a46279ca378c27a48a0653739ef30093fa7543d770f2a26578a808b42cf",
+    "frames/mpc_frames_00256-00318.h5": "a17998ee0402348d2ab167428822ea60df6ff59ce01749ea0729c6c9020f56a8",
+    "frames/mpc_frames_00319-00319.h5": "ca54f6f96714fdc826fdf59c037d1943dbd2ca238a41805efee8ef90239d10e1",
+    "frames/mpc_frames_00320-00382.h5": "d667e5a5dbc6012d6992a037ecfcb50182bdcbe42af2cb933923a45faa47b0a3",
+    "frames/mpc_frames_00383-00383.h5": "9bae5de437733549ca64b8cf92d420a2c43862e5f22a4a1b25cd97b6629604ed",
+    "frames/mpc_frames_00384-00446.h5": "2267145504b33f64d86174a4650d811f76c7358192d1b6da2fdb419372abe236",
+    "frames/mpc_frames_00447-00447.h5": "3b2eb7adc5f24eb5e98407a3d14b85a1a304b48e7be4e4039b9167d4e0f94bd6",
+    "frames/mpc_frames_00448-00510.h5": "9dddba0fd7e5116540949c40a81f33ca30f07a56e42c2f3c50672c802f3140bc",
+    "frames/mpc_frames_00511-00511.h5": "c07c2da2d72d0165c54d2de59fc89610ffe519a414ed37d2c7c9a51cbc3f7c3b"
+  },
+  "frame_index": 0,
+  "native_target": {
+    "current_position": [
+      50.0,
+      0.0,
+      0.8
+    ],
+    "geometry": {
+      "height_m": 1.6,
+      "length_m": 5.0,
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "box",
+      "width_m": 2.0
+    },
+    "metadata_source": "native_runtime",
+    "name": "native_vehicle",
+    "orientation": [
+      3.141592653589793,
+      0.0,
+      0.0
+    ],
+    "representation": "tr38901",
+    "scattering_point_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "scattering_points_local_m": [
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        -2.5,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      [
+        2.5,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.800000011920929
+      ]
+    ],
+    "scattering_points_world_m": [
+      [
+        50.0,
+        -1.0,
+        0.800000011920929
+      ],
+      [
+        52.5,
+        2.18556948539117e-07,
+        0.800000011920929
+      ],
+      [
+        50.0,
+        1.0,
+        0.800000011920929
+      ],
+      [
+        47.5,
+        -2.18556948539117e-07,
+        0.800000011920929
+      ],
+      [
+        50.0,
+        0.0,
+        1.600000023841858
+      ]
+    ],
+    "tr38901": {
+      "model_type": 2,
+      "object_type": "vehicle-multi-sp",
+      "random_phases": false,
+      "random_sigma_s": false,
+      "random_xpr": false
+    },
+    "upstream_version": "2.2.0",
+    "velocity_m_s": [
+      -6.0,
+      0.0,
+      8.526512829121202e-14
+    ],
+    "position_valid": true
+  },
+  "rendered_point_count": 5,
+  "camera": {
+    "eye": [
+      43.25,
+      -8.25,
+      6.55
+    ],
+    "lookat": [
+      50.0,
+      0.0,
+      0.8
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ],
+    "fov": 38.0
+  },
+  "display_settings": {
+    "background": "Dark Gray",
+    "target_edges": true,
+    "label_style": {
+      "mode": "plain",
+      "background": "paper",
+      "opacity": 0.85,
+      "offset_x": 32.0,
+      "offset_y": 42.0,
+      "marker_size": 18.0,
+      "leader": true,
+      "on_top": true
+    },
+    "mpc_visible": false,
+    "background_rgb": [
+      0.2,
+      0.2,
+      0.2
+    ],
+    "hud_legends": false
+  },
+  "visualizer_source_sha256": {
+    "visualizer/src/services/target_service.py": "c43b2899ec20ad4284b62e08889c78896ec87f4eb6441841df987544abb5ce8d",
+    "visualizer/src/scene/native_target_geometry.py": "559709e9aab434150f3fd06ce51050c9db95c35c235c859fcd9c438985dc0821",
+    "visualizer/src/renderers/pygfx/geometry.py": "083c43b180022e40ddd406608ced2a652b7d3761ddd0c205ed3ce593cd8dd8aa"
+  },
+  "capture_script_sha256": "3a708be20d1fda482ce449306471c661e648f50deb289644fcf58e1c2d7adcd4",
+  "notes": [
+    "Blue translucent surface is the saved native absorbing proxy; amber markers are the saved native scattering points.",
+    "Point markers show positions, not visibility, individual path contribution, or RCS magnitude.",
+    "The model type is read from native runtime metadata; human model 1 and model 2 each have one point.",
+    "Ordinary display-only camera/background/target-edge/label controls; no geometry or signal modifications."
+  ],
+  "source_revision": "dfd4fcbc28e1aee7781209aa7f02b4b765321fb1",
+  "runtime_export_revision": "d834585049991cd00045f00a523fc0cb164dd182",
+  "runtime_export_source_revision": "3f3a9400086ef94a6616f9f3062c8ebca36818e5",
+  "theme": "dark",
+  "theme_control": "Display > Theme > Dark",
+  "dimensions_px": [
+    1051,
+    953
+  ],
+  "acquisition_repeated": false,
+  "figure_rerendered": true,
+  "runtime_equivalence": "Visualizer runtime files are unchanged between the export source revision and the documentation source revision.",
+  "generation_id": "29bdf752-4666-4e14-a969-b56699306e9f",
+  "frame_set_id": "81c931b02362b82dd613addec6ba073d648d1c1a707f9ff95195eee9bd8d4c48",
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "c214ac26c2b9f7a52151883fec894367f1260f7bc3ab819d231d133d5d35b98b"
+}

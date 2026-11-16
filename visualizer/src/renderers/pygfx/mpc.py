@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import time
+import weakref
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -46,6 +48,7 @@ INTERACTION_MARKER_SPECS: tuple[InteractionMarkerSpec, ...] = (
     InteractionMarkerSpec(2, "Diffuse", "triangle_up", "&#9650;"),
     InteractionMarkerSpec(4, "Refraction", "diamond", "&#9670;"),
     InteractionMarkerSpec(8, "Diffraction", "plus", "&#10010;"),
+    InteractionMarkerSpec(16, "Sensing", "asterisk6", "&#10035;"),
     InteractionMarkerSpec(99, "Virtual", "square", "&#9632;"),
 )
 UNKNOWN_INTERACTION_MARKER_SPEC = InteractionMarkerSpec(
@@ -85,6 +88,8 @@ class MpcExpandedLineCacheEntry:
 
 
 logger = logging.getLogger(__name__)
+
+_MPC_VALID_INDEX_CACHE_LIMIT = 128
 
 
 class PygfxMpcMixin:
@@ -136,7 +141,7 @@ class PygfxMpcMixin:
                 return True
 
         t_norm_start = time.perf_counter()
-        normalized = self._normalize_mpc_lines_input(points, lines, colors)
+        normalized = self._normalize_mpc_lines_input(points, lines, colors, revision=source_sig)
         t_norm_end = time.perf_counter()
         self._record_profile_metric(
             "pygfx_mpc_lines_normalize_ms", (t_norm_end - t_norm_start) * 1000.0
@@ -521,8 +526,8 @@ class PygfxMpcMixin:
         IDs derived from ``packet.mpc_bounce_itypes``.
 
         LoS has no physical interaction marker. Specular, diffuse, refraction,
-        diffraction, and virtual points use circle, triangle, diamond, plus,
-        and square glyphs respectively; unknown values use a cross.
+        diffraction, sensing, and virtual points use circle, triangle, diamond,
+        plus, six-arm asterisk, and square glyphs; unknown values use a cross.
         """
         obj = self._objects.get("mpc_points")
         if obj is None:
@@ -684,6 +689,10 @@ class PygfxMpcMixin:
 
     def refresh_mpc_point_markers(self) -> None:
         """Re-apply the current marker/plain material choice to live MPC points."""
+        services = getattr(getattr(self, "visualizer", None), "extension_services", {})
+        experiments = services.get("experiments")
+        if experiments is not None:
+            experiments.refresh_cinematic_style()
         packet = self.last_frame_packet
         if packet is None:
             self._set_marker_legend_visible(False)
@@ -695,6 +704,7 @@ class PygfxMpcMixin:
         """Drop all CPU endpoint-expansion cache entries and byte accounting."""
         self._mpc_expanded_line_cache.clear()
         self._mpc_expanded_line_cache_bytes = 0
+        getattr(self, "_mpc_valid_index_cache", {}).clear()
 
     def _mpc_expanded_line_cache_key(
         self,
@@ -808,7 +818,7 @@ class PygfxMpcMixin:
                 return False
 
             source_sig = self._mpc_line_source_signature(packet)
-            normalized = self._normalize_mpc_lines_input(points, lines, colors)
+            normalized = self._normalize_mpc_lines_input(points, lines, colors, revision=source_sig)
             if normalized is None:
                 self._mpc_expanded_line_cache_prewarm_skips += 1
                 return False
@@ -1025,6 +1035,10 @@ class PygfxMpcMixin:
             capacity = max(capacity, self._mpc_segment_capacity)
 
         points = self._ensure_buffer("_mpc_segment_points_buf", (capacity * 2, 3), np.float32)
+        # draw_range limits rasterization, but pygfx's CPU bounds inspect the
+        # whole allocation. Uninitialized spare endpoints can produce enormous
+        # scene bounds even though no corresponding segment is drawn.
+        points.fill(0.0)
         colors = self._ensure_buffer(
             "_mpc_segment_colors_buf",
             (capacity * 2, color_cols),
@@ -1135,6 +1149,8 @@ class PygfxMpcMixin:
             capacity = max(capacity, self._mpc_point_capacity)
 
         points = self._ensure_buffer("_mpc_points_points_buf", (capacity, 3), np.float32)
+        # Keep unused capacity finite for native CPU bounds (see line buffers).
+        points.fill(0.0)
         colors = self._ensure_buffer("_mpc_points_colors_buf", (capacity, color_cols), np.float32)
         payload = PointCloudPayload(points=points, colors=colors)
         ok = self.ensure_named_geometry(
@@ -1222,8 +1238,41 @@ class PygfxMpcMixin:
             setattr(self, attr_name, dst)
         return dst
 
+    def _valid_mpc_line_indices(self, lines: np.ndarray, point_count: int, revision=None) -> bool:
+        """Reuse successful bounds checks only under the immutable packet contract.
+
+        A read-only array alone is not a revision: unversioned and writable
+        inputs are always checked. Weak references prevent this bounded lookup
+        from retaining frame arrays, and verify identity even after ID reuse.
+        """
+        cache = getattr(self, "_mpc_valid_index_cache", None)
+        key = None
+        if revision is not None:
+            candidate = (revision, point_count, lines.shape, lines.strides)
+            try:
+                hash(candidate)
+            except TypeError:
+                pass
+            else:
+                key = candidate
+        if key is not None and cache is not None:
+            previous = cache.get(key)
+            if not lines.flags.writeable and previous is not None and previous() is lines:
+                cache.move_to_end(key)
+                return True
+            cache.pop(key, None)
+
+        valid = bool(lines.min() >= 0 and lines.max() < point_count)
+        if valid and key is not None and not lines.flags.writeable:
+            if cache is None:
+                cache = self._mpc_valid_index_cache = OrderedDict()
+            cache[key] = weakref.ref(lines)
+            while len(cache) > _MPC_VALID_INDEX_CACHE_LIMIT:
+                cache.popitem(last=False)
+        return valid
+
     def _normalize_mpc_lines_input(
-        self, points: Any, lines: Any, colors: Any
+        self, points: Any, lines: Any, colors: Any, *, revision=None
     ) -> Optional[tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
         """Normalize frame-packet MPC line arrays to GPU-ready shapes and dtypes."""
         points_arr = points if isinstance(points, np.ndarray) else np.asarray(points)
@@ -1259,12 +1308,7 @@ class PygfxMpcMixin:
             return points_norm, lines_norm, None
 
         n_pts = len(points_norm)
-        all_valid = bool(
-            lines_norm[:, 0].min() >= 0
-            and lines_norm[:, 1].min() >= 0
-            and lines_norm[:, 0].max() < n_pts
-            and lines_norm[:, 1].max() < n_pts
-        )
+        all_valid = PygfxMpcMixin._valid_mpc_line_indices(self, lines_norm, n_pts, revision)
         if not all_valid:
             valid = (
                 (lines_norm[:, 0] >= 0)

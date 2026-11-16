@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
 import numpy as np
+import pytest
 
 from visualizer.src.materials.appearance import MaterialDisplayMode
 from visualizer.src.services.material_entry_editor import MaterialEntryEditService
@@ -257,6 +258,92 @@ def test_change_material_id_exact_bsdf_updates_entry_shape_ref_and_pbr_props():
     assert entry["material_type"] == "concrete"
     assert entry["pbr_properties"]["roughness"] == 0.8
     assert shape.find("ref").get("id") == "mat-itu_concrete"
+
+
+@pytest.mark.parametrize("surface_name", ["front", "complement"])
+def test_visual_surface_rf_material_change_preserves_shared_xml_and_entries(surface_name):
+    root = ET.fromstring("""<scene>
+      <bsdf id="concrete" type="itu-radio-material"><float name="scattering_coefficient" value="0.2"/></bsdf>
+      <bsdf id="metal" type="itu-radio-material"/>
+      <shape id="wall"><ref name="bsdf" id="concrete"/></shape>
+    </scene>""")
+    bsdf = root.find("bsdf")
+    entry = {
+        "name": f"Wall {surface_name}",
+        "entry_type": "mesh",
+        "material_id": "concrete",
+        "material_type": "concrete",
+        "color": [0.2, 0.3, 0.4],
+        "xml_bsdf": bsdf,
+        "xml_shape": root.find("shape"),
+        "pbr_properties": {"texture_path": "facade.png", "roughness": 0.7},
+        "_visual_surface_partition": True,
+        "_visual_surface_source_name": "Wall",
+    }
+    original = dict(entry)
+    original_xml = ET.tostring(root)
+
+    actual_id, color, returned_bsdf = MaterialEntryEditService().change_material_id(
+        entry, "metal", root, [entry], []
+    )
+
+    assert (actual_id, color) == ("concrete", [0.2, 0.3, 0.4])
+    assert returned_bsdf is bsdf
+    assert entry == original
+    assert ET.tostring(root) == original_xml
+
+
+@pytest.mark.parametrize("request_kind", ["canonical", "stable_snapshot"])
+@pytest.mark.parametrize("edit_protected", [False, True])
+def test_material_edit_resolves_identity_before_duplicate_surface_name(
+    request_kind, edit_protected
+):
+    root = ET.fromstring("""<scene>
+      <bsdf id="mat-itu_concrete" type="diffuse"><rgb name="reflectance" value="0.7 0.7 0.7"/></bsdf>
+      <bsdf id="mat-itu_wood" type="diffuse"><rgb name="reflectance" value="0.3 0.2 0.1"/></bsdf>
+      <bsdf id="mat-itu_glass" type="diffuse"><rgb name="reflectance" value="0.1 0.2 0.3"/></bsdf>
+      <shape id="city"><ref name="bsdf" id="mat-itu_concrete"/></shape>
+      <shape id="ordinary"><ref name="bsdf" id="mat-itu_wood"/></shape>
+    </scene>""")
+    protected = {
+        "name": "front",
+        "stable_mesh_id": "city_visual_front",
+        "entry_type": "mesh",
+        "material_id": "mat-itu_concrete",
+        "material_type": "concrete",
+        "color": [1.0, 1.0, 1.0],
+        "xml_bsdf": root.findall("bsdf")[0],
+        "xml_shape": root.findall("shape")[0],
+        "pbr_properties": {"texture_path": "front.png", "roughness": 0.8},
+        "_visual_surface_partition": True,
+    }
+    ordinary = {
+        "name": "front",
+        "stable_mesh_id": "ordinary",
+        "entry_type": "mesh",
+        "material_id": "mat-itu_wood",
+        "material_type": "wood",
+        "color": [0.3, 0.2, 0.1],
+        "xml_bsdf": root.findall("bsdf")[1],
+        "xml_shape": root.findall("shape")[1],
+    }
+    protected_before = dict(protected)
+    protected_xml = ET.tostring(protected["xml_shape"])
+    selected = protected if edit_protected else ordinary
+    request = (
+        selected
+        if request_kind == "canonical"
+        else {key: selected[key] for key in ("name", "stable_mesh_id", "entry_type")}
+    )
+    actual_id, _, _ = MaterialEntryEditService().change_material_id(
+        request, "mat-itu_glass", root, [protected, ordinary], []
+    )
+    assert protected == protected_before
+    assert ET.tostring(protected["xml_shape"]) == protected_xml
+    expected_ordinary = "mat-itu_wood" if edit_protected else "mat-itu_glass"
+    assert ordinary["material_id"] == expected_ordinary
+    assert ordinary["xml_shape"].find("ref").get("id") == expected_ordinary
+    assert actual_id == ("mat-itu_concrete" if edit_protected else "mat-itu_glass")
 
 
 def test_change_material_id_normalized_bsdf_uses_actual_id():

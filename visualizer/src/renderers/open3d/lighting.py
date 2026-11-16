@@ -261,8 +261,11 @@ class MaterialLightingMixin:
         uv_scale_meters: float = 2.0,
         uv_repeat_scale: Optional[tuple[float, float]] = None,
         shader_variant: Optional[str] = None,
+        clearcoat_roughness_map_path: Optional[str] = None,
     ) -> bool:
         """Modify material properties without re-uploading geometry."""
+        # Filament's Python MaterialRecord exposes only scalar clearcoat roughness.
+        del clearcoat_roughness_map_path
         if self._o3d_vis is None:
             return False
 

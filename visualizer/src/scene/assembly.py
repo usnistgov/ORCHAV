@@ -16,7 +16,8 @@ import numpy as np
 
 from shared.logging import get_logger
 
-from ..materials.catalog import material_preset, resolve_pbr_material
+from ..materials.catalog import material_preset
+from ..model import RenderObjectState
 from ..scene.geometry_payload_factory import load_mesh_payload
 from ..types.render_payloads import (
     LineSetPayload,
@@ -128,6 +129,8 @@ def mesh_entry_to_payload(
     entry: dict[str, Any],
     texture_cache: dict[str, str],
     index: int = 0,
+    *,
+    material_service: Any = None,
 ) -> tuple[str, MeshPayload, MaterialPayload] | None:
     """Convert a scene mesh entry dict to payload objects.
 
@@ -151,24 +154,32 @@ def mesh_entry_to_payload(
     name = f"scene_{index}_{entry.get('name', 'mesh')}"
     mat_type = entry.get("material_type", "default")
     mat_id = entry.get("material_id")
-    pbr = dict(_pbr_for_material_type(mat_type))
+    if material_service is None:
+        from ..services.material_context import MaterialContext
+        from ..services.material_pbr_service import MaterialPBRService
 
-    color = entry.get("color", pbr["color"])
-    # Prefer preset-embedded albedo (bundled PBR pack) over explicit
-    # material-ID texture matches. Do not fall back to material type here:
-    # solid editable materials such as ``wood`` should not become textured
-    # only because ``libraries/textures/wood.png`` exists.
-    pbr["texture_path"] = pbr.get("texture_path") or resolve_texture(
+        material_service = MaterialPBRService(MaterialContext())
+    discovered_texture = resolve_texture(
         mat_type,
         mat_id,
         texture_cache,
         allow_material_type_fallback=False,
     )
-    resolved_material = resolve_pbr_material(
-        color,
-        pbr,
-        context=str(entry.get("name", mat_type)),
-    )
+    # The shared material service owns procedural geometry through neutral state.
+    # Preserve that contract for consumers without a persistent scene owner.
+    state = RenderObjectState(id=name, payload=mesh)
+    entry["mesh"] = state
+    try:
+        resolved_material = material_service.resolve_entry_material(
+            entry,
+            discovered_texture_defaults=(
+                {"texture_path": discovered_texture} if discovered_texture else {}
+            ),
+        )
+    finally:
+        entry["mesh"] = state.payload
+    # Procedural facades and roads can replace geometry as well as its material.
+    mesh = entry["mesh"]
     pbr = resolved_material.properties_copy(mark_texture_policy=True)
 
     # Box-project UVs when any texture map is bound and the mesh lacks
@@ -428,7 +439,11 @@ def _load_target_mesh_to_payload(
             if mesh.triangle_uvs is None
             else np.asarray(mesh.triangle_uvs, dtype=np.float64).copy()
         ),
-        cache_key=mesh.cache_key,
+        # These vertices now include actor and frame transforms. The asset's
+        # cache identity describes its original coordinates, so reusing it here
+        # would place subsequent instances at the first instance's position.
+        # Keep caching the untransformed asset in load_mesh_payload instead.
+        cache_key=None,
     )
 
 
@@ -442,7 +457,7 @@ def target_metadata_to_payload(
     Args:
         meta: Target metadata from ``raw_frame["targets_metadata"][i]``.
             Expected keys: ``name``, ``mesh_file``, ``mesh_directory``,
-            ``current_position``, ``scale``, ``orientation``.
+            ``current_position``, ``scale``, ``orientation`` (radians, per frame contract).
         project_root: Project root for resolving ``libraries/`` paths.
         scenario_root: Scenario directory for relative mesh paths.
 
@@ -450,6 +465,36 @@ def target_metadata_to_payload(
         ``(name, mesh_payload, material_payload)`` or ``None`` if the
         mesh cannot be loaded.
     """
+    # The native target owns an absorbing display proxy, not a material mesh.
+    # Keep the headless/notebook route consistent with the desktop service.
+    if meta.get("representation") in {"constant_rcs", "tr38901"}:
+        from .native_target_geometry import native_proxy_payload
+
+        geometry = meta.get("geometry") or {}
+        if geometry.get("type") == "box":
+            proxy = native_proxy_payload(meta)
+            position = np.asarray(meta.get("current_position", [0, 0, 0]), dtype=float)
+            angles = np.asarray(meta.get("orientation", [0, 0, 0]), dtype=float)
+            if (
+                position.shape != (3,)
+                or angles.shape != (3,)
+                or not (np.all(np.isfinite(position)) and np.all(np.isfinite(angles)))
+            ):
+                raise ValueError("Native box pose requires finite position and orientation")
+            rotation = build_rotation_matrix_from_angles(tuple(np.degrees(angles)))
+            # The retained key describes local box dimensions. World-space
+            # vertices need a distinct identity for every actor and frame.
+            payload = replace(
+                proxy,
+                vertices=np.asarray(proxy.vertices) @ rotation.T + position,
+                cache_key=None,
+            )
+            return (
+                str(meta.get("name", "target")),
+                payload,
+                MaterialPayload(base_color=(0.2, 0.4, 1.0, 0.25), roughness=0.6),
+            )
+
     mesh_file = meta.get("mesh_file")
     if not mesh_file:
         return None
@@ -465,7 +510,8 @@ def target_metadata_to_payload(
 
     position = np.array(meta.get("current_position", [0, 0, 0]), dtype=np.float64)
     scale = float(meta.get("scale", 1.0))
-    orientation = list(meta.get("orientation", [0, 0, 0]))
+    # Persisted target metadata uses radians; mesh transform helpers use degrees.
+    orientation = np.degrees(meta.get("orientation", [0, 0, 0])).tolist()
 
     payload = _load_target_mesh_to_payload(mesh_path, position, scale, orientation)
     if payload is None:

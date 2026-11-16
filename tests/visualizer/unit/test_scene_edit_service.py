@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
+import pytest
 
 from shared.geometry.transforms import parse_lightweight_shape_transform
 from visualizer.src.model import RenderObjectState
@@ -25,6 +26,47 @@ def _payload() -> MeshPayload:
         ),
         triangles=np.asarray([[0, 1, 2]], dtype=np.int32),
     )
+
+
+@pytest.mark.parametrize(
+    ("method", "value"),
+    [
+        ("set_object_position", [10.0, 20.0, 30.0]),
+        ("set_object_rotation", [45.0, 0.0, 0.0]),
+        ("set_object_scale", 2.0),
+    ],
+)
+@pytest.mark.parametrize("surface_name", ["front", "complement"])
+def test_visual_surface_fragments_cannot_edit_the_shared_source(method, value, surface_name):
+    source = _payload()
+    mesh = RenderObjectState(id=f"scene:wall_{surface_name}::mesh", payload=source)
+    shape = ET.fromstring('<shape id="wall"><ref name="bsdf" id="concrete"/></shape>')
+    entry = {
+        "name": f"Wall {surface_name}",
+        "entry_type": "mesh",
+        "mesh": mesh,
+        "xml_shape": shape,
+        "original_vertices": source.vertices,
+        "_visual_surface_partition": True,
+        "_visual_surface_source_name": "Wall",
+    }
+    viz = SimpleNamespace(mesh_entries=[entry], target_entries=[], _set_status_message=Mock())
+    service = SceneEditService(viz)
+    service.push_scene_updates_online = Mock()
+    original_xml = ET.tostring(shape)
+    # UI snapshots may lack the marker; the service must guard the canonical entry.
+    snapshot = {"name": entry["name"], "entry_type": "mesh"}
+
+    getattr(service, method)(snapshot, value)
+
+    assert entry["mesh"].payload is source
+    assert ET.tostring(shape) == original_xml
+    assert "transform_state" not in entry
+    service.push_scene_updates_online.assert_not_called()
+    message, duration = viz._set_status_message.call_args.args
+    assert "'Wall'" in message and "reload" in message
+    assert "Visual appearance controls remain available" in message
+    assert duration > 0
 
 
 def test_scene_edit_replaces_payload_on_stable_render_state() -> None:

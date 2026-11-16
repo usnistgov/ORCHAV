@@ -2,9 +2,10 @@
 
 [Scenarios](../README.md) > Generator
 
-These runnable YAML scenarios teach Generator features in independent learning
-tracks. Start with the track that matches your task. The tracks are not one
-mandatory sequence.
+After [Hello World](../getting_started/hello_world/README.md), use these
+examples to define moving actors, compare propagation mechanisms, add targets,
+and compute coverage. Choose a track by the part of the simulation you want to
+change. Each guide explains its configuration, running commands, and results.
 
 ## Mobility and Orientation
 
@@ -46,27 +47,53 @@ producing only named TX/RX frame streams.
 |---|---|
 | [`single_tx/`](coverage/single_tx/README.md) | One-transmitter coverage at two heights. |
 | [`multi_tx/`](coverage/multi_tx/README.md) | Per-transmitter layers, serving-TX selection, margin, and SINR. |
+| [`paris_volume/`](coverage/paris_volume/README.md) | Inspect slices and volume sweeps at 13 heights around the Arc de Triomphe. |
+
+
+## Geographic Scene Construction
+
+[Paris Opéra from OSM](paris_opera_osm/README.md) acquires current map features
+and constructs the scene locally from its YAML recipe. The optional OSM
+installation and attribution steps are included; geographic data is not bundled.
+
+
+
 
 ## Running A Scenario
 
-From the repository root, replace the path below with any scenario in the
-tables:
+Run this example from the repository root. For other scenarios, check the scenario guide for prerequisites, preparation scripts, and output paths.
+
+Validate the mobility example:
 
 ```bash
 orchav-validate scenarios/generator/mobility_and_orientation/actor_mobility
-orchav-generator scenarios/generator/mobility_and_orientation/actor_mobility
-orchav-inspect scenarios/generator/mobility_and_orientation/actor_mobility --frame 0
-orchav-visualizer --scenario scenarios/generator/mobility_and_orientation/actor_mobility
 ```
 
-All scenarios in this catalog are authored directly in `scenario.yaml`.
-Generated frames, coverage data, and figures are written inside the selected
-scenario directory and are not committed.
+Generate its recording:
+
+```bash
+orchav-generator scenarios/generator/mobility_and_orientation/actor_mobility
+```
+
+Inspect the first frame:
+
+```bash
+orchav-inspect scenarios/generator/mobility_and_orientation/actor_mobility --frame 0
+```
+
+Open the recording in the Visualizer:
+
+```bash
+orchav-visualizer --scenario scenarios/generator/mobility_and_orientation/actor_mobility
+```
 
 See [Scenario Authoring](../../docs/generator/scenario_authoring.md) to create a
 new scenario or [Simulation
 Configuration](../../docs/generator/configuration.md) for tracing and coverage
 settings.
+
+To change how an existing scene looks, use the Visualizer's
+[Building Appearance exercise](../visualizer/building_appearance/README.md).
 
 ---
 

@@ -3,17 +3,40 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
+import pytest
 import yaml
 
 from generator.io.storage.coverage_writer import save_coverage_hdf5
-from shared.cli.inspect import run
+from shared.cli.inspect import (
+    FrameInspectionError,
+    _format_sensing_lines,
+    _sensing_summary_data,
+    run,
+)
+from shared.extensions.sensing import (
+    SENSING_SCHEMA_VERSION,
+    build_sensing_temporal_contract,
+    canonical_processing_recipe_id,
+    canonical_sensing_hash,
+)
 from shared.frames.manifest import manifest_from_chunks, write_frame_manifest_atomic
 from shared.frames.normalization import standard_mpc_frame_from_pair_data
 from shared.frames.packed_hdf5_writer import PackedMPCChunkWriter
 from shared.frames.types import StandardMPCFrame
+from shared.sensing.products import (
+    SENSING_PRODUCT_CONTRACT_VERSION,
+    add_product_spec,
+    catalog_axis,
+    dense_axis,
+    materialize_product_specs,
+)
+from shared.sensing.targets import build_target_catalog, build_target_state, build_target_truth
+
+_SENSING_GENERATION_ID = "a5ef48c3-0c1c-49eb-8890-308e9f9bd8ac"
 
 
 def _build_frame(
@@ -66,9 +89,10 @@ def _write_scenario(
     material_properties: dict | None = None,
 ) -> Path:
     frames_dir = root / directory
+    generation_id = _SENSING_GENERATION_ID if sensing is not None else "inspect-cli-generation"
     writer = PackedMPCChunkWriter(
         frames_dir,
-        generation_id="inspect-cli-generation",
+        generation_id=generation_id,
         compression=None,
     )
     for frame_idx in range(frame_count):
@@ -78,7 +102,7 @@ def _write_scenario(
     if material_properties is not None:
         provenance["material_properties"] = material_properties
     manifest = manifest_from_chunks(
-        generation_id="inspect-cli-generation",
+        generation_id=generation_id,
         frame_set_id="inspect-cli-frame-set",
         chunks=[chunk],
         compression={"codec": None, "shuffle": False},
@@ -128,21 +152,149 @@ def _write_scenario_yaml(root: Path, *, directory: str | None = None) -> Path:
     return path
 
 
-def _build_sensing_payload() -> dict:
-    return {
-        "config": {
-            "processing_mode": "coherent_cpi",
-            "range_resolution_m": 0.3,
-            "velocity_resolution_m_s": 0.042,
-            "prf_hz": 1000.0,
+def _build_sensing_payload(*, ambiguous_products: bool = False) -> dict:
+    pair_id = canonical_sensing_hash({"tx_sensor_id": "tx-0", "rx_sensor_id": "rx-0"})
+    processing_recipe = {"window_range": "hann", "window_doppler": "hann"}
+    temporal = build_sensing_temporal_contract(
+        clock_id=_SENSING_GENERATION_ID,
+        acquisition_id="cfdd44c8-e4cf-4c0e-8cee-6c67b0e98bc4",
+        acquisition_config_id=canonical_sensing_hash({"samples": 4, "prf_hz": 1000.0}),
+        pair_id=pair_id,
+        tx_sensor_id="tx-0",
+        rx_sensor_id="rx-0",
+        samples=[
+            {
+                "sample_index": sample_index,
+                "sample_time_s": sample_index / 1000.0,
+                "valid": True,
+                "phase_coherent": True,
+                "source": {
+                    "source_generation_id": _SENSING_GENERATION_ID,
+                    "scene_frame_id": 0,
+                    "sample_offset": sample_index,
+                },
+            }
+            for sample_index in range(4)
+        ],
+        processing_run_id=_SENSING_GENERATION_ID,
+        processing_recipe_id=canonical_processing_recipe_id(processing_recipe),
+        reference_time_s=0.0015,
+        reference_time_policy="cpi_center",
+        display_scene_frame_id=0,
+        display_policy="source_scene_exact",
+        display_reason="Inspect CLI fixture result is stored on source frame 0.",
+        truth={
+            "reference_time_s": 0.0015,
+            "scene_frame_id": 0,
+            "policy": "cpi_reference_exact",
+            "source": "inspect_cli_fixture",
         },
+    )
+    catalog = build_target_catalog(
+        [
+            {
+                "target_id": "inspect.walker.sm",
+                "display_name": "Inspect walker SM",
+                "identity_source": "inspect_fixture.subject_code",
+            }
+        ]
+    )
+    state = build_target_state(
+        catalog,
+        scene_frame_id=0,
+        reference_time_s=0.0015,
+        targets=[
+            {
+                "target_id": "inspect.walker.sm",
+                "lifecycle": "active",
+                "valid": True,
+                "position_m": [2.5, 0.0, 0.0],
+                "orientation_rad": None,
+                "velocity_m_s": [-1.0, 0.0, 0.0],
+                "invalid_reason": None,
+            }
+        ],
+    )
+    truth = build_target_truth(
+        catalog,
+        targets=[
+            {
+                "target_id": "inspect.walker.sm",
+                "lifecycle": "active",
+                "valid": True,
+                "position_m": [2.5, 0.0, 0.0],
+                "orientation_rad": None,
+                "velocity_m_s": [-1.0, 0.0, 0.0],
+                "invalid_reason": None,
+                "pair_observables": [
+                    {
+                        "pair_id": pair_id,
+                        "bistatic_path_length_m": 5.0,
+                        "monostatic_equivalent_range_m": 2.5,
+                        "path_closing_rate_m_s": 2.0,
+                        "monostatic_equivalent_velocity_m_s": 1.0,
+                        "bistatic_bisector_velocity_m_s": 1.0,
+                        "undefined_reason": None,
+                    }
+                ],
+            }
+        ],
+    )
+    config_resolved = {
+        "contract_version": 1,
+        "fft_size_range": 8,
+        "fft_size_doppler": 4,
+        "sampling_frequency": 100.0e6,
+        "prf_hz": 1000.0,
+        "carrier_freq_hz": 28.0e9,
+        "range_mode": "monostatic",
+        "processing_mode": "coherent_cpi",
+        "processing_recipe": processing_recipe,
+        "acquisition": {
+            "sample_source": "coherent_one_solve",
+            "rt_solve_stride_scene_steps": 4,
+            "sample_period_s": 0.001,
+            "sample_rate_hz": 1000.0,
+            "cpi_length_samples": 4,
+            "cpi_hop_samples": 4,
+            "overlap_samples": 0,
+            "partial_window_policy": "retain_unprocessed",
+            "phase_contract": "sionna_intra_solve_phase_coherent",
+        },
+        "processing": {
+            "mode": "coherent_cpi",
+            "strategy": "coherent_cpi_fft",
+            "fft_size_doppler": 4,
+            "result_stride_samples": 4,
+            "product_semantics": "cir_point_bin_slow_time_fft",
+            "evidence_status": "phase2_controlled_specular_validated",
+        },
+        "topology": {
+            "pair_count": 1,
+            "pair_index": 0,
+            "tx_device_count": 1,
+            "rx_device_count": 1,
+            "tx_elements": 1,
+            "rx_elements": 1,
+            "rx_array_processing": "siso",
+        },
+        "range_resolution_m": 0.3,
+        "velocity_resolution_m_s": 0.042,
+    }
+    sensing = {
+        "schema_version": SENSING_SCHEMA_VERSION,
+        "temporal": temporal,
+        "config_resolved": config_resolved,
+        "config": deepcopy(config_resolved),
+        "processing_strategy": "coherent_cpi_fft",
         "frame_role": "cpi_end",
-        "range_profile": np.ones(8, dtype=np.float32),
-        "range_doppler_map": np.ones((4, 8), dtype=np.float32),
-        "range_doppler_map_raw": np.ones((4, 8), dtype=np.float32) * 2,
-        "range_doppler_aoa_az_map": np.ones((4, 8), dtype=np.float32) * 15.0,
-        "range_doppler_azimuth_cube": np.ones((16, 4, 8), dtype=np.float32),
-        "azimuth_axis_deg": np.linspace(-60.0, 60.0, 16, dtype=np.float32),
+        "target_catalog": catalog,
+        "target_state": state,
+        "truth": truth,
+        "range_axis_m": np.linspace(0.0, 2.1, 8, dtype=np.float64),
+        "doppler_axis_hz": np.linspace(-500.0, 250.0, 4, dtype=np.float64),
+        "range_profile_by_pair": np.ones((1, 8), dtype=np.float32),
+        "range_doppler_by_pair": np.ones((1, 4, 8), dtype=np.float32),
         "detections": [
             {
                 "range_m": 2.4,
@@ -151,11 +303,68 @@ def _build_sensing_payload() -> dict:
                 "snr_db": 12.0,
             }
         ],
-        "gt_sensing": {
-            "target_ranges": [2.5],
-            "target_speeds": [-1.0],
-        },
     }
+    pair_axis = catalog_axis("pair", size=1, catalog_key="pair_axis")
+    range_axis = dense_axis(
+        "range",
+        size=8,
+        unit="m",
+        coordinate_key="range_axis_m",
+        coordinate_semantics="bistatic_path_length",
+        reference_frame="tx_target_rx_path",
+    )
+    add_product_spec(
+        sensing,
+        data_key="range_profile_by_pair",
+        kind="range_profile",
+        axes=(pair_axis, range_axis),
+        representation="power_linear",
+        unit="1",
+    )
+    add_product_spec(
+        sensing,
+        data_key="range_doppler_by_pair",
+        kind="range_doppler",
+        axes=(
+            pair_axis,
+            dense_axis(
+                "doppler_frequency",
+                size=4,
+                unit="Hz",
+                coordinate_key="doppler_axis_hz",
+                reference_frame="scenario_clock",
+            ),
+            range_axis,
+        ),
+        representation="power_linear",
+        unit="1",
+    )
+    if ambiguous_products:
+        sensing["range_doppler_secondary"] = np.full((1, 4, 8), 2.0, dtype=np.float32)
+        add_product_spec(
+            sensing,
+            data_key="range_doppler_secondary",
+            kind="range_doppler",
+            axes=(
+                pair_axis,
+                dense_axis(
+                    "doppler_frequency",
+                    size=4,
+                    unit="Hz",
+                    coordinate_key="doppler_axis_hz",
+                    reference_frame="scenario_clock",
+                ),
+                range_axis,
+            ),
+            representation="power_linear",
+            unit="1",
+        )
+    materialize_product_specs(sensing)
+    # This fixture publishes only range/RD products. The materializer exposes
+    # the acquisition coordinate for producers that declare a slow-time axis;
+    # do not leave that numeric coordinate undeclared here.
+    sensing.pop("slow_time_axis_s", None)
+    return sensing
 
 
 def test_inspect_cli_prints_human_readable_summary(tmp_path: Path, capsys) -> None:
@@ -358,35 +567,175 @@ def test_inspect_cli_json_output(tmp_path: Path, capsys) -> None:
 
 def test_inspect_cli_prints_sensing_summary(tmp_path: Path, capsys) -> None:
     scenario = tmp_path / "scenario"
+    sensing = _build_sensing_payload()
+    _write_scenario(scenario, sensing=sensing)
+
+    assert run([str(scenario), "--frame", "0"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Frame extension: sensing" in output
+    assert "Mode: coherent_cpi (cpi_end)" in output
+    assert "Range–Doppler: 1 pair × 4 Doppler bins × 8 range bins" in output
+    assert "Range profile: 1 pair × 8 range bins" in output
+    assert "Targets: 1\n" in output
+    assert "Detections: 1" in output
+    assert "range 0.3 m" in output
+    assert "--verbose or --json" in output
+    assert "representation=" not in output
+    assert "range_doppler_by_pair" not in output
+    assert sensing["products"]["range_doppler_by_pair"]["product_id"] not in output
+
+
+def test_inspect_cli_prints_verbose_sensing_summary(tmp_path: Path, capsys) -> None:
+    scenario = tmp_path / "scenario"
     _write_scenario(scenario, sensing=_build_sensing_payload())
 
-    exit_code = run([str(scenario), "--frame", "0"])
+    exit_code = run([str(scenario), "--frame", "0", "--verbose"])
 
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "Frame extension: sensing" in captured.out
     assert "Mode: coherent_cpi (cpi_end)" in captured.out
-    assert "Products: RD 4x8, range profile 8" in captured.out
-    assert "Raw RD: 4x8" in captured.out
-    assert "Angular: azimuth cube 16x4x8, AoA az map 4x8, az axis 16" in captured.out
-    assert "Detections: 1 (GT targets: 1)" in captured.out
+    assert "Strategy: coherent_cpi_fft" in captured.out
+    assert "Products: 2 typed descriptor(s)" in captured.out
+    assert "range_doppler/primary: key=range_doppler_by_pair" in captured.out
+    assert "shape=1x4x8, axes=pair,doppler_frequency,range" in captured.out
+    assert "range_profile/primary: key=range_profile_by_pair" in captured.out
+    assert "shape=1x8, axes=pair,range" in captured.out
+    assert "Target catalog: 1 (inspect.walker.sm)" in captured.out
+    assert "Target state: 1 (inspect.walker.sm)" in captured.out
+    assert "Target truth: 1 (inspect.walker.sm)" in captured.out
+    assert "Detections: 1" in captured.out
+    assert "Raw RD" not in captured.out
+    assert "Angular:" not in captured.out
     assert "range 0.3 m" in captured.out
 
 
 def test_inspect_cli_json_includes_sensing_summary(tmp_path: Path, capsys) -> None:
     scenario = tmp_path / "scenario"
-    _write_scenario(scenario, sensing=_build_sensing_payload())
+    sensing = _build_sensing_payload()
+    _write_scenario(scenario, sensing=sensing)
 
     exit_code = run([str(scenario), "--frame", "0", "--json"])
 
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["summary"]["features"] == ["sensing"]
-    assert payload["summary"]["sensing"]["processing_mode"] == "coherent_cpi"
-    assert payload["summary"]["sensing"]["range_doppler_shape"] == [4, 8]
-    assert payload["summary"]["sensing"]["azimuth_cube_shape"] == [16, 4, 8]
-    assert payload["summary"]["sensing"]["aoa_azimuth_shape"] == [4, 8]
-    assert payload["summary"]["sensing"]["detection_count"] == 1
+    summary = payload["summary"]["sensing"]
+    assert summary["schema_version"] == SENSING_SCHEMA_VERSION
+    assert summary["product_contract_version"] == SENSING_PRODUCT_CONTRACT_VERSION
+    assert summary["processing_mode"] == "coherent_cpi"
+    assert summary["processing_strategy"] == "coherent_cpi_fft"
+    assert summary["detection_count"] == 1
+    assert [product["data_key"] for product in summary["products"]] == [
+        "range_doppler_by_pair",
+        "range_profile_by_pair",
+    ]
+    range_doppler = summary["products"][0]
+    assert {key: value for key, value in range_doppler.items() if key != "axes"} == {
+        "kind": "range_doppler",
+        "variant": "primary",
+        "data_key": "range_doppler_by_pair",
+        "product_id": sensing["products"]["range_doppler_by_pair"]["product_id"],
+        "shape": [1, 4, 8],
+        "representation": "power_linear",
+        "unit": "1",
+    }
+    assert [axis["name"] for axis in range_doppler["axes"]] == [
+        "pair",
+        "doppler_frequency",
+        "range",
+    ]
+    assert [axis["coordinate_key"] for axis in range_doppler["axes"]] == [
+        "pair_axis",
+        "doppler_axis_hz",
+        "range_axis_m",
+    ]
+    assert range_doppler["axes"] == sensing["products"]["range_doppler_by_pair"]["axes"]
+    assert summary["targets"] == {
+        "catalog": {
+            "count": 1,
+            "ids": ["inspect.walker.sm"],
+            "catalog_revision": sensing["target_catalog"]["catalog_revision"],
+        },
+        "state": {
+            "count": 1,
+            "ids": ["inspect.walker.sm"],
+            "valid_ids": ["inspect.walker.sm"],
+        },
+        "truth": {"count": 1, "ids": ["inspect.walker.sm"]},
+    }
+    # The conflicting raw array is never exposed as an inferred product.
+    assert "range_doppler_shape" not in summary
+
+
+def test_sensing_summary_is_empty_when_extension_is_absent() -> None:
+    assert _sensing_summary_data(None) == {}
+    assert _sensing_summary_data({}) == {}
+
+
+def test_compact_sensing_keeps_variants_and_summarizes_diagnostics() -> None:
+    summary = _sensing_summary_data(_build_sensing_payload())
+    rd = summary["products"][0]
+    summary["products"].extend(
+        [
+            dict(rd, variant="raw"),
+            dict(rd, kind="range_doppler_cfar_mask"),
+            dict(rd, kind="range_doppler_snr_db"),
+            dict(rd, kind="range_doppler_angle"),
+            dict(rd, kind="custom_spectrum"),
+        ]
+    )
+
+    output = "\n".join(_format_sensing_lines(summary))
+
+    assert "Range–Doppler (raw):" in output
+    assert "Detector diagnostics: 2 saved arrays" in output
+    assert "range_doppler_cfar_mask" not in output
+    assert "Angular spectrum:" in output
+    assert "Custom spectrum:" in output
+
+
+def test_sensing_summary_rejects_legacy_truth_aliases() -> None:
+    sensing = _build_sensing_payload()
+    sensing["gt_sensing"] = {"target_ranges": [2.5], "target_speeds": [-1.0]}
+
+    with pytest.raises(FrameInspectionError, match="forbids positional/alias truth fields"):
+        _sensing_summary_data(sensing)
+
+
+def test_sensing_summary_rejects_malformed_product_descriptor() -> None:
+    sensing = deepcopy(_build_sensing_payload())
+    sensing["products"]["range_doppler_by_pair"]["shape"] = [1, 99, 8]
+
+    with pytest.raises(FrameInspectionError, match="shape does not match"):
+        _sensing_summary_data(sensing)
+
+
+def test_sensing_summary_lists_ambiguous_kind_variants_without_selecting() -> None:
+    summary = _sensing_summary_data(_build_sensing_payload(ambiguous_products=True))
+
+    matching = [
+        product
+        for product in summary["products"]
+        if product["kind"] == "range_doppler" and product["variant"] == "primary"
+    ]
+    assert [product["data_key"] for product in matching] == [
+        "range_doppler_by_pair",
+        "range_doppler_secondary",
+    ]
+    assert matching[0]["product_id"] != matching[1]["product_id"]
+
+
+def test_inspect_cli_distinguishes_ambiguous_products(tmp_path: Path, capsys) -> None:
+    scenario = tmp_path / "scenario"
+    _write_scenario(scenario, sensing=_build_sensing_payload(ambiguous_products=True))
+
+    assert run([str(scenario)]) == 0
+
+    output = capsys.readouterr().out
+    for key in ("range_doppler_by_pair", "range_doppler_secondary"):
+        assert f"Range–Doppler [{key}]: 1 pair × 4 Doppler bins × 8 range bins" in output
 
 
 def test_inspect_cli_list_mode_does_not_load_frame(tmp_path: Path, capsys) -> None:

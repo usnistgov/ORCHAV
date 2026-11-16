@@ -1,0 +1,26 @@
+# Three original simple buildings isolate visual facade/roof styling.
+schema_version: 2
+scene:
+  source: local
+  id: scene/scene.xml
+raytracing:
+  enabled: true
+  export_path_metrics: false
+  quality:
+    preset: ultra-low
+timeline:
+  steps: 1
+  duration_s: 0.0
+actors:
+  tx:
+    - name: TX
+      mobility:
+        type: stationary
+        position_m: [-25.0, -20.0, 3.0]
+  rx:
+    - name: RX
+      mobility:
+        type: stationary
+        position_m: [25.0, -20.0, 1.5]
+view_defaults:
+  camera_view: isometric

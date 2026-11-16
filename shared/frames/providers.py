@@ -52,6 +52,11 @@ class FileProvider(DataProvider):
     def list_frames(self) -> list[int]:
         return self._handler.list_frames()
 
+    @property
+    def frame_ids_snapshot(self) -> tuple[int, ...] | None:
+        """Expose immutable format inventories without allocating a list."""
+        return self._handler.frame_ids_snapshot
+
     def has_frame(self, step: int) -> bool:
         return self._handler.has_frame(step)
 
@@ -95,7 +100,8 @@ class FileProvider(DataProvider):
     @property
     def info(self) -> ProviderInfo:
         """Expose provider metadata for UI/diagnostics."""
-        frames = self.list_frames()
+        snapshot = self.frame_ids_snapshot
+        frames = self.list_frames() if snapshot is None else snapshot
         return ProviderInfo(
             name=type(self).__name__,
             source=str(self.source),
@@ -135,6 +141,20 @@ class Hdf5Provider(FileProvider):
                 f"No HDF5 frames directory found under {Path(source).resolve()}/{frames_subdir}"
             )
         super().__init__(source, handler)
+
+    def recording_paths(self) -> tuple[Path, ...]:
+        """Return the authoritative local manifest followed by its advertised chunks.
+
+        Consumers may fingerprint these paths for disposable derived caches.
+        Reading frames still goes through the validated projection interface.
+        """
+        from .manifest import FRAMES_MANIFEST_FILENAME
+
+        return (self._handler.frames_dir / FRAMES_MANIFEST_FILENAME, *self._handler.bulk_files)
+
+    def recording_frame_path(self, step: int) -> Path | None:
+        """Return the manifest-bound chunk for one frame."""
+        return self._handler.frame_source_path(step)
 
 
 __all__ = ["FileProvider", "Hdf5Provider"]

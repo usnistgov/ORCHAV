@@ -215,12 +215,31 @@ class SceneService(BaseService):
             return
 
         try:
-            from ..materials import apply_material_settings
+            from ..materials import (
+                apply_material_settings,
+                resolve_material_name,
+                target_material_override_key_candidates,
+            )
+
+            scene = self._require_scene()
+            target_keys = {
+                key
+                for manager in self.target_managers
+                if getattr(manager, "target_material", None) is not None
+                for key in target_material_override_key_candidates(manager.material_type)
+            }
+            # Target creation already applies family overrides. Keep them here
+            # only when they also name a scene material; unknown keys still warn.
+            scene_overrides = {
+                key: props
+                for key, props in material_overrides.items()
+                if key not in target_keys or resolve_material_name(scene, key) is not None
+            }
 
             apply_material_settings(
-                self._require_scene(),
+                scene,
                 default_scattering_preset="none",
-                material_overrides=material_overrides,
+                material_overrides=scene_overrides,
             )
         except Exception:
             self.logger.exception("Requested material overrides failed")
@@ -275,11 +294,14 @@ class SceneService(BaseService):
             # TargetManager is the generator-side owner for target geometry,
             # mesh updates, material aliases, and per-frame metadata.  The
             # returned object is the live Sionna scene object.
-            manager = TargetManager(
-                config,
-                scene,
-                material_overrides=material_overrides,
-            )
+            if getattr(config, "representation", "mesh_material") == "mesh_material":
+                manager = TargetManager(config, scene, material_overrides=material_overrides)
+            else:
+                from ..target.rcs import create_target_manager
+
+                manager = create_target_manager(
+                    config, scene, material_overrides=material_overrides
+                )
             obj = manager.create_target()
             self.target_managers.append(manager)
             self.target_objects.append(obj)

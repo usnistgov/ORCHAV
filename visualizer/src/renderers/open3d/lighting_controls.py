@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from shared.logging import get_logger
-from shared.scenarios.paths import find_project_root
+from shared.scenarios.paths import find_asset_project_root
 
 logger = get_logger("orchav.renderer_open3d.lighting_controls")
 
@@ -24,7 +24,7 @@ class Open3DLightingControlsMixin:
     def _resolve_default_ibl(self) -> str:
         """Resolve the default IBL to a neutral Z-up outdoor environment."""
         try:
-            root = find_project_root(Path(__file__).parent)
+            root = find_asset_project_root(Path(__file__).parent)
             ibl_path = root / "libraries" / "ibl" / "neutral_outdoor_ibl.ktx"
             skybox_path = root / "libraries" / "ibl" / "neutral_outdoor_skybox.ktx"
             if ibl_path.exists() and skybox_path.exists():

@@ -52,6 +52,21 @@ class TestHdf5Provider:
         finally:
             provider.close()
 
+    def test_immutable_inventory_is_reused_and_replaced_on_refresh(self, tmp_path, monkeypatch):
+        _write_minimal_packed_frame_set(tmp_path, frame_id=7)
+        provider = Hdf5Provider(tmp_path)
+        try:
+            snapshot = provider.frame_ids_snapshot
+            assert snapshot == (7,)
+            assert provider.frame_ids_snapshot is snapshot
+            monkeypatch.setattr(provider, "list_frames", lambda: pytest.fail("inventory copied"))
+            assert provider.info.total_frames == 1
+            provider._handler.refresh()
+            assert provider.frame_ids_snapshot == snapshot
+            assert provider.frame_ids_snapshot is not snapshot
+        finally:
+            provider.close()
+
     def test_non_manifest_index_and_chunk_are_not_a_runtime_frame_set(
         self,
         tmp_path: Path,

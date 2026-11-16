@@ -1,0 +1,78 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "analysis/clutter-weighted",
+  "source_identity": {
+    "generation_id": "f99b3930-df16-47fe-a6bb-ac6dda65874f",
+    "frame_set_id": "d8abb048cfa5f4d8c9d9fc33b08eb6479f44dd5217b933a0a6a6725f1c315cad"
+  },
+  "manifest_sha256": "5b4386eae3d53a3c5812cc0611cfdb639cca4176b1c0c49424f7c2cfb8e88814",
+  "source_files_sha256": {
+    "frames_manifest.json": "5b4386eae3d53a3c5812cc0611cfdb639cca4176b1c0c49424f7c2cfb8e88814",
+    "mpc_frames_00063-00063.h5": "2b01c80f5cf90d963d8125050b745e3a0bd7e8ee4f7d2449e38620236344f2b4",
+    "mpc_frames_00127-00127.h5": "de8c0644ff64ec7408ed45993f6fd9f6d933b95ded3245c05709bc85638a3171",
+    "mpc_frames_00191-00191.h5": "0fb5a9f7435f7970c62c9070dbedc41d60726712b4268eb5c7ae5c7c045fca7b"
+  },
+  "figures": [
+    "range_doppler"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 3,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "e5e47415-9646-54c9-9821-cd319b6927c4",
+      "processing_recipe_id": "a1b5cdc53e5fa15893e9111550e089377459d54189dc16e4dec3d1bab75b9a2e",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 127,
+      "reference_time_s": 0.064,
+      "acquisition_id": "698bdea4-842d-53e5-8a38-ffaddf15e6df",
+      "processing_recipe_id": "9d05890597a3a070c912907aee971416f896b6f571d52c67e984d4b17d8d63a3",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 191,
+      "reference_time_s": 0.128,
+      "acquisition_id": "ad3a24a7-720c-56e2-8060-087b8e9b4eb5",
+      "processing_recipe_id": "a4b5fa4fa088f58e77c5b8feb985ecb42bd8b6c05c6c1e04f5ed4d6daa1dd34f",
+      "detection_count": 1
+    }
+  ],
+  "outputs": [
+    "sensing/range_doppler.png",
+    "sensing/range_doppler_full.png"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "summary_output": "sensing/range_doppler_full.png",
+  "output": "docs/assets/sensing_summary/static_and_moving_cubes_weighted_range_doppler_full.png",
+  "output_sha256": "d98d1e16aa20cdc0ad0d4965cb6eb2be8cdd9ae913afe71dad6893d5033d417d",
+  "plotting_source_sha256": {
+    "generator/figures/summary/sensing.py": "68714c70423f25301376c173a5b54bd34b640b28aad113d5993120d4bdec9537",
+    "generator/figures/summary/saved_sensing.py": "93c189d60bb2b71ad65a7a454c4379d7830f1b77285dec8daec04781fd0abcd1",
+    "shared/sensing_viz.py": "45def40892a71ec9fddf952ae697673174d8d3bcf4646b67ee79206b61175ef1",
+    "shared/sensing_doppler_summary.py": "673a30d11deef54429c768cc09c61a15b0db00010cd4ce9d594db3edbb2208a3",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.summary.saved_sensing",
+    "analysis/clutter-weighted",
+    "-o",
+    "analysis/public-figure-refresh/summary-20",
+    "--figure",
+    "range_doppler"
+  ],
+  "path_convention": "Repository-relative source paths and reproducible output-directory names.",
+  "image": "static_and_moving_cubes_weighted_range_doppler_full.png",
+  "sha256": "d98d1e16aa20cdc0ad0d4965cb6eb2be8cdd9ae913afe71dad6893d5033d417d",
+  "tutorial_scenario": "scenarios/sensing/foundations/static_and_moving_cubes/scenario.yaml",
+  "tutorial_scenario_sha256": "e30eafa3159b20e4a4290fa03f7cd1e7a209d41b444ba366f025867330fa4b2a",
+  "license_spdx": "GPL-3.0-only",
+  "execution_backend": "CPU LLVM",
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "d835e92a4fece0efcbc8ed5acf9d5f237e988d41e23c248f22a00aca466c0b08"
+}

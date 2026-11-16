@@ -1,0 +1,211 @@
+{
+  "scenario": "scenarios/generator/building_appearance/surfaces/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "scene/scene.xml"
+  },
+  "source_files": {
+    "scenarios/generator/building_appearance/surfaces/scenario.yaml": "5a66114cbc274896d7ae130bac409c9f6859246750b58cb822ae8e80daf60abc",
+    "scenarios/generator/building_appearance/surfaces/scene/scene.xml": "9a1f62fcd1be969bba13d1a299a71e49794a2dee05bbc441f897c104315bb869",
+    "scenarios/generator/building_appearance/surfaces/scene/surfaces.ply": "7a2d45f0d1bb73b2bace8610f5790c22fa2b1baf2d61f1ba0e34462acd01c519"
+  },
+  "sample_indices": [
+    0
+  ],
+  "sample_times_s": [
+    0.0
+  ],
+  "steps": 1,
+  "actors": [
+    {
+      "name": "TX",
+      "role": "tx",
+      "members": [
+        "TX"
+      ],
+      "sample_positions_m": [
+        [
+          -20.0,
+          0.0,
+          3.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -20.0,
+            0.0,
+            3.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX",
+      "role": "rx",
+      "members": [
+        "RX"
+      ],
+      "sample_positions_m": [
+        [
+          20.0,
+          36.0,
+          3.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            20.0,
+            36.0,
+            3.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "709b389d7ad965cc406ee1ceec402572ebe2cb1bd10b4875b2ff36da6cde467d",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Concrete",
+      "display_rgb": [
+        0.728,
+        0.728,
+        0.728
+      ]
+    }
+  ],
+  "output_sha256": "be72c598c89492d2562aa17782b5c97bfb91a308416770fdc68f9e00d956aec5",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -21.6,
+        -3.06,
+        0.03599999999999999
+      ],
+      [
+        21.6,
+        39.06,
+        3.114
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "ef1158c348035b465264fffe0e89ec2f7ce041fa72adf21bba951cf058f35c7d",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/building_appearance/surfaces"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

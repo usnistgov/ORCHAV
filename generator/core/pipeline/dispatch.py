@@ -18,7 +18,7 @@ from shared.scenarios.actors import ActorsSpec, GroupSpec
 from ..configuration import ReceiverConfig, SimulationConfig, TransmitterConfig
 from .handles import StreamingHandle
 from .offline_pipeline import perform_offline_pipeline
-from .progress import ProgressInfo
+from .progress import ProgressInfo, StderrPreparationProgress
 
 logger = get_logger(__name__)
 
@@ -99,7 +99,14 @@ def perform_pipeline(
         from ..scenario_actors.runtime import prepare_actor_runtime
 
         # One prepared actor timeline drives both live scene state and output.
-        actor_runtime = prepare_actor_runtime(scenario_configuration)
+        preparation_progress = StderrPreparationProgress() if show_progress else None
+        try:
+            actor_runtime = prepare_actor_runtime(
+                scenario_configuration, on_progress=preparation_progress
+            )
+        finally:
+            if preparation_progress is not None:
+                preparation_progress.close()
         tx_configs = list(actor_runtime.transmitters)
         rx_configs = list(actor_runtime.receivers)
         if target_configs is None:

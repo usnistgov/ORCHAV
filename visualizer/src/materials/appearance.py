@@ -44,11 +44,22 @@ class VisualMaterialBinding:
     material_type: str | None = None
     preset: str | None = None
     overrides: Mapping[str, Any] = field(default_factory=dict)
+    # Individual property edits retain their intent separately from the frozen
+    # base assignment. None denotes an explicit material/preset assignment.
+    edited_properties: frozenset[str] | None = None
 
     def __post_init__(self) -> None:
         """Normalize enum and detach mutable override mappings."""
         object.__setattr__(self, "source", VisualMaterialSource(self.source))
         object.__setattr__(self, "overrides", MappingProxyType(dict(self.overrides)))
+        if self.edited_properties is not None:
+            edited = frozenset(self.edited_properties)
+            if (
+                self.source is not VisualMaterialSource.MANUAL
+                or not edited <= self.overrides.keys()
+            ):
+                raise ValueError("Edited properties require matching manual override values")
+            object.__setattr__(self, "edited_properties", edited)
         if self.source is VisualMaterialSource.FOLLOW_EM and (
             self.material_type is not None or self.preset is not None or self.overrides
         ):

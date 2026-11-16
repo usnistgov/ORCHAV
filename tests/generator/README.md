@@ -1,22 +1,16 @@
-# Generator Test Suite
+# Generator tests
 
-This directory contains tests for the `generator` package.
+| Folder | Contents |
+| --- | --- |
+| `unit/` | Tests for individual components, including configuration, geometry, and command-line arguments. |
+| `integration/` | Tests that exercise several components together, including the generation pipeline. |
+| `fixtures/` | Scenario inputs, meshes, and other test data. |
+| `scenarios/` | Python package marker. Runnable examples live in the [scenario catalog](../../scenarios/README.md). |
 
-## Structure
+Put new unit tests in `unit/` and multi-component tests in `integration/`. Run a focused test from the repository root.
 
-- `unit/`: Fast tests for `core`, `io`, and `viz`. Expensive Mitsuba and
-  [Sionna RT](https://nvlabs.github.io/sionna/) dependencies are mocked where
-  appropriate.
-- `integration/`: Orchestration tests for shared scenario loading and generator
-  engine loops, with rendering and output replaced when the test does not need
-  them.
-- `scenarios/`: Small scenario fixtures used by integration tests.
+```bash
+python -m pytest --no-cov tests/generator/unit/test_generator_cli.py -q
+```
 
-## Guidelines
-
-- Use pytest. Mark slow tests and keep unit tests isolated from the file system
-  and network.
-- Prefer deterministic fixtures and mocking for external systems.
-- Add new generator tests directly under `tests/generator/`.
-- Keep assertions on shapes, counts, and invariants. Avoid depending on real
-  rendering.
+See the [test suite guide](../README.md) for environment setup and release checks.

@@ -20,6 +20,12 @@ from typing import Any
 
 import numpy as np
 
+from shared.coverage.availability import (
+    AVAILABILITY_PATH,
+    AVAILABILITY_VERSION,
+    CoverageAvailability,
+    validate_availability,
+)
 from shared.coverage.schema import (
     COVERAGE_CANONICAL_VALUE_METRICS,
     COVERAGE_COMPACT_DERIVED_METRICS,
@@ -262,6 +268,9 @@ def save_coverage_hdf5(
     path_gain = normalise_path_gain_tensor(
         np.asarray(stored_values.get("path_gain_linear", coverage_data["path_gain_linear"]))
     )
+    availability = coverage_data.get("availability")
+    if availability is not None:
+        availability = validate_availability(np.asarray(availability), path_gain)
     tx_count = int(path_gain.shape[2])
     tx_names = list(coverage_data.get("tx_names", []))
     metrics_store = list(metadata.get("metrics_store", []))
@@ -335,6 +344,20 @@ def save_coverage_hdf5(
             data=path_gain.astype(np.float32, copy=False),
             **_coverage_dataset_kwargs(path_gain, compression),
         )
+
+        if availability is not None:
+            dataset = f.create_dataset(
+                AVAILABILITY_PATH,
+                data=availability,
+                **_coverage_dataset_kwargs(availability, compression),
+            )
+            dataset.attrs["schema_version"] = AVAILABILITY_VERSION
+            dataset.attrs["codes"] = json.dumps(
+                {str(int(v)): v.name.lower() for v in CoverageAvailability}
+            )
+            dataset.attrs["meaning"] = (
+                "Solver estimates: zero contribution does not establish zero physical signal"
+            )
 
         derived_group = f.create_group("derived")
         for key, arr in materialized_derived.items():

@@ -21,6 +21,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .contracts import PATH_METRIC_VALIDITY_BITS, PathMetric
+from .sionna_metadata import SIONNA_INTERACTION_SENSING
 
 # Increment when the complete in-memory frame contract changes incompatibly.
 FRAME_FORMAT_VERSION = 2
@@ -326,6 +327,16 @@ class StandardMPCFrame(_CompactFrameProperties):
             raise ValueError("targets_metadata length must match target_positions_m")
         if any(not isinstance(item, Mapping) for item in self.targets_metadata):
             raise ValueError("Each targets_metadata item must be a mapping")
+        if np.any(self.interactions == SIONNA_INTERACTION_SENSING) and (
+            not isinstance(self.provenance, Mapping) or "sionna_sensing" not in self.provenance
+        ):
+            raise ValueError("Sensing interactions require retained sionna_sensing identity")
+        if self.provenance and "sionna_sensing" in self.provenance:
+            from .sensing_identity import validate_sensing_identity
+
+            validate_sensing_identity(
+                self.provenance["sionna_sensing"], self.interactions, self.targets_metadata
+            )
         for target_index, metadata in enumerate(self.targets_metadata):
             current_position = metadata.get("current_position")
             if current_position is None:

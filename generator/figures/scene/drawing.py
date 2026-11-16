@@ -7,10 +7,10 @@ best-effort: missing optional geometry libraries, very large meshes, or invalid
 mesh data fall back to simpler drawing modes instead of failing the generator
 run.
 
-Two cache layers are used for expensive floor plans. In-memory caches reuse
-geometry objects within one process, while persistent NPZ caches under
-``ORCHAV_SUMMARY_CACHE_DIR`` or ``.cache/orchav/summary_geometry`` are keyed by
-scene XML/mesh file signatures and render parameters.
+Native mesh faces and creases are the default, with prepared buffers reused
+within one process. Explicit legacy floor-plan modes also use persistent NPZ
+caches under ``ORCHAV_SUMMARY_CACHE_DIR`` or ``.cache/orchav/summary_geometry``,
+keyed by scene XML/mesh file signatures and render parameters.
 """
 
 import hashlib
@@ -26,9 +26,14 @@ from generator.core.pipeline.progress import StderrProgress
 from shared.cache_sizing import estimate_retained_bytes
 from shared.logging import get_logger
 
+from .mesh_projection import draw_mesh_scene, prepare_mesh_scene
+
 logger = get_logger(__name__)
 
 _SCENE_2D_COMMAND_CACHE: Dict[int, Tuple[Tuple[str, Tuple[Any, ...], Dict[str, Any]], ...]] = {}
+# Retain the source list alongside its prepared mesh buffers so an object-id
+# reused after cache eviction cannot select another scene's geometry.
+_SCENE_MESH_CACHE: dict[int, tuple[Any, Any]] = {}
 _RASTERIZED_SCENE_CACHE: Dict[
     Tuple[int, float, float, bool, Optional[Tuple[float, float]]],
     Tuple[np.ndarray, float, float, float, float],
@@ -79,8 +84,11 @@ def _update_figure_cache_peaks() -> tuple[int, int, int]:
     global _RASTER_CACHE_PEAK_BYTES
     global _VECTOR_CACHE_PEAK_BYTES
 
+    mesh_buffers = [vars(prepared) for _, prepared in _SCENE_MESH_CACHE.values()]
     vector_bytes = (
-        estimate_retained_bytes(_SCENE_2D_COMMAND_CACHE) if _SCENE_2D_COMMAND_CACHE else 0
+        estimate_retained_bytes(_SCENE_2D_COMMAND_CACHE, mesh_buffers)
+        if _SCENE_2D_COMMAND_CACHE or mesh_buffers
+        else 0
     )
     raster_bytes = (
         estimate_retained_bytes(_RASTERIZED_SCENE_CACHE) if _RASTERIZED_SCENE_CACHE else 0
@@ -89,8 +97,9 @@ def _update_figure_cache_peaks() -> tuple[int, int, int]:
         estimate_retained_bytes(
             _SCENE_2D_COMMAND_CACHE,
             _RASTERIZED_SCENE_CACHE,
+            mesh_buffers,
         )
-        if _SCENE_2D_COMMAND_CACHE or _RASTERIZED_SCENE_CACHE
+        if _SCENE_2D_COMMAND_CACHE or _RASTERIZED_SCENE_CACHE or _SCENE_MESH_CACHE
         else 0
     )
     _VECTOR_CACHE_PEAK_BYTES = max(_VECTOR_CACHE_PEAK_BYTES, vector_bytes)
@@ -104,6 +113,7 @@ def clear_scene_figure_caches() -> None:
     global _FIGURE_CACHE_CLEARS
 
     _SCENE_2D_COMMAND_CACHE.clear()
+    _SCENE_MESH_CACHE.clear()
     _RASTERIZED_SCENE_CACHE.clear()
     _FIGURE_CACHE_CLEARS += 1
 
@@ -117,7 +127,7 @@ def get_scene_figure_cache_stats() -> dict[str, int]:
     """
     vector_bytes, raster_bytes, total_bytes = _update_figure_cache_peaks()
     return {
-        "vector_entries": len(_SCENE_2D_COMMAND_CACHE),
+        "vector_entries": len(_SCENE_2D_COMMAND_CACHE) + len(_SCENE_MESH_CACHE),
         "vector_current_bytes": vector_bytes,
         "vector_peak_bytes": _VECTOR_CACHE_PEAK_BYTES,
         "vector_hits": _VECTOR_CACHE_HITS,
@@ -867,12 +877,40 @@ def _build_scene_geometry_2d_commands(scene_geometry: Optional[List[Any]]):
     return commands
 
 
+def _prepared_mesh_scene(scene_geometry):
+    """Reuse native mesh collections across coverage heights and metric panels."""
+    global _VECTOR_CACHE_HITS, _VECTOR_CACHE_MISSES, _VECTOR_CACHE_WRITES
+
+    key = id(scene_geometry)
+    cached = _SCENE_MESH_CACHE.get(key)
+    if cached is not None and cached[0] is scene_geometry:
+        _VECTOR_CACHE_HITS += 1
+        return cached[1]
+    _VECTOR_CACHE_MISSES += 1
+
+    def color_for_mesh(entry):
+        material, _, color = _scene_material_descriptor(
+            str(entry.get("name", "")), entry.get("material_id")
+        )
+        return entry.get("color", color) if material == "other" else color
+
+    prepared = prepare_mesh_scene(scene_geometry, color_for_mesh)
+    _SCENE_MESH_CACHE[key] = (scene_geometry, prepared)
+    _VECTOR_CACHE_WRITES += 1
+    _update_figure_cache_peaks()
+    return prepared
+
+
 def plot_scene_geometry_2d(
     ax,
     scene_geometry,
-    rendering_mode: str = "rasterized",
+    rendering_mode: str = "mesh",
     resolution: float = 0.05,
     show_material_legend: bool = False,
+    *,
+    style: str = "fill",
+    alpha: float = 1.0,
+    zorder: float = 0,
 ):
     """Plot 3D scene geometry as a 2D top-view projection.
 
@@ -880,15 +918,28 @@ def plot_scene_geometry_2d(
         ax: Matplotlib axis to plot on
         scene_geometry: List of mesh dictionaries
         rendering_mode: Rendering method
-            - "rasterized" (default): Clean floor plan with anti-aliasing
+            - "mesh" (default), "auto": Native projected faces and creases
+            - "rasterized": Legacy pixel floor plan with anti-aliasing
             - "vector": Alpha-shape, convex-hull, or point projections
-            - "auto": Try rasterized, fallback to vector
         resolution: Grid resolution for rasterized mode (meters per pixel)
         show_material_legend: If True, add material-family entries to the legend.
     """
+    if not scene_geometry:
+        return
     try:
-        # Rasterized and auto modes try the floor-plan raster first.
-        if rendering_mode in ("rasterized", "auto"):
+        if rendering_mode in ("mesh", "auto"):
+            draw_mesh_scene(
+                ax,
+                _prepared_mesh_scene(scene_geometry or []),
+                style=style,
+                alpha=alpha,
+                zorder=zorder,
+            )
+            if show_material_legend:
+                _add_material_legend_entries(ax, _scene_material_scores(scene_geometry))
+            return
+        # The pixel renderer remains available only when explicitly requested.
+        if rendering_mode == "rasterized":
             rasterized_data = _cached_rasterized_floor_plan(
                 scene_geometry,
                 resolution=resolution,
@@ -1324,24 +1375,26 @@ def _plot_scene_geometry_2d_impl(ax, scene_geometry):
         logger.warning(f"Error plotting scene geometry: {e}")
 
 
-def plot_scene_geometry_3d(
-    ax, scene_geometry, rendering_mode: str = "floor_plan", alpha: float = 0.3
-):
+def plot_scene_geometry_3d(ax, scene_geometry, rendering_mode: str = "mesh", alpha: float = 0.3):
     """Plot 3D scene geometry as a backdrop on a 3D axis.
 
     Args:
         ax: Matplotlib 3D axis
         scene_geometry: List of mesh dictionaries with 'mesh', 'name', 'color'
         rendering_mode: Rendering method
-            - "floor_plan" (default): Cached raster floor texture, with mesh fallback
-            - "mesh": Bounded triangles, convex hulls, or sampled points
+            - "mesh" (default), "auto": Native faces and creases
+            - "floor_plan": Legacy cached raster floor texture, with mesh fallback
             - "wireframe": Bounded mesh-edge collection
             - "hybrid": Floor texture with semi-transparent 3D meshes
             - "city": Floor plan + simplified building blocks for city-scale scenes
         alpha: Transparency for geometry (0=invisible, 1=opaque)
     """
+    if not scene_geometry:
+        return
     logger.info(f"[3D RENDER] Rendering with mode={rendering_mode!r}, alpha={alpha}")
-    if rendering_mode == "floor_plan":
+    if rendering_mode in ("mesh", "auto"):
+        draw_mesh_scene(ax, _prepared_mesh_scene(scene_geometry or []), alpha=alpha)
+    elif rendering_mode == "floor_plan":
         _plot_scene_geometry_3d_floor_plan(ax, scene_geometry, alpha)
     elif rendering_mode == "wireframe":
         _plot_scene_geometry_3d_wireframe(ax, scene_geometry, alpha)
@@ -1444,14 +1497,15 @@ def _plot_scene_geometry_3d_floor_plan(ax, scene_geometry, alpha: float = 0.3):
 
 
 def _plot_scene_geometry_3d_hybrid(ax, scene_geometry, alpha: float = 0.3):
-    """Combine a ground-level floor texture with translucent 3D meshes."""
+    """Combine a projected ground-level mesh with translucent 3D geometry."""
     # Keep the floor visible without letting it compete with vertical geometry.
     floor_alpha = min(alpha * 1.0, 0.4)
-    _plot_scene_geometry_3d_floor_plan(ax, scene_geometry, floor_alpha)
+    prepared = _prepared_mesh_scene(scene_geometry or [])
+    draw_mesh_scene(ax, prepared, alpha=floor_alpha, floor=True)
 
-    # Mesh drawing applies its own opacity caps, so its input needs a stronger alpha.
+    # Give the above-ground geometry more contrast than its floor projection.
     mesh_alpha = min(alpha * 1.8, 0.5)
-    _plot_scene_geometry_3d_mesh(ax, scene_geometry, mesh_alpha)
+    draw_mesh_scene(ax, prepared, alpha=mesh_alpha, zorder=1)
 
     logger.info(
         f"[3D HYBRID] Rendered floor plan (α={floor_alpha:.2f}) + meshes (α={mesh_alpha:.2f})"
@@ -1695,7 +1749,7 @@ def _city_building_entries(
 def _plot_scene_geometry_3d_city(ax, scene_geometry, alpha: float = 0.55):
     """Render city-scale scenes as floor context plus simplified 3D buildings."""
     floor_alpha = min(alpha * 0.45, 0.25)
-    _plot_scene_geometry_3d_floor_plan(ax, scene_geometry, floor_alpha)
+    draw_mesh_scene(ax, _prepared_mesh_scene(scene_geometry or []), alpha=floor_alpha, floor=True)
 
     all_vertices = []
     for mesh_info in scene_geometry or []:

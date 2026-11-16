@@ -2,9 +2,9 @@
 
 The cache stores large numeric arrays in ``npz`` entries and keeps scalar or
 small structured metadata in JSON. Packed HDF5 v2 sources are keyed by the
-manifest's ``generation_id`` and ``frame_set_id``. Older and non-HDF5 sources
-fall back to a stat-based frame fingerprint when those durable identities are
-not available.
+manifest's ``frame_set_id`` and optional ``generation_id``. Legacy local
+sources use fingerprints of their own recording files. Mutable sources never
+load or save persistent statistics.
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ from typing import Any, Optional
 
 import numpy as np
 
+from shared.frames.provider_base import ProviderCapability
+from shared.frames.providers import FileProvider
 from shared.logging import get_logger
 
 from ..metrics.scenario_statistics import SCENARIO_STATISTICS_SCHEMA_VERSION
@@ -43,7 +45,7 @@ def _cache_io_lock(cache_path: Path) -> threading.Lock:
 class StatisticsCacheService(BaseService):
     """Persist and reload scenario-level statistics across visualizer sessions."""
 
-    CACHE_SCHEMA_VERSION = 4
+    CACHE_SCHEMA_VERSION = 5
     CACHE_FILENAME_PREFIX = ".orchav-stats-"
     _CACHE_PATH_HASH_BYTES = 16
     _ARRAY_KEYS = (
@@ -54,6 +56,11 @@ class StatisticsCacheService(BaseService):
         "aod_az_values",
         "aod_el_values",
         "frame_indices",
+        "frame_times_s",
+        "delay_time_power_db",
+        "delay_time_x_edges",
+        "delay_time_delay_edges_ns",
+        "delay_time_observation_counts",
         "mpc_evolution",
         "delay_spread_evolution",
         "direct_path_pair_share_evolution",
@@ -69,6 +76,11 @@ class StatisticsCacheService(BaseService):
         "aod_az_values": np.float32,
         "aod_el_values": np.float32,
         "frame_indices": np.int32,
+        "frame_times_s": np.float64,
+        "delay_time_power_db": np.float64,
+        "delay_time_x_edges": np.float64,
+        "delay_time_delay_edges_ns": np.float64,
+        "delay_time_observation_counts": np.int64,
         "mpc_evolution": np.int32,
         "delay_spread_evolution": np.float32,
         "direct_path_pair_share_evolution": np.float32,
@@ -280,24 +292,39 @@ class StatisticsCacheService(BaseService):
         scenario: Optional[Any] = None,
         provider: Optional[Any] = None,
     ) -> Optional[dict[str, Any]]:
-        """Return the complete identity for one statistics result.
-
-        Manifest identities avoid opening or stat-scanning HDF5 chunks during
-        cache lookup. The fallback fingerprint keeps non-HDF5 providers
-        functional when they do not expose a durable source identity.
-        """
-
-        provider_identity = self._provider_identity(provider)
-        if provider_identity is not None:
-            generation_id, frame_set_id = provider_identity
-            legacy_fingerprint = None
-        else:
-            generation_id = None
-            frame_set_id = None
-            legacy_fingerprint = self._frame_set_fingerprint(scenario)
-            if legacy_fingerprint is None:
+        """Identify the active immutable source, never a nearby frame directory."""
+        generation_id = None
+        frame_set_id = None
+        legacy_fingerprint = None
+        if provider is None:
+            # Older local callers have no provider argument. An explicit file
+            # context is required; a frames directory alone proves no ownership.
+            scenario_obj = scenario or getattr(self.visualizer, "scenario", None)
+            if getattr(scenario_obj, "data_mode", None) != "files":
                 return None
+            legacy_fingerprint = self._frame_set_fingerprint(scenario)
+        else:
+            candidate = getattr(provider, "provider", None) or provider
+            try:
+                info = candidate.info
+                capabilities = info.capabilities
+                if not isinstance(capabilities, ProviderCapability):
+                    return None
+                if capabilities & (ProviderCapability.STREAMING | ProviderCapability.OVERRIDES):
+                    return None
+                frame_set_id = getattr(info, "frame_set_id", None)
+                generation_id = getattr(info, "generation_id", None)
+            except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
+                return None
+            if isinstance(frame_set_id, str) and frame_set_id.strip():
+                # Remote snapshots intentionally need not publish a generation ID.
+                generation_id = str(generation_id) if generation_id else None
+            else:
+                generation_id = frame_set_id = None
+                legacy_fingerprint = self._local_provider_fingerprint(candidate)
 
+        if frame_set_id is None and legacy_fingerprint is None:
+            return None
         return {
             "cache_schema_version": self.CACHE_SCHEMA_VERSION,
             "algorithm_schema_version": SCENARIO_STATISTICS_SCHEMA_VERSION,
@@ -307,21 +334,29 @@ class StatisticsCacheService(BaseService):
         }
 
     @staticmethod
-    def _provider_identity(provider: Optional[Any]) -> Optional[tuple[str, str]]:
-        """Read durable identities without loading a frame projection."""
-
-        if provider is None:
-            return None
-        candidate = getattr(provider, "provider", None) or provider
+    def _local_provider_fingerprint(provider: Any) -> Optional[str]:
+        """Fingerprint only files explicitly owned by the active local provider."""
         try:
-            info = candidate.info
-            generation_id = getattr(info, "generation_id", None)
-            frame_set_id = getattr(info, "frame_set_id", None)
-        except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
+            recording_paths = getattr(provider, "recording_paths", None)
+            if callable(recording_paths):
+                paths = recording_paths()
+            elif isinstance(provider, FileProvider):
+                paths = provider.bulk_files
+            else:
+                return None
+            paths = sorted({Path(path).resolve() for path in paths})
+            if not paths:
+                return None
+            hasher = hashlib.sha256()
+            for path in paths:
+                stat = path.stat()
+                # Include the full path: an unrelated recording with identical
+                # basenames and timestamps must not inherit another source's key.
+                hasher.update(os.fsencode(path))
+                hasher.update(f"\0{stat.st_size}\0{stat.st_mtime_ns}\0".encode())
+            return hasher.hexdigest()
+        except (OSError, RuntimeError, TypeError, ValueError):
             return None
-        if not generation_id or not frame_set_id:
-            return None
-        return str(generation_id), str(frame_set_id)
 
     @staticmethod
     def _decode_metadata(payload: Any) -> dict[str, Any]:

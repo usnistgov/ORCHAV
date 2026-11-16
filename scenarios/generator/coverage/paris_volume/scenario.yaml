@@ -1,0 +1,60 @@
+# Coverage cell centres coincide with the dense Paris sensing experiment.
+# One RadioMapSolver solve per height; no UAV or sensing processing is run.
+schema_version: 2
+debug_level: WARNING
+scene:
+  source: sionna
+  id: etoile
+timeline:
+  steps: 1
+  duration_s: 0.0
+actors:
+  tx:
+  - name: ParisTX
+    power_dbm: 44.0
+    mobility:
+      type: stationary
+      position_m: [-107.658, 48.768, 25.5]
+    orientation:
+      type: fixed
+      yaw_deg: -25.0
+raytracing:
+  enabled: false
+  export_path_metrics: false
+  carrier_frequency_hz: 4.9e9
+  antenna:
+    tx:
+      pattern: iso
+      num_rows: 1
+      num_cols: 1
+    rx:
+      pattern: iso
+      num_rows: 1
+      num_cols: 1
+coverage:
+  enabled: true
+  grid:
+    bbox_xy: [[-190.0, -65.0], [-25.0, 100.0]]
+    resolution_m: [5.0, 5.0]
+    heights_m: [10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0]
+  solver:
+    samples_per_tx: 4000000
+    max_depth: 3
+    los: true
+    specular_reflection: true
+    diffuse_reflection: false
+    refraction: false
+    diffraction: false
+    seed: 20260924
+  metrics:
+    store: [path_gain_linear]
+    derived: [path_gain_db, path_loss_db, rss_dbm]
+  save:
+    figure:
+      enabled: false
+generator_summary:
+  enabled: false
+view_defaults:
+  camera_view: isometric
+  mpc_visibility:
+    enabled: false

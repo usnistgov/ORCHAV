@@ -2,31 +2,28 @@
 # Keep executable shell scripts portable when contributors use core.autocrlf.
 *.sh text eol=lf
 
-# Protobuf regeneration is byte-checked, so the checked-in stubs use one
-# newline representation on every supported platform.
+# Protobuf regeneration is byte-checked across supported platforms.
 shared/protos/*_pb2.py text eol=lf
 shared/protos/*_pb2_grpc.py text eol=lf
 
-# =============================================================================
-# Export Ignore - Exclude from git archive / release packages
-# =============================================================================
+# Sensing documentation authenticates these source inputs byte-for-byte.
+scenarios/sensing/*/scenario.yaml text eol=lf
+generator/core/services/raytracing_service.py text eol=lf
+shared/sensing/postprocessor.py text eol=lf
+visualizer/src/sensing/replay_cli.py text eol=lf
+libraries/scenes/empty/empty.xml text eol=lf
+libraries/targets/cube/cube.ply text eol=lf
+libraries/targets/uav/*/drone.obj text eol=lf
+libraries/targets/uav/*/geometry.json text eol=lf
 
-# Deprecated directories (not for open-source release)
-generator/examples/deprecated/ export-ignore
-scenarios/deprecated/ export-ignore
-docsDeprecated/ export-ignore
+# Preserve authenticated third-party license evidence byte-for-byte.
+scenarios/showcases/paris_opera_multitarget/inputs/vehicles/bmw/source_license.js -text
 
-# Private research scenarios (kept in the private source repository only)
-scenarios/visualizer/private/ export-ignore
-
-# Development/internal files
-.claude/ export-ignore
+# Generated local outputs are not part of source archives.
 *.jsonl export-ignore
-
-# Generated output directories (users should generate their own)
 scenarios/*/frames/ export-ignore
 scenarios/*/summary/ export-ignore
 scenarios/*/experiments/ export-ignore
 
-# Calibration data (optional module, not in initial release)
-scenarios/calibration/ export-ignore
+# Matplotlib SVG path spacing is retained for scientific receipt hashes.
+scenarios/sensing/foundations/RCS/*/results/*.svg whitespace=-blank-at-eol

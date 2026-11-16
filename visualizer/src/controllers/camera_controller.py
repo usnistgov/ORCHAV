@@ -9,6 +9,7 @@ session-friendly preset serialization.
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
@@ -55,6 +56,9 @@ class CameraController:
         self._pre_pov_camera_state: Optional[CameraState] = None
         # Guard against re-entrant POV data bootstrapping.
         self._pov_bootstrap_in_progress: bool = False
+        self._presentation = None
+        self._motion_pov_entity = None
+        self._motion_pov_direction = None
         self._camera_debug_enabled: bool = os.getenv("ORCHAV_CAMERA_DEBUG", "").lower() in (
             "1",
             "true",
@@ -70,6 +74,54 @@ class CameraController:
             logger.info("CameraDebugController: %s %s", message, details)
         else:
             logger.info("CameraDebugController: %s", message)
+
+    def presentation(self):
+        """Return pygfx camera tools; other renderers retain their camera behavior."""
+        renderer = getattr(self.visualizer, "renderer", None)
+        if getattr(renderer, "renderer_id", None) != "pygfx":
+            return None
+        if self._presentation is None or self._presentation.renderer is not renderer:
+            if self._presentation is not None:
+                self._presentation.close()
+            from ..services.camera_presentation import CameraPresentation
+
+            self._presentation = CameraPresentation(self)
+            renderer.camera_tools = self._presentation
+        return self._presentation
+
+    def reset_for_recording(self) -> None:
+        """Retire camera tools whose actor identities belong to the outgoing source."""
+        self._motion_pov_entity = None
+        self._motion_pov_direction = None
+        if self._presentation is None:
+            return
+        self._last_follow_target_pos = None
+        self._camera_presets.clear()
+        self._presentation.reset_for_recording()
+
+    def set_field_of_view(self, fov: float) -> bool:
+        """Edit the active lens in any mode, preserving camera pose and tracking."""
+        renderer = getattr(self.visualizer, "renderer", None)
+        if renderer is None or not np.isfinite(fov) or not 5 <= fov <= 150:
+            return False
+        state = renderer.get_camera_state()
+        if state is None:
+            return False
+        tools = self.presentation()
+        if tools is not None and tools.exporting:
+            return False
+        state = replace(state, fov_deg=float(fov))
+        if tools is not None:
+            # A direct lens edit takes precedence over automatic motion. Applying
+            # through the coordinator also keeps keyboard focus in the spin box.
+            tools.stop()
+            renderer.cancel_camera_gestures()
+            success = tools.apply(state)
+            if success:
+                tools.pov_fov = float(fov)
+        else:
+            success = renderer.set_camera_state(state)
+        return bool(success)
 
     def set_overview_view(
         self,
@@ -147,6 +199,9 @@ class CameraController:
             return False
 
         try:
+            tools = self.presentation()
+            if tools is not None:
+                tools.prepare()
             success = renderer.set_overview_camera(
                 view_key,
                 (center, extent),
@@ -223,6 +278,10 @@ class CameraController:
             if not hasattr(renderer, "set_camera_state"):
                 logger.warning("Cannot load camera preset: set_camera_state unavailable")
                 return False
+            tools = self.presentation()
+            if tools is not None:
+                tools.prepare()
+                tools.free_camera()
             if not renderer.set_camera_state(cam_state):
                 logger.warning("Cannot load camera preset: set_camera_state failed")
                 return False
@@ -310,7 +369,12 @@ class CameraController:
             if not hasattr(viz.renderer, "focus_camera"):
                 logger.warning("Cannot focus: renderer camera API unavailable")
                 return
-            success = viz.renderer.focus_camera(np.asarray(target_pos, dtype=np.float64))
+            tools = self.presentation()
+            if tools is not None:
+                tools.follow_position = None
+                success = tools.follow(np.asarray(target_pos, dtype=np.float64))
+            else:
+                success = viz.renderer.focus_camera(np.asarray(target_pos, dtype=np.float64))
             if success:
                 self._last_follow_target_pos = np.asarray(target_pos, dtype=np.float64)
             else:
@@ -403,21 +467,29 @@ class CameraController:
                 self._camera_debug("set_pov_camera_failed_no_position")
                 return False
 
-            # Hide the selected entity so first-person views do not render from
-            # inside the same marker/orientation frame.
+            # True POV hides the actor containing the camera. Offset POV restores
+            # normal layer visibility through the existing semantic owner; it
+            # must not force a manually hidden actor or layer to become visible.
+            tools = self.presentation()
             previous_hidden_entity = self._pov_visibility.current_hidden_entity()
-            if entity_info is not None:
+            if tools is not None and not tools.true_pov:
+                if not self._pov_visibility.set_hidden_entity(None):
+                    logger.warning("Cannot restore selected actor for offset POV")
+                    return False
+                visibility_staged = True
+            elif entity_info is not None:
                 if not self._hide_pov_entity(entity_info):
                     logger.warning("Cannot set POV: entity visibility synchronization failed")
                     self._camera_debug("set_pov_camera_failed_visibility")
                     return False
                 visibility_staged = True
 
-            # AppState owns which local entity axis acts as the camera forward.
+            # AppState owns the requested look direction; renderers receive a
+            # resolved orientation for travel-based POV.
             pov_axis = (
-                getattr(viz.app_state, "pov_axis", "forward")
+                getattr(viz.app_state, "pov_axis", "motion")
                 if hasattr(viz, "app_state")
-                else "forward"
+                else "motion"
             )
             logger.debug("Using POV axis: %s", pov_axis)
 
@@ -430,12 +502,20 @@ class CameraController:
                 logger.warning("POV camera requires renderer camera API")
                 return False
 
-            ok = renderer.set_pov_camera(
-                position,
-                orientation,
-                pov_axis,
-                defer_redraw=defer_redraw,
-            )
+            if pov_axis == "motion":
+                orientation = self._motion_pov_orientation(entity_info)
+                pov_axis = "forward"
+
+            if tools is not None:
+                state = tools.pov_pose(position, orientation, pov_axis)
+                ok = state is not None and renderer.set_camera_state(state)
+            else:
+                ok = renderer.set_pov_camera(
+                    position,
+                    orientation,
+                    pov_axis,
+                    defer_redraw=defer_redraw,
+                )
             if not ok:
                 logger.warning("POV camera set_pov_camera failed")
                 return False
@@ -456,6 +536,29 @@ class CameraController:
         finally:
             if visibility_staged and not camera_applied:
                 self._pov_visibility.set_hidden_entity(previous_hidden_entity)
+
+    def _motion_pov_orientation(self, entity_info) -> list[float]:
+        """Resolve travel yaw/pitch, retaining the last direction while stopped."""
+        identity = (
+            getattr(self.visualizer, "current_scenario_path", None),
+            entity_info,
+        )
+        if identity != self._motion_pov_entity:
+            self._motion_pov_entity = identity
+            self._motion_pov_direction = None
+        direction = self.scene_query.get_focus_motion_direction()
+        if direction is not None and np.linalg.norm(direction) > 1e-6:
+            self._motion_pov_direction = np.asarray(direction, dtype=float).copy()
+        if self._motion_pov_direction is None:
+            state = self.visualizer.renderer.get_camera_state()
+            self._motion_pov_direction = (
+                np.subtract(state.lookat, state.eye)
+                if state is not None
+                else np.array([1.0, 0.0, 0.0])
+            )
+        x, y, z = self._motion_pov_direction
+        # The renderer's positive pitch rotates +X toward -Z.
+        return [float(np.arctan2(y, x)), float(-np.arctan2(z, np.hypot(x, y))), 0.0]
 
     def _bootstrap_pov_frame_data(self) -> bool:
         """Best-effort one-shot frame bootstrap so POV can resolve entity positions."""
@@ -519,17 +622,25 @@ class CameraController:
                 logger.warning("Renderer missing update_follow_camera")
                 return
 
+            tools = self.presentation()
             if self._last_follow_target_pos is not None:
                 distance = np.linalg.norm(target_pos_array - self._last_follow_target_pos)
-                if distance < 0.1:
+                threshold = 1e-9 if getattr(viz.renderer, "renderer_id", None) == "pygfx" else 0.1
+                if distance < threshold and not (
+                    tools is not None and tools.follow_heading in {"chase", "motion"}
+                ):
                     self._camera_debug(
                         "follow_skip_small_target_delta",
                         target_delta=f"{distance:.6f}",
-                        threshold="0.100000",
+                        threshold=f"{threshold:.9f}",
                     )
                     return
 
-            success = viz.renderer.update_follow_camera(target_pos_array)
+            success = (
+                tools.follow(target_pos_array)
+                if tools is not None
+                else (viz.renderer.update_follow_camera(target_pos_array))
+            )
             if success:
                 self._last_follow_target_pos = target_pos_array.copy()
                 logger.debug("Renderer follow camera updated")
@@ -569,10 +680,7 @@ class CameraController:
             previous_text = dropdown.currentText()
             desired_data = self._preferred_focus_data or previous_data
 
-            dropdown.blockSignals(True)
-            dropdown.clear()
-
-            dropdown.addItem("Auto (First Target)", {"type": "auto"})
+            choices = [("Auto (First Target)", {"type": "auto"})]
 
             # Prefer ViewModel data because it matches the frame currently shown.
             target_count = 0
@@ -589,7 +697,7 @@ class CameraController:
                             i,
                             canonical_index=selection["index"],
                         )
-                        dropdown.addItem(display, selection)
+                        choices.append((display, selection))
                         target_count += 1
 
             from ..scene.geometry_helpers import resolve_node_label
@@ -613,7 +721,7 @@ class CameraController:
                             label_mode=label_mode,
                             device_names=tx_device_names,
                         )
-                        dropdown.addItem(text, {"type": "tx", "index": i})
+                        choices.append((text, {"type": "tx", "index": i}))
 
             rx_count = 0
             if hasattr(viz, "current_view_model") and viz.current_view_model:
@@ -627,7 +735,7 @@ class CameraController:
                             label_mode=label_mode,
                             device_names=rx_device_names,
                         )
-                        dropdown.addItem(text, {"type": "rx", "index": i})
+                        choices.append((text, {"type": "rx", "index": i}))
 
             # Startup and partial-frame paths may only have frame mirrors.
             if tx_count == 0 and hasattr(viz, "current_tx_positions"):
@@ -642,7 +750,7 @@ class CameraController:
                         label_mode=label_mode,
                         device_names=tx_device_names,
                     )
-                    dropdown.addItem(text, {"type": "tx", "index": i})
+                    choices.append((text, {"type": "tx", "index": i}))
 
             if rx_count == 0 and hasattr(viz, "current_rx_positions"):
                 rx_count = (
@@ -656,26 +764,32 @@ class CameraController:
                         label_mode=label_mode,
                         device_names=rx_device_names,
                     )
-                    dropdown.addItem(text, {"type": "rx", "index": i})
+                    choices.append((text, {"type": "rx", "index": i}))
 
-            restored = False
-            if desired_data:
-                idx = self._find_matching_index(dropdown, desired_data)
-                if idx is not None:
-                    dropdown.setCurrentIndex(idx)
-                    restored = True
-
-            if not restored and previous_text:
-                idx = dropdown.findText(previous_text)
-                if idx != -1:
-                    dropdown.setCurrentIndex(idx)
-                    restored = True
-
-            if not restored:
-                dropdown.setCurrentIndex(0)
-
-            dropdown.blockSignals(False)
-
+            # Frame motion does not change the available actors. Rebuilding an
+            # open combo resets its highlighted row before a user can accept it.
+            # Keep its model and popup intact until the actual choices change.
+            changed = dropdown.count() != len(choices) or any(
+                dropdown.itemText(i) != text or dropdown.itemData(i) != data
+                for i, (text, data) in enumerate(choices)
+            )
+            selected = next(
+                (i for i, (_, data) in enumerate(choices) if data == desired_data), None
+            )
+            if selected is None:
+                selected = next(
+                    (i for i, (text, _) in enumerate(choices) if text == previous_text), 0
+                )
+            if changed or dropdown.currentIndex() != selected:
+                blocked = dropdown.blockSignals(True)
+                try:
+                    if changed:
+                        dropdown.clear()
+                        for text, data in choices:
+                            dropdown.addItem(text, data)
+                    dropdown.setCurrentIndex(selected)
+                finally:
+                    dropdown.blockSignals(blocked)
             self._preferred_focus_data = dropdown.currentData()
 
             total_items = target_count + tx_count + rx_count + 1
@@ -697,13 +811,6 @@ class CameraController:
         if dropdown is None:
             return
         self._preferred_focus_data = dropdown.currentData()
-
-    def _find_matching_index(self, dropdown, desired_data) -> Optional[int]:
-        """Return the dropdown index whose item data matches *desired_data*."""
-        for idx in range(dropdown.count()):
-            if dropdown.itemData(idx) == desired_data:
-                return idx
-        return None
 
     def _hide_pov_entity(self, entity_info: Optional[dict]) -> bool:
         """Hide the sphere and orientation frame of the POV entity."""

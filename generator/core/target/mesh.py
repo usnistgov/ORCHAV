@@ -77,7 +77,7 @@ def mesh_update_step_interval(
 
     ``mesh_update_interval_s`` is a wall-clock interval for animated target
     meshes. ORCHAV maps it onto the simulation step grid using the same
-    convention as ray tracing: ``duration / num_steps``.
+    endpoint-inclusive convention as the scene clock: ``duration / (num_steps - 1)``.
 
     The interval exists so mesh playback does not have to advance on every ray
     tracing step. Some frame products need geometry to remain fixed over a
@@ -86,11 +86,17 @@ def mesh_update_step_interval(
     """
     if mesh_update_interval_s is None:
         return None
-    if not num_steps or duration is None or duration <= 0:
+    if not num_steps or num_steps <= 1 or duration is None or duration <= 0:
         return None
 
-    dt = float(duration) / max(int(num_steps), 1)
-    return max(1, math.ceil(float(mesh_update_interval_s) / dt))
+    dt = float(duration) / (int(num_steps) - 1)
+    interval_steps = float(mesh_update_interval_s) / dt
+    nearest_step = round(interval_steps)
+    # Decimal time settings can place an integer ratio a few floating-point
+    # units above its boundary. Do not delay that update by an entire step.
+    if abs(interval_steps - nearest_step) <= 8 * math.ulp(interval_steps):
+        interval_steps = float(nearest_step)
+    return max(1, math.ceil(interval_steps))
 
 
 def mesh_call_count_for_step(frame_idx: int, mesh_step_interval: int | None) -> int:
@@ -269,9 +275,18 @@ def _prepare_mesh_path_for_mitsuba(mesh_path: str) -> str:
         _NORMALIZED_PLY_CACHE[cache_key] = str(output_path)
         return str(output_path)
 
+    temp_path: Path | None = None
     try:
         _NORMALIZED_PLY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        temp_path = output_path.with_suffix(".tmp")
+        # Separate jobs can normalize the same asset concurrently. Give each
+        # writer its own file, then publish only the complete PLY atomically.
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{output_path.stem}.",
+            suffix=".tmp",
+            dir=_NORMALIZED_PLY_CACHE_DIR,
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
         _write_float_vertex_color_ply(source_path, temp_path)
         os.replace(temp_path, output_path)
         _NORMALIZED_PLY_CACHE[cache_key] = str(output_path)
@@ -288,6 +303,12 @@ def _prepare_mesh_path_for_mitsuba(mesh_path: str) -> str:
             exc,
         )
         return mesh_path
+    finally:
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.debug("Could not remove temporary PLY %s: %s", temp_path, exc)
 
 
 def positions_from_ply_aabb(

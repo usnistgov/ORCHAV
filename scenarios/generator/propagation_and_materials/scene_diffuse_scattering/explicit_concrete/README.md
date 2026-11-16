@@ -1,7 +1,5 @@
 # Explicit Concrete Diffuse Scattering
 
-[Scenarios](../../../../README.md) > [Generator](../../../README.md) > [Scene Diffuse Scattering](../README.md) > Explicit Concrete
-
 This variant enables diffuse solving and sets the concrete scattering
 coefficient directly, without applying the ITU-family preset. The other room
 materials keep the values loaded from the scene.
@@ -10,11 +8,15 @@ To run it, see [Running](#running).
 
 ## Scene Layout
 
-The concrete, wood, brick, plasterboard, and chipboard room is shared with the
-parent comparison. `TX` is stationary at `(-3.0 m, -3.0 m, 4.0 m)`, and `RX`
+![Scenario topology](../../../../../docs/assets/scenarios/scenarios_generator_propagation_and_materials_scene_diffuse_scattering_explicit_concrete_topology.png)
+
+The concrete, wood, brick, plasterboard, and chipboard room is shared by
+all four variants. `TX` is stationary at `(-3.0 m, -3.0 m, 4.0 m)`, and `RX`
 is stationary at `(3.0 m, 3.0 m, 1.0 m)`.
 
 ## Configuration Walkthrough
+
+See [scenario.yaml](scenario.yaml) for the complete configuration.
 
 ```yaml
 raytracing:
@@ -33,10 +35,21 @@ nonzero scattering coefficient in this variant.
 
 ## Running
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/propagation_and_materials/scene_diffuse_scattering/explicit_concrete
 orchav-generator scenarios/generator/propagation_and_materials/scene_diffuse_scattering/explicit_concrete
+```
+
+Inspect the effective material coefficients:
+
+```bash
 orchav-inspect scenarios/generator/propagation_and_materials/scene_diffuse_scattering/explicit_concrete --frame 0 --materials
+```
+
+Open the scenario in the Visualizer:
+
+```bash
 orchav-visualizer --scenario scenarios/generator/propagation_and_materials/scene_diffuse_scattering/explicit_concrete
 ```
 
@@ -47,7 +60,7 @@ environment.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../../README.md) | [Generator](../../../README.md) |
-> Parent: [Scene Diffuse Scattering](../README.md) | Current: **Explicit Concrete**
->
-> Compare: [Solver Switch Only](../README.md#1-enable-diffuse-solving-only) | [ITU Preset](../itu_preset/README.md) | [Preset With Concrete Override](../itu_preset_concrete_override/README.md)
+Up: [Scene Diffuse Scattering](../README.md) ·
+[Solver Switch Only](../README.md#1-enable-diffuse-solving-only) ·
+[ITU Preset](../itu_preset/README.md) ·
+[Preset With Concrete Override](../itu_preset_concrete_override/README.md)

@@ -1,0 +1,859 @@
+{
+  "scenario": "scenarios/showcases/paris_opera_multitarget/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "scene_clean/scene.xml"
+  },
+  "source_files": {
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/drone/drone.obj": "72d8e754152f35be7c9ba9e070ba09df7697e5198162ba4a7bb0a3bfc5b6599d",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/bmw/target.ply": "b43fceebdf899af1001709bef39c920eb36a8980f8d820e94ac1c8a87a32402d",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/bmw/target_metadata.json": "8738360120822ed65033dd8e4288cc8489e3b0943dcae00946a1c71071162692",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/scooter/target.ply": "f387adff7bbabc8478f72075c2583bf70a15295b423116c47c726581746c6b6a",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/animated_target.json": "72e9bbbbac02f4a911039740e8e8b152e100495819f40b86eecf9e724c3c1020",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/02f1b365273b46c8932c5b55ff109ec5d2d8658095869cd165d292c7d1d49c3a.json": "02f1b365273b46c8932c5b55ff109ec5d2d8658095869cd165d292c7d1d49c3a",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/03965daa23c55e2ddcddc172feef4abc87350adb79b7d4d313add48df1b227e8.json": "03965daa23c55e2ddcddc172feef4abc87350adb79b7d4d313add48df1b227e8",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/0e0de71262df425fdad892b309309044b48125806417a45a8246c889fcf6c065.json": "0e0de71262df425fdad892b309309044b48125806417a45a8246c889fcf6c065",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/0e3c4d8207531a82c7728a4a43b6295bfa2f0dd289716124ff14b71e0f513c06.json": "0e3c4d8207531a82c7728a4a43b6295bfa2f0dd289716124ff14b71e0f513c06",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/2aa536c1b4ad4785b66e15675b62b2ceb9709d080bada468f8499d56a7732cee.json": "2aa536c1b4ad4785b66e15675b62b2ceb9709d080bada468f8499d56a7732cee",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/35eb854b530c98d23b6960e852101adc49c2bd6fdcaf60e5989f86017de6e192.json": "35eb854b530c98d23b6960e852101adc49c2bd6fdcaf60e5989f86017de6e192",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/432b5d106cfed5c39dc4c9c9e17713c794fd56038786e3291e588658a56df164.json": "432b5d106cfed5c39dc4c9c9e17713c794fd56038786e3291e588658a56df164",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/456f87f31561e976f8b5c4742924e5ff10a052fc3a7bce9f776236f1f7c5a5e1.json": "456f87f31561e976f8b5c4742924e5ff10a052fc3a7bce9f776236f1f7c5a5e1",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/469cc59d37ddafc90a7e2ac4c8da6e60f04da6166cf1886a7d5070fb135d58f6.json": "469cc59d37ddafc90a7e2ac4c8da6e60f04da6166cf1886a7d5070fb135d58f6",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/4c6f68123987c0b378f53634a27ba3ed699365ea07c7ab23ed0bb55a33ce07ae.json": "4c6f68123987c0b378f53634a27ba3ed699365ea07c7ab23ed0bb55a33ce07ae",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/514389f22b9c791808676fe3af310bdc2ae7d94fa104a7f737002dbb97ba90fa.json": "514389f22b9c791808676fe3af310bdc2ae7d94fa104a7f737002dbb97ba90fa",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/522c2e6baf7a538e56d4e0b0a02fa3391e6ac45b1c78056435fece5576089185.json": "522c2e6baf7a538e56d4e0b0a02fa3391e6ac45b1c78056435fece5576089185",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/5e7d869ba234034cda1d25eb3a22ed506fc0bd7acdd1b596be498bd50fe9fabd.json": "5e7d869ba234034cda1d25eb3a22ed506fc0bd7acdd1b596be498bd50fe9fabd",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/5f9b0b1c87547267deaba9105752e66f1de7e182d5760c9a0e6492957bbb74ee.json": "5f9b0b1c87547267deaba9105752e66f1de7e182d5760c9a0e6492957bbb74ee",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/65706171373ed315b46989b046e729d11b23bc57127f2a0bdfb8a84fa4335188.json": "65706171373ed315b46989b046e729d11b23bc57127f2a0bdfb8a84fa4335188",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/6be07973844f1f17a7a762f68df7d3b3fef3dea9b149fd10a860dbe7fb58278d.json": "6be07973844f1f17a7a762f68df7d3b3fef3dea9b149fd10a860dbe7fb58278d",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/745656285d3b61d810ae69b30fea7e8762b188de4fb8c7fc5fc813cfb4844f6d.json": "745656285d3b61d810ae69b30fea7e8762b188de4fb8c7fc5fc813cfb4844f6d",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/89294b99f099c043e4e32044d82d5eb37882f403bc3f59084e3e5b40920a244b.json": "89294b99f099c043e4e32044d82d5eb37882f403bc3f59084e3e5b40920a244b",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/935d189ecad486e24bcb92c428fef24d313d4abc900040b219cfd7ccd29d31f0.json": "935d189ecad486e24bcb92c428fef24d313d4abc900040b219cfd7ccd29d31f0",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/99e83267d75e7dc85e6c2f966c3231083532b801c296c918cac2bead032be9d0.json": "99e83267d75e7dc85e6c2f966c3231083532b801c296c918cac2bead032be9d0",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/a67678e5911356090c21e94c0b5f9af76c701f4c6b1e52c5f07b74f9abd140eb.json": "a67678e5911356090c21e94c0b5f9af76c701f4c6b1e52c5f07b74f9abd140eb",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/a94b62b3dc793f2e9c4b84455feefba08f7543ed71bab362fd0e050199c042de.json": "a94b62b3dc793f2e9c4b84455feefba08f7543ed71bab362fd0e050199c042de",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/b2e122413ad4a956c0abf6a81041dd72317d5d5d72d132c3cbc15d76facf8f87.json": "b2e122413ad4a956c0abf6a81041dd72317d5d5d72d132c3cbc15d76facf8f87",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/b59a5c208392d060697c153376aaef04e8f4e1942d7be6fe3e4bfd34d46dd4a3.json": "b59a5c208392d060697c153376aaef04e8f4e1942d7be6fe3e4bfd34d46dd4a3",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/b792171aa95608e7aed0e93f0886fe4269f9c0917b6116394b0f9da8038dd1e7.json": "b792171aa95608e7aed0e93f0886fe4269f9c0917b6116394b0f9da8038dd1e7",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/b8b6de0d4215a35089dd99d5656af40b7e148fa80e97e83d79e905ea8d4249fe.json": "b8b6de0d4215a35089dd99d5656af40b7e148fa80e97e83d79e905ea8d4249fe",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/c64941d8610bcd4f4f463b57aeb02721aece97173b68e03cab2278e11b7c4894.json": "c64941d8610bcd4f4f463b57aeb02721aece97173b68e03cab2278e11b7c4894",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/c7bbc49cdc8b84ed798f19d8bcab6c372e1659cafb0acdb5e78e3c60f211fc5a.json": "c7bbc49cdc8b84ed798f19d8bcab6c372e1659cafb0acdb5e78e3c60f211fc5a",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/d43b4b8c474e66994825ba033a372fc0d5e32b04ff9b65d3e12c5fe023dff086.json": "d43b4b8c474e66994825ba033a372fc0d5e32b04ff9b65d3e12c5fe023dff086",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/debca40627f6d3e333b6e7250c3cef4129833ff9511e9f9d4fc7f622abcd4c50.json": "debca40627f6d3e333b6e7250c3cef4129833ff9511e9f9d4fc7f622abcd4c50",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/e29fb42b841b29cb15759ec0147f78708e18c9b0a81eef5029ecc953d9cbd5ef.json": "e29fb42b841b29cb15759ec0147f78708e18c9b0a81eef5029ecc953d9cbd5ef",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/e9dc4e9ce64c17587fcf47b38b26cdabd771edb8cf4a55b32a3bec93bed8286c.json": "e9dc4e9ce64c17587fcf47b38b26cdabd771edb8cf4a55b32a3bec93bed8286c",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/eb341cbc6de0c57d35c8f41dac4315685d93fd6b9828febf66cc2379cac9e55e.json": "eb341cbc6de0c57d35c8f41dac4315685d93fd6b9828febf66cc2379cac9e55e",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/ff24b5821b9af5361bc67ac2291e537935b669558a5f900e829bbcdb19aef8ef.json": "ff24b5821b9af5361bc67ac2291e537935b669558a5f900e829bbcdb19aef8ef",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scenario.yaml": "fb330ae5ef79462b351067ab6d1518f1740e99acd3f2c5f6cc650428cead68be",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scene_clean/mesh/buildings_concrete.ply": "b7423ff468945deb02bab8a014cad1a8966e63bfc28ff1c83a9b24efe6d0977f",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scene_clean/mesh/buildings_glass.ply": "ea8067fca5dba9f0f18c51776efad6737e57547410ea242d1b8363a4b289d1cc",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scene_clean/mesh/buildings_marble.ply": "514029e1b8a00ac4b719915775b80cba200de1dc99c7ba5e3845cf677ea00a0d",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scene_clean/mesh/buildings_metal.ply": "18fb6bfc1851fb1f3e10fc58cc2a86f9122dc09cf92bca9cf63778f3f83a1018",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scene_clean/mesh/ground.ply": "c6a850964e9584e9d72cfc8d21f5dc2a366247059f70a8236b8ef60bb01b48a8",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scene_clean/mesh/streets.ply": "961212fe7af18556c0b97fa553b23a7f706b34132232efbd5b1d304a2982d947",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scene_clean/mesh/vegetation.ply": "5a67142b04b50586d8565635cdb1e39bb5a2bfa7b99644a129ef8a6e1d3d057b",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scene_clean/mesh/water.ply": "ff681eb1a44f8428718134e54666eef869e3960c5f7f7c2b4aef48e50aeaa8d5",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run/scene_clean/scene.xml": "09d3d8588a2a53f7e689dd35050071dc0ea3db7883825a92e5f43521c5dc87a6",
+    "scenarios/showcases/paris_opera_multitarget/scenario.yaml": "627ca57b1a73101654905bd2f4542f1a6cb33be5ffa1f06195140774d589c093"
+  },
+  "sample_indices": [
+    0,
+    10239
+  ],
+  "sample_times_s": [
+    0.0,
+    5.1195
+  ],
+  "steps": 10240,
+  "actors": [
+    {
+      "name": "Monostatic radar",
+      "role": "radar",
+      "members": [
+        "RadarTX",
+        "RadarRX"
+      ],
+      "sample_positions_m": [
+        [
+          -36.50568975108494,
+          -44.60653584028523,
+          5.5
+        ],
+        [
+          -36.50568975108494,
+          -44.60653584028523,
+          5.5
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -36.50568975108494,
+            -44.60653584028523,
+            5.5
+          ],
+          "rotation_matrix": [
+            [
+              -0.1736481776669303,
+              0.9848077530122081,
+              0.0
+            ],
+            [
+              -0.9848077530122081,
+              -0.1736481776669303,
+              -0.0
+            ],
+            [
+              -0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -0.1736481776669303,
+            -0.9848077530122081,
+            -0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Car_Outbound",
+      "role": "target",
+      "members": [
+        "Car_Outbound"
+      ],
+      "sample_positions_m": [
+        [
+          -62.0,
+          -65.0,
+          0.9090677518
+        ],
+        [
+          -73.67246,
+          -55.016975,
+          0.9090677518
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/bmw/target.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 5120,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/bmw/target.ply",
+          "time_s": 2.56,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 10239,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/bmw/target.ply",
+          "time_s": 5.1195,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -62.0,
+            -65.0,
+            0.9090677518
+          ],
+          "rotation_matrix": [
+            [
+              -0.7599620028506555,
+              -0.6499675024362529,
+              0.0
+            ],
+            [
+              0.6499675024362529,
+              -0.7599620028506555,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -0.7599620028506555,
+            0.6499675024362529,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Car_Inbound",
+      "role": "target",
+      "members": [
+        "Car_Inbound"
+      ],
+      "sample_positions_m": [
+        [
+          -4.4,
+          -94.0,
+          0.9090677518
+        ],
+        [
+          -8.90516,
+          -78.385525,
+          0.9090677518
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/bmw/target.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 5120,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/bmw/target.ply",
+          "time_s": 2.56,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 10239,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/bmw/target.ply",
+          "time_s": 5.1195,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -4.4,
+            -94.0,
+            0.9090677518
+          ],
+          "rotation_matrix": [
+            [
+              -0.2772165777004816,
+              -0.9608074568028877,
+              0.0
+            ],
+            [
+              0.9608074568028877,
+              -0.2772165777004816,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -0.2772165777004816,
+            0.9608074568028877,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Scooter",
+      "role": "target",
+      "members": [
+        "Scooter"
+      ],
+      "sample_positions_m": [
+        [
+          -9.2,
+          -78.0,
+          0.7339999914
+        ],
+        [
+          -11.86214,
+          -68.7849,
+          0.7339999914
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/scooter/target.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 5120,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/scooter/target.ply",
+          "time_s": 2.56,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 10239,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/vehicles/scooter/target.ply",
+          "time_s": 5.1195,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -9.2,
+            -78.0,
+            0.7339999914
+          ],
+          "rotation_matrix": [
+            [
+              -0.27753965282116333,
+              -0.9607141828410299,
+              0.0
+            ],
+            [
+              0.9607141828410299,
+              -0.27753965282116333,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -0.27753965282116333,
+            0.9607141828410299,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Drone",
+      "role": "target",
+      "members": [
+        "Drone"
+      ],
+      "sample_positions_m": [
+        [
+          -25.0,
+          -82.0,
+          11.0
+        ],
+        [
+          -26.43346,
+          -73.552825,
+          12.63824
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/drone/drone.obj",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 5120,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/drone/drone.obj",
+          "time_s": 2.56,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 10239,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/drone/drone.obj",
+          "time_s": 5.1195,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -25.0,
+            -82.0,
+            11.0
+          ],
+          "rotation_matrix": [
+            [
+              -0.16432819097002227,
+              -0.985905166387291,
+              0.031420511507101664
+            ],
+            [
+              0.9683625539497004,
+              -0.16730511914119073,
+              -0.1851565856705224
+            ],
+            [
+              0.1878036468243719,
+              0.0,
+              0.9822065924434974
+            ]
+          ],
+          "forward_direction": [
+            -0.16432819097002227,
+            0.9683625539497004,
+            0.1878036468243719
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pedestrian",
+      "role": "target",
+      "members": [
+        "Pedestrian"
+      ],
+      "sample_positions_m": [
+        [
+          -32.0,
+          -55.5,
+          0.15
+        ],
+        [
+          -30.323906650577186,
+          -61.67597858458687,
+          0.15
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": true,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/6be07973844f1f17a7a762f68df7d3b3fef3dea9b149fd10a860dbe7fb58278d.json",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0,
+          "animated_sample": {
+            "sample_id": "opera_showcase:time:0x0.0p+0",
+            "scenario_time_s": 0.0,
+            "motion_time_s": 0.0,
+            "pulse_time_s": null,
+            "evaluated_motion": {
+              "pose_time_s": 0.0,
+              "root_time_s": 0.0,
+              "pose_cycle": 0,
+              "root_cycle": 0
+            },
+            "pose_sample_id": "pose:sha256:04e14a247580253a576d6b2ca220da6da9c303180894973a3a2798ef488fa919",
+            "root": {
+              "lower_sample_id": "root:sha256:baafdf4a083d40db689fd96418519badcfafc10bfd0efa8c8215201c9621953f",
+              "upper_sample_id": "root:sha256:baafdf4a083d40db689fd96418519badcfafc10bfd0efa8c8215201c9621953f",
+              "fraction": 0.0,
+              "resolved_affine_4x4": [
+                [
+                  0.2619151634915893,
+                  0.9650909009690093,
+                  0.0,
+                  -32.0
+                ],
+                [
+                  -0.9650909009690093,
+                  0.2619151634915893,
+                  0.0,
+                  -55.5
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.15
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "resolved_affine_sha256": "69e56f356729604733a1f3d33746d3f3b4892a34ea3d564617c8f4c554051060"
+            },
+            "validity": {
+              "valid": true,
+              "reason": null
+            },
+            "vertices_sha256": "e7ac9860da276220d8efe11a6f181bc97a7296cf3a80bdf672fdb6f48a9b1c8a",
+            "normals_sha256": "9b1b5882c5b0c07dfb10b92fad3f55748fdf407be524fe9a538bd1bb5b2657c2"
+          }
+        },
+        {
+          "index": 5120,
+          "mesh_index": 76,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/935d189ecad486e24bcb92c428fef24d313d4abc900040b219cfd7ccd29d31f0.json",
+          "time_s": 2.56,
+          "topology_visible": true,
+          "opacity": 0.28,
+          "animated_sample": {
+            "sample_id": "opera_showcase:time:0x1.47ae147ae147bp+1",
+            "scenario_time_s": 2.56,
+            "motion_time_s": 2.56,
+            "pulse_time_s": null,
+            "evaluated_motion": {
+              "pose_time_s": 2.56,
+              "root_time_s": 2.56,
+              "pose_cycle": 0,
+              "root_cycle": 0
+            },
+            "pose_sample_id": "pose:sha256:a4a9e2e78e1715882eb142432afe55bb2a50c4e08e66971fbcc8cedeb3a98906",
+            "root": {
+              "lower_sample_id": "root:sha256:7d26a2078f86cb98947be0637ca85b8c01533af63371c90ac4ccde3088a5b32d",
+              "upper_sample_id": "root:sha256:8f65c7846c8b87bbd503edfcfc793f9e64228aa3aea40da502eec136f07f24b1",
+              "fraction": 0.800000000000008,
+              "resolved_affine_4x4": [
+                [
+                  0.2619151634915893,
+                  0.9650909009690093,
+                  0.0,
+                  -31.161871476800002
+                ],
+                [
+                  -0.9650909009690093,
+                  0.2619151634915893,
+                  0.0,
+                  -58.588290883199996
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.15
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "resolved_affine_sha256": "aa6d8c9d628c20b5817bb3a42f3747b86c0f987625b062fe575d248a9ff3e26e"
+            },
+            "validity": {
+              "valid": true,
+              "reason": null
+            },
+            "vertices_sha256": "64a1e10fb907904dc0a60ac21911848649bfc1ea9b065f33e73fb2bfe963de73",
+            "normals_sha256": "704dfd3f5fe82b7cdaa0ecfa3490fa33d14918c9d7cf328332a593bba2c31a78"
+          }
+        },
+        {
+          "index": 10239,
+          "mesh_index": 154,
+          "source": "scenarios/showcases/paris_opera_multitarget/runs/my_run/assets/walker/poses/03965daa23c55e2ddcddc172feef4abc87350adb79b7d4d313add48df1b227e8.json",
+          "time_s": 5.1195,
+          "topology_visible": true,
+          "opacity": 1.0,
+          "animated_sample": {
+            "sample_id": "opera_showcase:time:0x1.47a5e353f7ceep+2",
+            "scenario_time_s": 5.1195,
+            "motion_time_s": 5.1195,
+            "pulse_time_s": null,
+            "evaluated_motion": {
+              "pose_time_s": 5.1195,
+              "root_time_s": 5.1195,
+              "pose_cycle": 0,
+              "root_cycle": 0
+            },
+            "pose_sample_id": "pose:sha256:6d414202ae7b70c818f1479909b0fc7e542708839aabf3c75148234547e40552",
+            "root": {
+              "lower_sample_id": "root:sha256:c7a60959a2f2de4da5364c6f4c64156a7aded719ae0c06435dd5bc58433da9a0",
+              "upper_sample_id": "root:sha256:c7a60959a2f2de4da5364c6f4c64156a7aded719ae0c06435dd5bc58433da9a0",
+              "fraction": 0.0,
+              "resolved_affine_4x4": [
+                [
+                  0.2619151634915893,
+                  0.9650909009690093,
+                  0.0,
+                  -30.323906650577186
+                ],
+                [
+                  -0.9650909009690093,
+                  0.2619151634915893,
+                  0.0,
+                  -61.67597858458687
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.15
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "resolved_affine_sha256": "fecacb135f0eeb7d21851a5d9ac6430495214c79a4d29efc7686ae60ed58ef28"
+            },
+            "validity": {
+              "valid": true,
+              "reason": null
+            },
+            "vertices_sha256": "680753db50fedf7367ad72aa41cba49d74955007f84cb063a4455ebaffbd1970",
+            "normals_sha256": "7b01ee95db0d932438a466a111bd39786d9e1820c8f43f2fd268e5bde377b5a0"
+          }
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -32.0,
+            -55.5,
+            0.15
+          ],
+          "rotation_matrix": [
+            [
+              0.2619151634915893,
+              0.9650909009690093,
+              0.0
+            ],
+            [
+              -0.9650909009690093,
+              0.2619151634915893,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            0.2619151634915893,
+            -0.9650909009690093,
+            0.0
+          ]
+        }
+      ],
+      "position_reference": "animated_asset_manifest_root",
+      "animated_asset": {
+        "contract_version": 1,
+        "asset_id": "opera_multitarget_walker",
+        "asset_revision_sha256": "dfb77eaf30b22303e0bdbd1ae8ac379c35d3023faae82d482ba399023e89afa7",
+        "binding_id": "7c02f81db7af283c2bbe30aeacf04f59d1dc6caa3ed53c86977d0db32bf3cb4d",
+        "binding_context": {
+          "target_id": "Pedestrian",
+          "scenario_clock_id": "opera_showcase",
+          "motion_clock_id": "supplied_walk",
+          "pulse_clock_id": null,
+          "playback_rate": 1.0,
+          "playback_offset_s": 0.0,
+          "retiming_policy": "affine_scenario_to_motion"
+        },
+        "geometry_transform_owner": "animated_asset_manifest",
+        "rt_velocity_source": "piecewise_linear_root_translation",
+        "coherent_geometry_policy": "frozen_at_solve_epoch",
+        "license": {
+          "notice": "Source model, motion and derived geometry retain their separate terms. No redistribution authorization is supplied.",
+          "redistribution": "user_supplied_only",
+          "spdx_id": "LicenseRef-User-Supplied-Motion"
+        },
+        "provenance": {
+          "creator": "ORCHAV offline adapter",
+          "description": "User-supplied source; provenance sidecar is pinned by its SHA256 source ID.",
+          "source_ids": [
+            "adapter_provenance:sha256:c8215d35a691f7f62345e188b4dbd1817af1f90462f2307c56e58f75e74c14d7"
+          ],
+          "source_type": "supplied_animated_surface"
+        }
+      }
+    }
+  ],
+  "resolved_yaml_sha256": "fc2172f356ba30710b8771029d3844ad2eb32e5ca87a9034b5e1c4556d1960a8",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (mat-itu concrete)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Mat-Itu Concrete",
+      "display_rgb": [
+        0.6872,
+        0.6872,
+        0.6872
+      ]
+    },
+    {
+      "label": "Mat-Itu Glass",
+      "display_rgb": [
+        0.6784313725490196,
+        0.7764705882352941,
+        0.803921568627451
+      ]
+    },
+    {
+      "label": "Mat-Itu Marble",
+      "display_rgb": [
+        0.796,
+        0.7552000000000001,
+        0.6532
+      ]
+    },
+    {
+      "label": "Mat-Itu Metal",
+      "display_rgb": [
+        0.4696,
+        0.4696,
+        0.49
+      ]
+    },
+    {
+      "label": "Mat-Itu Wood",
+      "display_rgb": [
+        0.6940000000000001,
+        0.558,
+        0.43560000000000004
+      ]
+    },
+    {
+      "label": "Road (mat-itu concrete)",
+      "display_rgb": [
+        0.6235294117647059,
+        0.6627450980392157,
+        0.6784313725490196
+      ]
+    }
+  ],
+  "output_sha256": "b34d8ff16c90555a589a6aa457bca55fa404b4bb46b5c03aa37d7f08c6bb1aca",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -572.0434350585938,
+        -645.0039697265624,
+        -2.32
+      ],
+      [
+        583.4864282226563,
+        619.818544921875,
+        60.32
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "077c6c55d104403a84b34169fe50aeb171dc177a740258aa388cb27e0b566b1e",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.3",
+    "matplotlib": "3.11.2",
+    "sionna-rt": "2.2.0",
+    "open3d": "0.20.0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator",
+    "scenarios/showcases/paris_opera_multitarget/runs/my_run"
+  ],
+  "rendered_scenario": "scenarios/showcases/paris_opera_multitarget/runs/my_run/scenario.yaml",
+  "rendered_scenario_sha256": "fb330ae5ef79462b351067ab6d1518f1740e99acd3f2c5f6cc650428cead68be",
+  "authored_scenario": "scenarios/showcases/paris_opera_multitarget/scenario.yaml",
+  "authored_scenario_sha256": "627ca57b1a73101654905bd2f4542f1a6cb33be5ffa1f06195140774d589c093",
+  "parsed_configuration_sha256": "c2d994e29189858ee0d1d4e36f6c978b36afcbaba2af3d92ffcd342c7f82c7b1",
+  "source_receipt_sha256": "c00978d42cfb6cf06428683880c806f76fdf54a870856078051968f19d35f1f6",
+  "source_receipt": "scenarios/showcases/paris_opera_multitarget/runs/my_run/summary/topology.json",
+  "configuration_comparison": "The prepared-run and tutorial YAML documents were compared in full and are identical after parsing. Source resource hashes identify the prepared run, including the externally supplied walking poses.",
+  "path_convention": "Prepared resource paths are repository-relative. Reproduction requires the preparation workflow documented in the scenario README.",
+  "image_reused_without_modification": true
+}

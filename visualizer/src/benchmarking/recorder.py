@@ -14,8 +14,10 @@ working directory and the application exits.
 from __future__ import annotations
 
 import json
+import os
 import platform
 import statistics
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -217,9 +219,27 @@ class BenchmarkRecorder:
             "timed": [self._record_to_dict(r) for r in timed],
         }
 
+        # Serialize before opening the destination: a bad metadata value must
+        # not truncate a previous successful run or leave a partial result.
+        serialized = json.dumps(result, indent=2)
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.output_path, "w") as f:
-            json.dump(result, f, indent=2)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.output_path.parent,
+                prefix=f".{self.output_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+                handle.write(serialized)
+                handle.write("\n")
+            os.replace(temporary, self.output_path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
         logger.info("Benchmark results written to %s", self.output_path)
         return self.output_path

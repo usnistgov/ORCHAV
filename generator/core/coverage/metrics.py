@@ -34,7 +34,11 @@ def _tx_power_dbm(tx: Any) -> float:
         if value is None:
             continue
         try:
-            return float(value)
+            # RT 2 exposes even one transmitter's power as a one-element
+            # Dr.Jit array. float(array) raises instead of extracting it.
+            scalar = np.asarray(value)
+            if scalar.size == 1:
+                return float(scalar.item())
         except (TypeError, ValueError):
             continue
     return 0.0

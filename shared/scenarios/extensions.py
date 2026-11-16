@@ -8,6 +8,7 @@ the default scenario contract.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable
 
@@ -73,6 +74,17 @@ def load_private_scenario_extensions() -> None:
     if _PRIVATE_LOADED:
         return
     _PRIVATE_LOADED = True
+    # A public export may contain reviewed producer hooks while omitting the
+    # separate development-only extension package entirely.
+    module_name = f"{__package__}.bundled_extensions"
+    try:
+        bundled_extensions = import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name != module_name:
+            raise
+        bundled_extensions = None
+    if bundled_extensions is not None:
+        bundled_extensions.register()
     try:
         from . import _private_extensions
     except ImportError:

@@ -28,9 +28,11 @@ from ...types.render_payloads import (
     PointCloudPayload,
     SurfaceColorSource,
     TextLabelPayload,
+    VolumePayload,
     mesh_payload_for_pbr_material,
 )
 from .canvas import _env_flag, _env_float
+from .labels import PygfxLabelMixin, text_label_font_size, text_label_from_payload
 
 __all__ = ["PygfxGeometryMixin"]
 
@@ -87,9 +89,18 @@ class PygfxGeometryMixin:
             or previous[2] != color_source
         )
         if geometry_changed:
-            if isinstance(obj.payload, TextLabelPayload):
-                applied = self._ensure_text_label_payload(obj.id, obj.payload)
-                if applied and obj.material_payload is not None:
+            if isinstance(obj.payload, (TextLabelPayload, VolumePayload)):
+                if isinstance(obj.payload, VolumePayload):
+                    from .volume import ensure_volume
+
+                    applied = ensure_volume(self, obj.id, obj.payload)
+                else:
+                    applied = self._ensure_text_label_payload(obj.id, obj.payload)
+                if (
+                    applied
+                    and obj.material_payload is not None
+                    and not isinstance(obj.payload, VolumePayload)
+                ):
                     applied = self.set_named_material(obj.id, obj.material_payload)
                 if applied:
                     applied = self._apply_render_object_transform(obj)
@@ -536,12 +547,21 @@ class PygfxGeometryMixin:
             except (AttributeError, RuntimeError, TypeError, ValueError, OverflowError):
                 pass
         material = getattr(native, "material", None)
+        alpha_mode = obj.metadata.get("alpha_mode")
+        if alpha_mode is not None and material is not None and hasattr(material, "alpha_mode"):
+            try:
+                material.alpha_mode = str(alpha_mode)
+            except (AttributeError, RuntimeError, TypeError, ValueError, KeyError):
+                pass
         pickable = obj.metadata.get("pickable")
         if pickable is not None and material is not None and hasattr(material, "pick_write"):
             try:
                 material.pick_write = bool(pickable)
             except (AttributeError, RuntimeError, TypeError, ValueError):
                 pass
+        depth_test = obj.metadata.get("depth_test")
+        if depth_test is not None and material is not None and hasattr(material, "depth_test"):
+            material.depth_test = bool(depth_test)
         depth_write = obj.metadata.get("depth_write")
         if depth_write is not None and material is not None and hasattr(material, "depth_write"):
             try:
@@ -558,6 +578,11 @@ class PygfxGeometryMixin:
                 material.depth_compare = str(depth_compare)
             except (AttributeError, RuntimeError, TypeError, ValueError):
                 pass
+        if isinstance(obj.payload, TextLabelPayload):
+            PygfxLabelMixin._apply_label_metadata(self, obj, native)
+            from .street_labels import sync_street_label
+
+            sync_street_label(self, obj, native)
 
     def _apply_render_object_transform(self, obj: RenderObject) -> bool:
         """Apply a render-object transform, including optional label layout."""
@@ -573,28 +598,34 @@ class PygfxGeometryMixin:
         return self.set_named_transform(obj.id, obj.transform_matrix)
 
     def _ensure_text_label_payload(self, name: str, payload: TextLabelPayload) -> bool:
-        """Create native pygfx text for one neutral label payload."""
+        """Synchronize text without rebuilding a label for each mesh filename."""
         if not self._initialized or self._scene is None:
             return False
+        font_size = text_label_font_size(payload)
+        native = self._objects.get(name)
+        if getattr(self, "_kinds", {}).get(name) == "text" and native is not None:
+            try:
+                PygfxLabelMixin._set_label_text(
+                    native, payload.text, getattr(native, "_orchav_label_bold", False)
+                )
+                if native.font_size != font_size:
+                    native.font_size = font_size
+                if native.screen_space != payload.screen_space:
+                    native.screen_space = payload.screen_space
+                native.material.outline_color = payload.outline_color
+                native.material.outline_thickness = payload.outline_thickness
+            except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+                # ensure_object retains a dirty snapshot and retries all fields
+                # if a native update failed partway through.
+                logger.warning("PygfxRenderer: failed to update text label '%s': %s", name, exc)
+                return False
+            return True
         if name in self._name_to_handle or name in self._objects:
             if not self.remove_named_geometry(name):
                 return False
 
-        pixel_size = max(10.0, min(48.0, float(payload.font_size) * 60.0))
-        world_size = max(0.05, (float(payload.font_size) / 0.3) * 0.5)
         try:
-            native = self._gfx.Text(
-                text=payload.text,
-                font_size=pixel_size if payload.screen_space else world_size,
-                screen_space=payload.screen_space,
-                anchor="middle-center",
-                material=self._gfx.TextMaterial(
-                    color=(1.0, 1.0, 1.0),
-                    outline_color=payload.outline_color,
-                    outline_thickness=payload.outline_thickness,
-                    aa=True,
-                ),
-            )
+            native = text_label_from_payload(self._gfx, payload)
             self._scene.add(native)
         except Exception as exc:
             logger.warning("PygfxRenderer: failed to create text label '%s': %s", name, exc)
@@ -607,6 +638,7 @@ class PygfxGeometryMixin:
         self._kinds[name] = "text"
         self._reverse_objects[id(native)] = name
         self._geometry_upload_center[name] = np.zeros(3, dtype=np.float32)
+        native._orchav_label_content = (payload.text, False)
         return True
 
     def remove_object(self, object_id: str) -> bool:
@@ -814,6 +846,9 @@ class PygfxGeometryMixin:
 
         # Commit bookkeeping only after native removal succeeds so a failed
         # call remains observable and retryable by backend-local synchronizers.
+        from .street_labels import forget_street_label
+
+        forget_street_label(self, name, obj)
         getattr(self, "_render_object_snapshots", {}).pop(name, None)
         getattr(self, "_dirty_render_object_geometry", set()).discard(name)
         getattr(self, "_uncertain_mesh_index_buffers", set()).discard(name)
@@ -823,6 +858,7 @@ class PygfxGeometryMixin:
         self._edge_geometry_names.discard(name)
         self._name_to_handle.pop(name, None)
         self._objects.pop(name, None)
+        getattr(self, "_label_backgrounds", {}).pop(name, None)
         if handle is not None:
             self._handle_to_name.pop(handle, None)
 
@@ -939,25 +975,28 @@ class PygfxGeometryMixin:
         except Exception as exc:
             failures.append(f"matrix assignment: {exc}")
 
-        translation_only = bool(
-            np.allclose(mat[:3, :3], np.eye(3, dtype=np.float32), atol=1e-6)
-            and np.allclose(mat[3, :], (0.0, 0.0, 0.0, 1.0), atol=1e-6)
-        )
-        if not applied and translation_only:
-            try:
-                local = getattr(obj, "local", None)
-                if local is not None and hasattr(local, "position"):
-                    local.position = tuple(float(x) for x in mat[:3, 3])
-                    applied = True
-            except Exception as exc:
-                failures.append(f"position assignment: {exc}")
-
         if not applied:
-            detail = "; ".join(failures) or "no writable native transform"
-            if not translation_only:
-                detail = f"rotation requires matrix assignment; {detail}"
-            logger.warning("PygfxRenderer: could not apply transform for '%s': %s", name, detail)
-            return False
+            translation_only = bool(
+                np.allclose(mat[:3, :3], np.eye(3, dtype=np.float32), atol=1e-6)
+                and np.allclose(mat[3, :], (0.0, 0.0, 0.0, 1.0), atol=1e-6)
+            )
+            if translation_only:
+                try:
+                    local = getattr(obj, "local", None)
+                    if local is not None and hasattr(local, "position"):
+                        local.position = tuple(float(x) for x in mat[:3, 3])
+                        applied = True
+                except Exception as exc:
+                    failures.append(f"position assignment: {exc}")
+
+            if not applied:
+                detail = "; ".join(failures) or "no writable native transform"
+                if not translation_only:
+                    detail = f"rotation requires matrix assignment; {detail}"
+                logger.warning(
+                    "PygfxRenderer: could not apply transform for '%s': %s", name, detail
+                )
+                return False
 
         self._transforms[name] = mat
         self._positions[name] = (float(mat[0, 3]), float(mat[1, 3]), float(mat[2, 3]))
@@ -969,103 +1008,6 @@ class PygfxGeometryMixin:
         if pos is None:
             return None
         return np.asarray(pos, dtype=np.float64)
-
-    def get_ground_grid_visible(self) -> bool:
-        """Return whether the optional pygfx ground grid is visible."""
-        return self._ground_grid_visible
-
-    def set_ground_grid_visible(self, visible: bool) -> None:
-        """Toggle an axis-aligned ground-plane grid at z = scene floor."""
-        new = bool(visible)
-        if (
-            new == self._ground_grid_visible
-            and self._ground_grid_obj is not None
-            and not self._ground_grid_needs_rebuild
-        ):
-            return
-        if new and (self._ground_grid_obj is None or self._ground_grid_needs_rebuild):
-            self._remove_ground_grid()
-            self._build_ground_grid()
-        if self._ground_grid_obj is not None:
-            try:
-                self._ground_grid_obj.visible = new
-            except Exception as exc:
-                logger.debug("Failed to toggle ground grid visibility: %s", exc)
-        self._ground_grid_visible = new
-        self._update_status_chip_overlay()
-        self.request_redraw()
-
-    def _remove_ground_grid(self) -> None:
-        """Remove the renderer-owned ground grid object from the scene."""
-        grid = self._ground_grid_obj
-        if grid is None:
-            return
-        try:
-            if self._scene is not None:
-                self._scene.remove(grid)
-        except Exception:
-            pass
-        self._ground_grid_obj = None
-
-    def _build_ground_grid(self) -> None:
-        """Create a GridHelper sized to the current scene bounds."""
-        gfx = self._gfx
-        if gfx is None or self._scene is None:
-            return
-        bounds = self.compute_scene_bounds()
-        if bounds is None:
-            size = max(self._scene_extent * 2.0, 20.0)
-            z_floor = 0.0
-        else:
-            extent = np.max(bounds.get_extent())
-            size = float(max(extent * 1.2, 20.0))
-            z_floor = float(bounds.min_bound[2])
-        divisions = 20
-        try:
-            grid = gfx.GridHelper(
-                size=size,
-                divisions=divisions,
-                color1=(0.45, 0.45, 0.45, 1.0),
-                color2=(0.25, 0.25, 0.25, 1.0),
-                thickness=1.0,
-            )
-        except Exception as exc:
-            logger.debug("Failed to build GridHelper: %s", exc)
-            return
-        # GridHelper is XZ-oriented in pygfx (three.js convention), so it must
-        # be rotated about X and translated into the XY plane at z = floor.
-        try:
-            transform = np.eye(4, dtype=np.float64)
-            # Rotate +90° about X: y-axis -> z, z-axis -> -y
-            transform[1, 1] = 0.0
-            transform[2, 2] = 0.0
-            transform[1, 2] = -1.0
-            transform[2, 1] = 1.0
-            transform[2, 3] = z_floor
-            grid.local.matrix = transform
-        except Exception as exc:
-            logger.debug("Failed to orient ground grid: %s", exc)
-        try:
-            self._scene.add(grid)
-        except Exception as exc:
-            logger.debug("Failed to add ground grid to scene: %s", exc)
-            return
-        self._ground_grid_obj = grid
-        self._ground_grid_needs_rebuild = False
-
-    def _ensure_ground_grid_current(self) -> None:
-        """Rebuild the ground grid when visible and marked stale."""
-        if not self._ground_grid_visible:
-            return
-        if self._ground_grid_obj is not None and not self._ground_grid_needs_rebuild:
-            return
-        self._remove_ground_grid()
-        self._build_ground_grid()
-        if self._ground_grid_obj is not None:
-            try:
-                self._ground_grid_obj.visible = True
-            except Exception:
-                pass
 
     def _get_entity_handle(self, name: str) -> Optional[int]:
         """Return the internal handle assigned to a stable name."""
@@ -1557,6 +1499,9 @@ class PygfxGeometryMixin:
     def _push_buffer(self, buf: Any, data: np.ndarray, *, label: str = "buffer") -> None:
         """Write *data* into an existing pygfx Buffer and mark it dirty."""
         t_start = time.perf_counter()
+        mark_shadow_positions = getattr(self, "_mark_shadow_positions_changed", None)
+        if label.endswith("positions") and callable(mark_shadow_positions):
+            mark_shadow_positions(buf)
         buf_data = getattr(buf, "data", None)
         if buf_data is not None and buf_data.shape == data.shape and buf_data.dtype == data.dtype:
             buf_data[:] = data
@@ -2310,69 +2255,6 @@ class PygfxGeometryMixin:
                     pass
         self.request_redraw()
 
-    def show_axes(self, show: bool, size: float = 1.0) -> bool:
-        """Show or hide a simple RGB world-axis overlay at the origin."""
-        if not self._initialized:
-            return False
-        if not show:
-            removed = self.remove_named_geometry(self.AXES_NAME)
-            if removed:
-                self.request_redraw()
-            return True
-
-        axis_size = self._default_axes_size(size)
-        payload = LineSetPayload(
-            points=np.asarray(
-                [
-                    [0.0, 0.0, 0.0],
-                    [axis_size, 0.0, 0.0],
-                    [0.0, axis_size, 0.0],
-                    [0.0, 0.0, axis_size],
-                ],
-                dtype=np.float32,
-            ),
-            lines=np.asarray([[0, 1], [0, 2], [0, 3]], dtype=np.int32),
-            colors=np.asarray(
-                [
-                    [1.0, 0.08, 0.06, 1.0],
-                    [0.1, 0.8, 0.1, 1.0],
-                    [0.1, 0.35, 1.0, 1.0],
-                ],
-                dtype=np.float32,
-            ),
-        )
-        material = MaterialPayload(
-            base_color=(1.0, 1.0, 1.0, 1.0),
-            shader="unlit",
-            line_width=max(3.0, float(getattr(self, "_line_width", 2.0))),
-        )
-        ok = self.ensure_named_geometry(
-            self.AXES_NAME,
-            payload,
-            material=material,
-            visible=True,
-        )
-        if ok:
-            self.request_redraw()
-        return bool(ok)
-
-    def _default_axes_size(self, requested_size: float) -> float:
-        """Scale default axes to large scenes unless caller supplied a size."""
-        try:
-            requested = float(requested_size)
-        except (TypeError, ValueError):
-            requested = 1.0
-        if requested > 1.0:
-            return requested
-
-        try:
-            bbox = self.compute_scene_bounds(scope="whole")
-            extent = np.asarray(bbox.get_extent(), dtype=np.float64)
-        except Exception:
-            return 1.0
-        if extent.size < 3 or not np.all(np.isfinite(extent)):
-            return 1.0
-        max_extent = float(np.max(extent[:3]))
-        if max_extent <= 0.0:
-            return 1.0
-        return max(2.0, min(75.0, max_extent * 0.12))
+    def get_wireframe(self) -> bool:
+        """Return the surface wireframe choice without exposing backend state."""
+        return bool(self._wireframe_enabled)

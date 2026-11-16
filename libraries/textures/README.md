@@ -1,16 +1,12 @@
 # Texture Assets
 
-This directory contains visual texture assets for the ORCHAV Visualizer.
-Texture maps are experimental, visual-only, and disabled by default. They
-affect rendered appearance only. They do not change
-[Sionna RT](https://nvlabs.github.io/sionna/) propagation
-material properties.
+The Visualizer can use image maps to add surface color, relief, and other visual detail. Texture maps are disabled at startup by default. Radio propagation uses the scene's radio materials independently of these maps.
 
 ## Directory Layout
 
 ```text
 libraries/textures/
-├── *.png                 # Small flat sample textures for explicit examples
+├── *.png                 # Optional user-provided flat textures
 └── pbr/                  # Bundled PBR texture sets
 ```
 
@@ -37,10 +33,7 @@ propagation, then the Visualizer maps the loaded material metadata to scalar PBR
 properties or explicit texture-map paths. Texture maps become active only when
 texture loading is enabled.
 
-A generic material ID that matches its material type is not treated as an
-implicit texture filename. For example, a scene material named `wood` is not
-automatically assigned `libraries/textures/wood.png`. Use a texture-backed PBR
-preset or explicit texture path when an image map should be active.
+To apply an image, choose a texture-backed PBR preset or provide an explicit image path. A generic material ID such as `wood` does not by itself select a same-named image file.
 
 ## Supported Maps
 
@@ -74,19 +67,10 @@ from the XML file's directory:
 </bsdf>
 ```
 
-Python integrations carry the same fields in the renderer-neutral
-`MaterialPayload` attached to a `RenderObject`. These fields request visual
-texture maps only. They do not change the radio-material model used by
-Sionna RT.
+Python integrations pass the same fields in the renderer's `MaterialPayload` on a `RenderObject`.
 
 ## Texture Launch Mode
 
-Texture maps are disabled by default at Visualizer startup. Use
-`--enable-textures` or `ORCHAV_ENABLE_TEXTURES=1` to activate image-map loading
-for PBR-capable renderers. Materials remain lit and PBR-capable when textures
-are disabled. Scalar PBR properties such as color, roughness, metallic,
-reflectance, and alpha still apply. Use `--disable-textures` or
-`ORCHAV_DISABLE_TEXTURES=1` as an explicit scalar-PBR override when an
-environment or wrapper enables textures.
+Use `--enable-textures` or `ORCHAV_ENABLE_TEXTURES=1` when launching the Visualizer to load image maps. Use `--disable-textures` or `ORCHAV_DISABLE_TEXTURES=1` to override a texture-enabled environment. Materials still use scalar color, roughness, reflectance, and alpha when image maps are off.
 
-See [Renderers](../../docs/visualizer/renderers.md) for renderer support notes.
+See [Renderers](../../docs/visualizer/renderers.md) for renderer support and the desktop controls.

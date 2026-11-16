@@ -12,12 +12,15 @@ arrays for saving and caching.
 
 from __future__ import annotations
 
+import math
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
 from sionna.rt import PathSolver
 
 from ..configuration import ReceiverConfig, SimulationConfig, TransmitterConfig
+from ..exceptions import ConfigurationError
 from ..materials.properties import collect_scene_radio_material_properties
 from ..propagation import (
     apply_target_state_to_scene,
@@ -31,15 +34,21 @@ from ..propagation.snapshots import (
 )
 from ..runtime import SimulationObjects
 from ..scenario_actors.state import ActorStateCache
+from ..sensing.acquisition import ResolvedSensingExecutionConfig
 from .actor_state_service import ActorStateService
 from .base import BaseService
 from .scene_service import SceneService
 
-_UNSUPPORTED_SENSING_GENERATION = (
-    "Sensing generation is reserved for a future ORCHAV extension; this public "
-    "release can read existing HDF5 frames with optional sensing extension "
-    "payloads, but it does not generate them."
-)
+
+def _load_sensing_processor_factory():
+    """Load sensing processing supplied by a capable ORCHAV installation."""
+    try:
+        from ..sensing.processor import create_sensing_processor
+    except ImportError as exc:
+        raise RuntimeError(
+            "Sensing processing is not available in this ORCHAV installation."
+        ) from exc
+    return create_sensing_processor
 
 
 # Only these scenario-level quality keys are allowed to override the selected
@@ -71,6 +80,7 @@ class RayTracingService(BaseService):
         self.path_solver = PathSolver()
         self.simulation_objects: SimulationObjects | None = None
         self.sensing_processor: Any | None = None
+        self.sensing_execution_config: ResolvedSensingExecutionConfig | None = None
 
     def prepare_simulation(
         self,
@@ -80,6 +90,7 @@ class RayTracingService(BaseService):
         rx_configs: list[ReceiverConfig],
         target_configs: list[Any],
         scenario_configuration: Any | None = None,
+        sensing_execution_config: ResolvedSensingExecutionConfig | None = None,
         motion_mode: str = "cached",
         actor_state_cache: ActorStateCache | None = None,
     ) -> None:
@@ -98,6 +109,19 @@ class RayTracingService(BaseService):
         for k, v in rt_custom.items():
             if k in RAYTRACING_QUALITY_OVERRIDE_KEYS:
                 settings[k] = v
+        if rt_cfg.get("rcs") is not None:
+            settings["rcs"] = dict(rt_cfg["rcs"])
+
+        sensing_config = getattr(self.simulation_config, "sensing", None)
+        sensing_enabled = (
+            sensing_config is not None and getattr(sensing_config, "enabled", False) is True
+        )
+        if sensing_enabled and settings.get("synthetic_array", True) is not True:
+            raise ConfigurationError(
+                "Sensing ray tracing requires synthetic_array=true; "
+                "synthetic_array=false exposes explicit antenna-element axes that "
+                "the current sensing product contract does not represent"
+            )
 
         # SimulationObjects is the propagation-facing bundle.  It intentionally
         # carries both live Sionna scene objects and prepared actor-state arrays
@@ -132,17 +156,44 @@ class RayTracingService(BaseService):
             material_properties=collect_scene_radio_material_properties(scene_service.scene),
         )
 
-        sensing_config = getattr(self.simulation_config, "sensing", None)
-        sensing_enabled = (
-            getattr(sensing_config, "enabled", False) is True if sensing_config else False
-        )
         if sensing_enabled:
-            raise RuntimeError(_UNSUPPORTED_SENSING_GENERATION)
-        self.sensing_processor = None
-        self.logger.debug(
-            "Sensing processor not created (enabled=%s)",
-            sensing_enabled,
-        )
+            if sensing_execution_config is None:
+                raise RuntimeError(
+                    "Enabled sensing requires a resolved execution contract before RT setup"
+                )
+            create_sensing_processor = _load_sensing_processor_factory()
+            seed_value = getattr(sensing_config, "rng_seed", None)
+            if seed_value is None:
+                seed_value = settings.get("seed")
+            try:
+                resolved_seed = int(seed_value) if seed_value is not None else None
+            except (TypeError, ValueError):
+                resolved_seed = None
+            # An explicit sensing seed controls optional processing randomness;
+            # otherwise inherit the RT seed for historical reproducibility. Use
+            # a run-local copy so a later preparation can resolve a new RT seed
+            # instead of mistaking an earlier inherited value for an explicit
+            # scenario setting.
+            resolved_sensing_config = replace(sensing_config, rng_seed=resolved_seed)
+            self.sensing_processor = create_sensing_processor(
+                resolved_sensing_config,
+                carrier_frequency_hz=self.simulation_config.carrier_frequency_hz,
+                execution_config=sensing_execution_config,
+            )
+            self.sensing_execution_config = sensing_execution_config
+            self.logger.info(
+                "Sensing processor initialized (mode=%s, carrier=%.3g Hz, RT stride=%d)",
+                sensing_execution_config.processing.mode,
+                self.simulation_config.carrier_frequency_hz,
+                sensing_execution_config.acquisition.rt_solve_stride_scene_steps,
+            )
+        else:
+            self.sensing_processor = None
+            self.sensing_execution_config = None
+            self.logger.debug(
+                "Sensing processor not created (enabled=%s)",
+                bool(getattr(sensing_config, "enabled", False)) if sensing_config else False,
+            )
 
     def compute_step_cached(
         self, frame_idx: int, cached_frame_data: dict[str, Any]
@@ -181,6 +232,12 @@ class RayTracingService(BaseService):
         )
         frame = dict(cached_frame_data)
         frame["frame_idx"] = frame_idx
+        if self.sensing_processor is not None:
+            frame["scene_time_s"] = self._scenario_time_s(frame_idx)
+        else:
+            # Generic generator output historically carried no inferred frame
+            # timestamp. Only sensing requires the authoritative scenario clock.
+            frame.pop("scene_time_s", None)
         frame["_coherent_cached_frame"] = True
         frame["_cached_rt_source_frame_idx"] = source_frame_idx
         # Sensing data is attached later only when this output closes the
@@ -209,6 +266,14 @@ class RayTracingService(BaseService):
         frame["target_objects"] = [
             manager.target_object for manager in self.simulation_objects.target_managers
         ]
+        if "native_targets_metadata_snapshot" in frame:
+            # Cached paths retain the solve-time state in provenance, while
+            # this frame's proxy and markers describe its output-time pose.
+            frame["native_targets_metadata_snapshot"] = {
+                index: manager.metadata_snapshot()
+                for index, manager in enumerate(self.simulation_objects.target_managers)
+                if callable(getattr(manager, "metadata_snapshot", None))
+            }
         frame["target_positions_snapshot"] = positions_to_array(target_positions)
         frame["target_orientations_snapshot"] = orientations_to_array(target_orientations)
         velocity_snapshot = velocities_to_array(target_velocities)
@@ -223,6 +288,7 @@ class RayTracingService(BaseService):
         """Release prepared simulation and optional processor state."""
         self.simulation_objects = None
         self.sensing_processor = None
+        self.sensing_execution_config = None
 
     def compute_step(
         self,
@@ -263,6 +329,10 @@ class RayTracingService(BaseService):
         # Optional processing must run before paths are frozen because it may
         # need backend methods such as paths.cir().
         if self.sensing_processor:
+            # Timeline validation is a producer-contract error, not a sensing
+            # kernel failure, so keep it outside the processor exception path.
+            scene_time_s = self._scenario_time_s(frame_idx)
+            frame_data["scene_time_s"] = scene_time_s
             try:
                 paths = frame_data["paths"]
                 cir_stack = self._compute_cir_stack(paths)
@@ -272,11 +342,16 @@ class RayTracingService(BaseService):
                     frame_idx,
                     paths=paths,
                     cir_stack=cir_stack,
+                    source_time_s=scene_time_s,
                 )
                 if sensing_result:
                     frame_data["sensing"] = sensing_result
             except Exception:
                 self.logger.exception("Sensing computation failed for frame %d", frame_idx)
+                if self.simulation_config.sensing.range_response.model == "cfr_ifft":
+                    # Out-of-period paths and unsupported native delay layouts
+                    # are contract failures, not absent sensing observations.
+                    raise
                 return None
 
         # This is the CPU ownership boundary for path data. Sionna/Mitsuba path
@@ -285,6 +360,40 @@ class RayTracingService(BaseService):
         # should only see stable CPU arrays.
         freeze_frame_paths(frame_data)
         return frame_data
+
+    def _scenario_time_s(self, frame_idx: int) -> float:
+        """Return a frame's timestamp on the scenario-start clock."""
+        try:
+            num_steps = int(self.simulation_config.num_steps)
+        except (AttributeError, TypeError, ValueError):
+            num_steps = 1
+        try:
+            duration_s = float(self.simulation_config.duration)
+        except (AttributeError, TypeError, ValueError):
+            duration_s = 0.0
+
+        if num_steps == 1:
+            return 0.0
+        valid_timeline = num_steps > 1 and math.isfinite(duration_s) and duration_s > 0.0
+        if not valid_timeline:
+            if self.sensing_processor is not None:
+                raise ValueError(
+                    "Sensing requires finite positive scenario duration and num_steps > 1 "
+                    "to define explicit scene_time_s values"
+                )
+            # Retain the established generic non-sensing fallback. It is never
+            # admitted as a sensing clock.
+            return float(frame_idx)
+        rate = getattr(self.simulation_config, "scene_sample_rate_hz", None)
+        if rate is not None:
+            if isinstance(rate, bool) or not math.isfinite(float(rate)) or float(rate) <= 0:
+                raise ValueError("scene_sample_rate_hz must be finite and positive")
+            timestamp_s = float(frame_idx) / float(rate)
+        else:
+            timestamp_s = float(frame_idx) * (duration_s / (num_steps - 1))
+        if not math.isfinite(timestamp_s):
+            raise ValueError("Computed scene_time_s must be finite")
+        return timestamp_s
 
     def _compute_cir_stack(self, paths: Any) -> tuple[np.ndarray, np.ndarray] | None:
         """Compute coherent CIR stack when cir_time_steps > 1.
@@ -295,38 +404,31 @@ class RayTracingService(BaseService):
         Returns:
             ``(a, tau)`` NumPy arrays if coherent mode is active, else ``None``.
         """
-        n_steps = self.simulation_config.cir_time_steps
-        if n_steps <= 1:
+        execution = self.sensing_execution_config
+        if execution is None or not execution.is_coherent_one_solve:
             return None
-
-        fs = self.simulation_config.cir_sampling_frequency_hz
+        n_steps = execution.acquisition.cpi_length_samples
+        fs = execution.acquisition.sample_rate_hz
         if fs is None:
-            self.logger.warning(
-                "cir_time_steps=%d but cir_sampling_frequency_hz is None; "
-                "falling back to per-frame mode",
-                n_steps,
-            )
-            return None
+            raise RuntimeError("Resolved coherent acquisition has no CIR sample rate")
 
         # FrozenPaths values come from cached/frozen frames, not live Sionna
         # path objects, so they cannot generate a new coherent CIR stack.
         if getattr(paths, "_is_frozen_paths", False):
-            self.logger.debug("Paths are frozen CPU data; cannot compute multi-step CIR")
-            return None
+            raise RuntimeError("Coherent sensing cannot acquire a CIR stack from frozen paths")
 
         try:
             a, tau = paths.cir(
                 num_time_steps=n_steps,
                 sampling_frequency=fs,
                 normalize_delays=False,
+                out_type="numpy",
             )
         except TypeError:
-            # Some supported Sionna runtimes expose cir() without the coherent-
-            # time keyword, so coherent sampling is a runtime capability.
-            self.logger.warning(
-                "paths.cir() does not accept num_time_steps; " "falling back to per-frame mode"
+            raise RuntimeError(
+                "The installed Sionna paths.cir() lacks the coherent time-sampling "
+                "API required by coherent_cpi"
             )
-            return None
 
         # Convert backend arrays before they cross into file/cache code.
         if hasattr(a, "numpy"):

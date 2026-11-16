@@ -8,6 +8,7 @@ grab fallback, returning an RGB ``uint8`` array for video/export callers.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any, Optional
 
 import numpy as np
@@ -25,6 +26,9 @@ class PygfxCaptureMixin:
         resolution_scale: float = 1.0,
         *,
         include_hud: bool = False,
+        max_tile_size: int | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        progress_callback: Callable[[float], None] | None = None,
     ) -> np.ndarray:
         """Return the current rendered frame as an RGB uint8 image.
 
@@ -32,19 +36,39 @@ class PygfxCaptureMixin:
         ``include_hud=True`` composites the visible renderer-owned Qt widgets
         over that readback.  The GPU image remains authoritative because
         native direct-screen canvases are not reliably included by
-        ``QWidget.grab()``. ``resolution_scale`` is a post-capture bilinear
-        resize; it changes output dimensions without increasing rendered scene
-        detail.
+        ``QWidget.grab()``. Scales above one render genuine additional scene
+        detail on a separate offscreen target; the live viewport is not resized.
+        Logical text/marker sizes and callout placement remain fixed. Large
+        figures are tiled, with overlap for supported anti-aliasing effects.
+        Nonlocal effects such as bloom require a single-pass figure. Export
+        errors and cancellation are explicit, never disguised as an upscale.
+        ``max_tile_size`` optionally sets the per-tile edge bound.
+        ``cancel_check`` is polled between tiles without processing GUI events.
+        ``progress_callback`` receives completion fractions between zero and one;
+        callbacks must not mutate the scene or process GUI events.
         """
         if not self._initialized:
             return np.zeros((480, 640, 3), dtype=np.uint8)
+        scale = float(resolution_scale)
+        if not np.isfinite(scale):
+            raise ValueError("Screenshot resolution scale must be finite")
+        if scale > 1.0 + 1e-6:
+            from .high_resolution import render_high_resolution_frame
+
+            return render_high_resolution_frame(
+                self,
+                resolution_scale=scale,
+                include_hud=include_hud,
+                max_tile_size=max_tile_size,
+                cancel_check=cancel_check,
+                progress_callback=progress_callback,
+            )
         raw = self._capture_canvas_frame(include_hud=include_hud)
         image = self._coerce_rgb8_image(raw)
         if image is None:
             h = max(int(self._height), 1)
             w = max(int(self._width), 1)
             return np.zeros((h, w, 3), dtype=np.uint8)
-        scale = float(resolution_scale)
         if abs(scale - 1.0) <= 1e-6:
             return image
         if scale <= 0.0:
@@ -66,8 +90,10 @@ class PygfxCaptureMixin:
         *,
         resolution_scale: float = 1.0,
         include_hud: bool = False,
+        progress_callback: Callable[[float], None] | None = None,
     ) -> bool:
         """Write the current rendered frame to an image file."""
+        self.last_screenshot_error = None
         try:
             from PIL import Image
         except ImportError:
@@ -76,10 +102,16 @@ class PygfxCaptureMixin:
         if not self._initialized:
             logger.warning("PygfxRenderer: cannot export a screenshot before initialization")
             return False
-        image = self.export_screenshot_to_array(
-            resolution_scale=resolution_scale,
-            include_hud=include_hud,
-        )
+        try:
+            image = self.export_screenshot_to_array(
+                resolution_scale=resolution_scale,
+                include_hud=include_hud,
+                progress_callback=progress_callback,
+            )
+        except Exception as exc:
+            self.last_screenshot_error = str(exc)
+            logger.warning("PygfxRenderer: screenshot render failed: %s", exc)
+            return False
         if image is None or image.size == 0:
             logger.warning("PygfxRenderer: screenshot readback returned no image")
             return False
@@ -90,6 +122,7 @@ class PygfxCaptureMixin:
             Image.fromarray(image).save(path)
             return True
         except Exception as exc:
+            self.last_screenshot_error = str(exc)
             logger.warning("PygfxRenderer: screenshot export failed: %s", exc)
             return False
 
@@ -183,12 +216,17 @@ class PygfxCaptureMixin:
         if selected is None and first_valid is not None:
             selected = first_valid
 
-        if not include_hud:
+        has_attribution = bool(
+            getattr(self, "_hud_overlay_specs", {}).get("map_attribution", {}).get("visible")
+        )
+        if not include_hud and not has_attribution:
             return selected
         base = self._coerce_rgb8_image(selected)
         if base is None:
             return selected
-        return self._composite_visible_qt_overlays(base)
+        if include_hud:
+            return self._composite_visible_qt_overlays(base)
+        return self._composite_visible_qt_overlays(base, attribution_only=True)
 
     def _capture_renderer_snapshot(self, *, include_hud: bool = False) -> Any:
         """Synchronously render and read the pygfx renderer color buffer."""
@@ -199,9 +237,31 @@ class PygfxCaptureMixin:
             return None
 
         try:
+            # Export can precede the queued live draw after a settings change.
+            # Match its effect order before the full-frame/tiled render begins.
+            for name in (
+                "_sync_dusk",
+                "_sync_compass",
+                "_sync_section_contours",
+            ):
+                sync_effect = getattr(self, name, None)
+                if callable(sync_effect):
+                    sync_effect()
+            update_depth = getattr(self, "_update_camera_depth_precision", None)
+            if callable(update_depth):
+                update_depth()
+            sync_guides = getattr(self, "_sync_scene_guides", None)
+            if callable(sync_guides):
+                sync_guides()
             update_headlight = getattr(self, "_update_headlight_pose", None)
             if callable(update_headlight):
                 update_headlight()
+            update_shadows = getattr(self, "_update_shadow_quality", None)
+            if callable(update_shadows):
+                update_shadows()
+            update_labels = getattr(self, "_update_label_backgrounds", None)
+            if callable(update_labels):
+                update_labels()
         except Exception:
             logger.debug("PygfxRenderer: headlight update before screenshot failed", exc_info=True)
 
@@ -406,7 +466,9 @@ class PygfxCaptureMixin:
         blended = source_rgb * alpha + destination_rgb * (255 - alpha)
         destination[:] = ((blended + 127) // 255).astype(np.uint8)
 
-    def _composite_visible_qt_overlays(self, base: np.ndarray) -> np.ndarray:
+    def _composite_visible_qt_overlays(
+        self, base: np.ndarray, *, attribution_only: bool = False
+    ) -> np.ndarray:
         """Composite visible HUD labels and the tooltip over a GPU RGB frame."""
         result = np.array(base, dtype=np.uint8, copy=True, order="C")
         container = getattr(self, "_container", None)
@@ -431,9 +493,13 @@ class PygfxCaptureMixin:
         scale_y = float(capture_height) / float(logical_height)
 
         labels = getattr(self, "_hud_overlay_labels", {})
-        widgets = list(labels.values()) if isinstance(labels, dict) else []
+        widgets = (
+            [labels.get("map_attribution")]
+            if attribution_only
+            else list(labels.values()) if isinstance(labels, dict) else []
+        )
         tooltip = getattr(self, "_tooltip_label", None)
-        if tooltip is not None:
+        if tooltip is not None and not attribution_only:
             # Tooltip widgets are raised above the persistent HUD labels.
             widgets.append(tooltip)
 
@@ -443,7 +509,8 @@ class PygfxCaptureMixin:
                 continue
             seen.add(id(widget))
             try:
-                if not widget.isVisible():
+                hidden = widget.isHidden() if attribution_only else not widget.isVisible()
+                if hidden:
                     continue
                 origin = widget.mapTo(container, QPoint(0, 0))
                 widget_width = int(widget.width())

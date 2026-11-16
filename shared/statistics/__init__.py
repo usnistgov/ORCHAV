@@ -33,12 +33,32 @@ from .frame_stats import (
     FrameStats,
     compute_orders_hist,
 )
-from .themes import theme_manager
-from .viz import (
-    compute_material_counts_by_depth,
-    plot_material_by_bounce_depth,
-    plot_material_evolution_stacked,
-)
+
+
+def __getattr__(name):
+    """Load visual helpers only when requested by a plotting consumer.
+
+    Theme/material modules use frame metadata and its optional HDF5 stack.
+    Pure array analysis and compact link exports must not require frame I/O.
+    Existing public names remain available through their original import API.
+    """
+    if name == "theme_manager":
+        from .themes import theme_manager
+
+        globals()[name] = theme_manager
+        return theme_manager
+    if name in {
+        "compute_material_counts_by_depth",
+        "plot_material_by_bounce_depth",
+        "plot_material_evolution_stacked",
+    }:
+        from . import viz
+
+        value = getattr(viz, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     # Metrics

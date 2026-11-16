@@ -2,6 +2,7 @@ import sys
 from types import ModuleType, SimpleNamespace
 
 import numpy as np
+import pytest
 
 from visualizer.src.renderers.protocol import RendererCapabilities
 from visualizer.visualizer import OrchavVisualizer, _open_export_location
@@ -27,6 +28,12 @@ class _DummyProgressDialog:
     def close(self) -> None:
         self.closed = True
 
+    def reset(self) -> None:
+        return None
+
+    def deleteLater(self) -> None:
+        return None
+
 
 class _DummyWriter:
     def __init__(self):
@@ -38,6 +45,61 @@ class _DummyWriter:
 
     def close(self) -> None:
         self.closed = True
+
+
+@pytest.mark.parametrize("hold", [True, False])
+@pytest.mark.parametrize("failure", ["none", "capture", "cancel"])
+def test_camera_sequence_export_uses_explicit_clock_and_restores_state(
+    monkeypatch, tmp_path, hold, failure
+):
+    writer = _DummyWriter()
+    samples, applied, resumed, frames = [], [], [], []
+    tools = SimpleNamespace(
+        sequence_duration=lambda: 1.0,
+        suspend_for_export=lambda: "camera snapshot",
+        resume_after_export=lambda value: resumed.append(value),
+        sequence_pose=lambda t: samples.append(t) or t,
+        apply=lambda pose: applied.append(pose),
+    )
+
+    def capture(**_):
+        if failure == "capture" and len(samples) == 2:
+            raise RuntimeError("Capture failed")
+        return np.zeros((2, 2, 3), dtype=np.uint8)
+
+    viz = SimpleNamespace(
+        total_animation_steps=0 if hold else 3,
+        app_state=SimpleNamespace(step=2),
+        renderer=SimpleNamespace(
+            capabilities=RendererCapabilities(screenshot_export=True),
+            export_screenshot_to_array=capture,
+        ),
+        animation_controller=SimpleNamespace(get_current_stride=lambda: 1),
+        camera_controller=SimpleNamespace(presentation=lambda: tools),
+        update_frame=lambda index: frames.append(index),
+        get_available_animation_steps=lambda: [] if hold else [0, 1, 2],
+    )
+
+    class Progress(_DummyProgressDialog):
+        def wasCanceled(self):
+            return failure == "cancel" and len(writer.frames) == 1
+
+    monkeypatch.setattr("visualizer.visualizer.QProgressDialog", Progress)
+    monkeypatch.setattr(
+        "visualizer.visualizer.QApplication", SimpleNamespace(processEvents=lambda: None)
+    )
+    monkeypatch.setattr("visualizer.visualizer._open_export_location", lambda _: None)
+    _install_imageio_writer(monkeypatch, lambda *a, **k: writer)
+    result = OrchavVisualizer.export_video(
+        viz, str(tmp_path / "sequence.gif"), fps=4, camera_sequence=True, camera_hold_frame=hold
+    )
+    assert result is (failure == "none")
+    count = {"none": 4, "capture": 2, "cancel": 1}[failure]
+    assert samples == [0.0, 0.25, 0.5, 0.75][:count]
+    # A held scene must not reload observations or disturb a volume inspector.
+    assert frames == ([] if hold else [0, 0, 1, 2][: len(samples)] + [2])
+    assert resumed == ["camera snapshot"]
+    assert writer.closed
 
 
 class _PlaybackController:
@@ -68,6 +130,49 @@ def _install_imageio_writer(monkeypatch, get_writer) -> None:
     imageio_package.v2 = imageio_v2
     monkeypatch.setitem(sys.modules, "imageio", imageio_package)
     monkeypatch.setitem(sys.modules, "imageio.v2", imageio_v2)
+
+
+def test_early_export_failure_retires_progress_dialog(monkeypatch, tmp_path):
+    """Completed exports must not leave a parent-owned dialog or its timer alive."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication, QMainWindow, QProgressDialog
+    from shiboken6 import isValid
+
+    app = QApplication.instance() or QApplication([])
+    dialogs = []
+    parent = QMainWindow()
+
+    def make_progress(*args):
+        dialog = QProgressDialog(*args[:-1], parent)
+        dialogs.append(dialog)
+        return dialog
+
+    def missing_encoder(*args, **kwargs):
+        raise ValueError("No MP4 backend installed")
+
+    monkeypatch.setattr("visualizer.visualizer.QProgressDialog", make_progress)
+    _install_imageio_writer(monkeypatch, missing_encoder)
+    viz = SimpleNamespace(
+        total_animation_steps=8,
+        app_state=SimpleNamespace(step=0),
+        renderer=SimpleNamespace(capabilities=RendererCapabilities(screenshot_export=True)),
+        animation_controller=SimpleNamespace(get_current_stride=lambda: 1),
+        update_frame=lambda index: None,
+        get_available_animation_steps=lambda: list(range(8)),
+    )
+    try:
+        assert not OrchavVisualizer.export_video(viz, str(tmp_path / "short.mp4"))
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        assert dialogs
+        assert all(not isValid(dialog) for dialog in dialogs)
+    finally:
+        for dialog in dialogs:
+            if isValid(dialog):
+                dialog.cancel()
+                dialog.deleteLater()
+        app.processEvents()
+        parent.close()
+        parent.deleteLater()
 
 
 def test_open_export_location_uses_argument_list_for_windows_shell_metacharacters(monkeypatch):
@@ -311,3 +416,30 @@ def test_export_video_reports_mp4_backend_failure_and_resets(monkeypatch, tmp_pa
     assert dummy_viz.animation_running is True
     assert dummy_viz.play_direction == 1
     assert controller.toggle_calls == [(None, True), (1, False)]
+
+
+def test_export_rejects_failed_frame_without_encoding_stale_image(monkeypatch, tmp_path):
+    writer = _DummyWriter()
+    updates = []
+    monkeypatch.setattr("visualizer.visualizer.QProgressDialog", _DummyProgressDialog)
+    monkeypatch.setattr(
+        "visualizer.visualizer.QApplication", SimpleNamespace(processEvents=lambda: None)
+    )
+    _install_imageio_writer(monkeypatch, lambda *a, **k: writer)
+    viz = SimpleNamespace(
+        total_animation_steps=3,
+        app_state=SimpleNamespace(step=2),
+        renderer=SimpleNamespace(
+            capabilities=RendererCapabilities(screenshot_export=True),
+            export_screenshot_to_array=lambda **kw: np.zeros((2, 2, 3), dtype=np.uint8),
+        ),
+        animation_controller=SimpleNamespace(get_current_stride=lambda: 1),
+        update_frame=lambda step: updates.append(step) or (step != 1),
+        get_available_animation_steps=lambda: [0, 1, 2],
+    )
+    assert not OrchavVisualizer.export_video(viz, str(tmp_path / "failure.gif"))
+    assert len(writer.frames) == 1
+    assert "source step 1" in viz.last_video_export_error
+    assert "incomplete" in viz.last_video_export_error
+    assert writer.closed
+    assert updates == [0, 1, 2]

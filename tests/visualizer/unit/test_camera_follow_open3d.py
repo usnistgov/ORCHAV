@@ -8,6 +8,7 @@ import pytest
 
 from visualizer.src.controllers.camera_controller import CameraController
 from visualizer.src.services.camera_scene_query_service import CameraSceneQueryService
+from visualizer.src.types.camera_state import CameraState
 
 try:
     from visualizer.src.controllers.ui_controller import UIController
@@ -77,6 +78,30 @@ class _FakeO3DVisualizer:
 
 def _make_controller(viz) -> CameraController:
     return CameraController(viz, CameraSceneQueryService(viz))
+
+
+@pytest.mark.skipif(
+    not OPEN3D_RENDERER_AVAILABLE, reason="Open3D renderer dependencies unavailable"
+)
+def test_lens_edit_survives_open3d_pov_frame_updates() -> None:
+    state = CameraState((0, -10, 3), (0, 0, 0), (0, 0, 1), 60)
+    renderer = Open3DRenderer.__new__(Open3DRenderer)
+    renderer.get_camera_state = lambda: state
+
+    def apply(value):
+        nonlocal state
+        state = value
+        return True
+
+    renderer.set_camera_state = apply
+    viz = SimpleNamespace(renderer=renderer, vis_initialized=True, vis=renderer)
+    controller = _make_controller(viz)
+    assert controller.set_field_of_view(85)
+    assert state.eye == (0, -10, 3) and state.lookat == (0, 0, 0)
+    for position in ([1, 0, 0], [2, 1, 3]):
+        assert renderer.set_pov_camera(position, [0, 0, 0], "forward")
+        assert state.fov_deg == 85
+        assert state.eye == tuple(position)
 
 
 @pytest.mark.skipif(

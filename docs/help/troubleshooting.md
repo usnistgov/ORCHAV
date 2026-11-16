@@ -1,17 +1,25 @@
 # Troubleshooting
 
-Start with the symptom and follow the smallest relevant check.
+Choose the problem you are seeing:
 
-```text
-Windows installation reports a path that is too long -> use a shorter local checkout and environment path
-Visualizer does not start -> Qt/display checks
-Visualizer starts, no frames -> scenario.yaml and frame outputs
-Live Generator fails -> running Generator, matching endpoint, and controlling client
-Remote HDF5 fails -> completed frames, frame-file server, and matching endpoint
-Local pygfx slows after changing displays -> adapter, window size, DPI, and power checks
-Visualizer is slow over remote desktop -> presentation and remote-display checks
-Large scenario is slow -> renderer, filters, cache, and ray-tracing quality
-```
+- [PowerShell blocks environment activation](#powershell-blocks-virtual-environment-activation)
+- [Windows installation path is too long](#windows-installation-reports-a-path-that-is-too-long)
+- [Windows generation cannot open an existing mesh](#windows-generation-cannot-open-an-existing-mesh)
+- [Visualizer does not start](#visualizer-does-not-start-qt-or-display-errors)
+- [Visualizer opens but shows no frames](#no-frames-found)
+- [Live Generator connection fails](#live-generator-grpc-connection-fails)
+- [Remote HDF5 connection fails](#remote-hdf5-connection-fails)
+- [Local preview reports a source mismatch](#local-what-if-preview-reports-a-source-identity-mismatch)
+- [Playback slows after changing monitors or GPUs](#local-pygfx-playback-becomes-slow-after-changing-monitors-or-gpus)
+- [Playback is slow over remote desktop](#visualizer-playback-is-slow-over-vnc-or-another-remote-desktop)
+- [Large scenarios are slow](#performance-issues)
+- [Ray-tracing backend initialization or shutdown messages](#mitsuba-and-drjit-backend-messages)
+- [macOS Python cannot import Expat](#macos-python-cannot-import-expat)
+- [Open3D import errors](#open3d-import-errors)
+- [pygfx / wgpu errors](#pygfx--wgpu-errors)
+- [OSM canopy tiles fail to download](#osm-vegetation-eth-canopy-tile-fails-to-download)
+- [OSM water differs from WorldCover](#osm-vegetation-worldcover-reports-water-not-in-osm)
+- [OSM generation is slow or Overpass times out](#osm-scene-generation-is-slow-or-overpass-times-out)
 
 ## PowerShell blocks virtual-environment activation
 
@@ -21,6 +29,11 @@ environment again:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+```
+
+Activate the environment:
+
+```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
@@ -47,36 +60,43 @@ launch errors as consequences of the incomplete environment. Recreate the
 environment and confirm that installation completes before diagnosing an
 ORCHAV runtime problem.
 
+## Windows generation cannot open an existing mesh
+
+Local PLY scene loading has a known Windows path limitation with the tested
+[Sionna RT](https://nvlabs.github.io/sionna/) 2.2.0 and Mitsuba 3.9.1 stack. A
+non-ASCII character in a parent directory, such as `Scene café`, can cause
+Mitsuba's PLY `FileStream` to report "No such file or directory" even though
+the mesh exists. The same scene and mesh load successfully from an ASCII-only
+path.
+
+Keep the scenario folder and referenced mesh assets under **ASCII-only full
+paths**, for example `C:\orchav-runs\Scene_cafe`. Check every parent directory,
+including a Windows user-profile directory with an accented name. Renaming
+only the mesh file does not remove those characters. Copy the complete
+scenario and asset tree to preserve relative references, update any absolute
+asset references, then retry generation.
+
+Saving, previewing, validating, or reopening the scenario in Scenario Builder
+does not establish that Sionna RT can load its meshes for generation. Unicode
+mesh-path generation remains unsupported on this tested Windows stack.
+Long-path support is not a verified remedy for this failure.
+
 ## Choose A Linux Display Setup
 
-If you are sitting at the Linux machine or already using its normal desktop
-session, launch the Visualizer normally. You do not need VNC, SSH X11
-forwarding, or a manual `DISPLAY` override.
+On a normal local desktop, launch the Visualizer without changing `DISPLAY`.
+For remote interactive use, launch it from a terminal inside the remote-desktop
+session so Qt and the renderer use that session's display. SSH X11 forwarding
+can be sensitive to network latency and graphics-extension support.
 
-If you are remote and need interactive 3D, a VNC or other remote desktop
-session is usually the best starting point. Open a terminal inside that
-session, confirm its assigned display with `echo "$DISPLAY"`, and launch ORCHAV
-from the same terminal. VNC keeps the application and display server on the
-host and sends compressed screen updates. SSH X11 forwarding can be more
-sensitive to network round trips and graphics-extension support.
-
-For automation that does not need an interactive window, use
-[Headless Rendering](../visualizer/headless_rendering.md).
+Use [Headless Rendering](../visualizer/headless_rendering.md) for automation
+without an interactive window.
 
 ## Choose A macOS Display Setup
 
-On a Mac's normal local desktop, launch the Visualizer normally. No `DISPLAY`
-setting, X11 forwarding, or remote-display setup is needed. macOS v0.1 uses the
-default pygfx renderer, which reaches Apple's native Metal graphics API through
-wgpu.
-
-For interactive use from another machine, start with macOS Screen Sharing or
-another full remote-desktop session, then launch ORCHAV from a terminal inside
-that desktop. This keeps the Qt application and graphics context on the Mac.
-SSH X11 forwarding is not the normal path for a Qt/Metal application and can
-add latency or graphics-backend complications. Use
-[Headless Rendering](../visualizer/headless_rendering.md) when no interactive
-window is needed.
+On the local desktop, use the default pygfx renderer without a `DISPLAY`
+override. It uses Apple's Metal graphics API through wgpu. For remote use,
+launch from a terminal inside macOS Screen Sharing or another full desktop
+session. SSH X11 forwarding is not the normal display path for Qt/Metal.
 
 ## Visualizer does not start (Qt or display errors)
 
@@ -99,12 +119,29 @@ does not install operating-system display libraries.
 On Apple Silicon, an abort saying that Qt requires the `neon` processor feature
 usually indicates an interpreter, wheel, or process-environment mismatch rather
 than a normal ORCHAV error. Confirm that Python is running natively as `arm64`
-and record the installed Qt bindings:
+and record the installed Qt bindings.
+
+Check the operating-system architecture:
 
 ```bash
 uname -m
+```
+
+Check the virtual environment's executable:
+
+```bash
 file .venv/bin/python
+```
+
+Check the architecture Python reports:
+
+```bash
 .venv/bin/python -c 'import platform; print(platform.machine())'
+```
+
+Record the installed Qt bindings:
+
+```bash
 .venv/bin/python -m pip show PySide6 PySide6-Essentials shiboken6
 ```
 
@@ -133,31 +170,32 @@ installing ORCHAV.
 - If you upgraded Python, reinstall Open3D in the new environment.
 
 These checks concern importing the package. The Open3D/Filament Visualizer
-renderer is unavailable on macOS in v0.1; an explicit request is rejected
-before Qt starts. Use `--renderer pygfx` on macOS. ORCHAV still installs Open3D
+renderer is unavailable on macOS. An explicit request is rejected
+before Qt starts. Use the default pygfx renderer on macOS. ORCHAV still installs Open3D
 there for geometry utilities used outside the renderer.
 
 ## pygfx / wgpu errors
 
-- **"No GPU adapter found"** or **"RuntimeError: No wgpu adapter"**: wgpu
-  requires a compatible native graphics backend. Update the graphics driver
-  and inspect the adapter with
-  `python -c "import wgpu; print(wgpu.gpu.request_adapter_sync().info)"`.
-- **Blank window or no rendering**: Ensure the active environment has the
-  normal ORCHAV runtime dependencies installed (`python -m pip install -e .`).
-  Headless, VNC, and virtual-display environments can select a hardware or
-  software adapter depending on their graphics setup. Inspect it with
-  `python -c "import wgpu; print(wgpu.gpu.request_adapter_sync().info)"`.
-- **Import errors for pygfx**: Reinstall ORCHAV in the active environment and
-  verify the renderer packages with `python -m pip show pygfx wgpu`.
+For **No GPU adapter found** or a blank renderer, inspect the adapter available
+to the active environment:
 
-Messages such as `Unable to find extension: VK_EXT_physical_device_drm`, or
-warnings about DRI3 or EGL, can appear in VNC or headless sessions. They do not
-by themselves establish success or failure. Check the exit status and confirm
-that the expected window or image was produced. Adapter enumeration lists
-available adapters, but it does not prove which adapter presented a particular
-window. Investigate further when output is missing, the command fails, or
-performance suggests an unexpected software fallback.
+```bash
+python -c "import wgpu; print(wgpu.gpu.request_adapter_sync().info)"
+```
+
+If no compatible adapter is available, check the native graphics driver and
+session setup. VNC and headless environments can select software rendering.
+For import errors, confirm the environment has the normal ORCHAV installation
+and inspect its renderer packages:
+
+```bash
+python -m pip show pygfx wgpu
+```
+
+Warnings about `VK_EXT_physical_device_drm`, DRI3 or EGL do not by themselves
+establish success or failure. Check the command's exit status and expected
+window or image. Adapter enumeration shows available hardware, but does not
+prove which adapter presented a particular window.
 
 ## No frames found
 
@@ -212,6 +250,14 @@ server. It does not run the Generator or recompute paths.
 See [Remote HDF5 Playback](../../scenarios/visualizer/data_modes/remote_hdf5/README.md)
 for the generation, serving, and connection commands.
 
+## Local What-if Preview reports a source identity mismatch
+
+Restart the Visualizer from the intended checkout, then enable preview again.
+A Visualizer left open while its checkout changes retains the earlier source
+identity. The preview worker must use the same checkout, package version and
+Git revision. See [Interactive recomputation](../visualizer/interactive_recomputation.md)
+for the supported preview workflow.
+
 ## Mitsuba and Dr.Jit backend messages
 
 A backend check or Generator run may show messages from Mitsuba and Dr.Jit.
@@ -223,20 +269,11 @@ Interpret each message together with the result of the command.
 | `jit_registry_shutdown()` | Dr.Jit found Mitsuba objects still registered while Python was closing. | The command exits successfully and writes the expected output. |
 | `jit_malloc_shutdown()` | Dr.Jit found memory still allocated while Python was closing. | The command exits successfully and writes the expected output. |
 
-For example, the messages can look like this:
+Treat the run as failed if it raises an exception, returns a nonzero exit
+status or does not produce its expected output. After generation,
+[inspect a saved frame](../shared/frame_inspection.md) to confirm that it loads.
 
-```
-jitc_llvm_init(): LLVM API initialization failed ..
-jit_registry_shutdown(): leaking 8 instances of type "mitsuba::BSDF".
-jit_malloc_shutdown(): leaked
-```
-
-First check the command outcome. Treat the run as a failure if it ends with an
-exception, returns a nonzero exit status, or does not produce the expected
-output. After generation, use `orchav-inspect` as documented by the scenario to
-confirm that a frame can be loaded.
-
-Then confirm which backend is active:
+Inspect which backend the environment selects when importing Sionna RT:
 
 ```bash
 python -c "import sionna.rt; import mitsuba as mi; print(mi.variant())"
@@ -248,20 +285,15 @@ python -c "import sionna.rt; import mitsuba as mi; print(mi.variant())"
   It does not indicate a CUDA failure when generation succeeds.
 - A variant beginning with `llvm_` means that Sionna RT is using the CPU. If
   LLVM cannot initialize, CPU generation cannot proceed. Follow the
-  [Apple Silicon setup](../getting_started/installation.md#apple-silicon-macos)
-  on macOS or install LLVM through the platform package manager.
+  [Linux CPU setup](../getting_started/installation.md#linux-cpu-ray-tracing)
+  or [Apple Silicon setup](../getting_started/installation.md#apple-silicon-macos)
+  for the library selection and checks.
 - If importing Sionna RT fails before a variant is reported, repair the intended
   backend rather than ignoring the initialization message.
 
-The LLVM message commonly means that LLVM is missing, cannot be found, or is
-incompatible with Dr.Jit. It requires action for CPU execution but not for a
-successful CUDA run.
-
-The shutdown messages can appear because Python releases Mitsuba and Dr.Jit
-objects in an order that triggers cleanup warnings. After a successful command,
-no action is required. If they follow an exception or missing output,
-investigate the earlier error instead of treating the shutdown messages as the
-cause.
+After a failed run, investigate the earlier exception before shutdown warnings.
+A missing or incompatible LLVM library matters for CPU execution. An otherwise
+successful CUDA run does not require the unused CPU backend to initialize.
 
 ## Local pygfx playback becomes slow after changing monitors or GPUs
 
@@ -283,14 +315,23 @@ Then compare ordinary wgpu selection with an explicit adapter:
 python -c "import wgpu; print([a.info['device'] for a in wgpu.gpu.enumerate_adapters_sync()])"
 ```
 
-```powershell
-# Remove a selection inherited from the current shell.
-$env:PYGFX_WGPU_ADAPTER_NAME = $null
+In PowerShell, clear an adapter selection inherited from the shell:
 
+```powershell
+$env:PYGFX_WGPU_ADAPTER_NAME = $null
+```
+
+Open the scenario using the default adapter choice:
+
+```powershell
 orchav-visualizer --renderer pygfx `
   --pygfx-present-method screen `
   --scenario path/to/scenario
+```
 
+Close that window, then compare an explicitly selected adapter:
+
+```powershell
 orchav-visualizer --renderer pygfx `
   --pygfx-present-method screen `
   --pygfx-adapter-name "ADAPTER NAME FROM THE LIST ABOVE" `
@@ -318,14 +359,9 @@ The pygfx presentation methods have different tradeoffs:
 | `bitmap` | Reads the rendered image back for Qt bitmap composition. | Compatibility path for Linux VNC and display setups without a usable direct surface. |
 | `auto` | Delegates selection to rendercanvas. With the tested Qt stack, this normally resolves to `bitmap`. | Non-Windows default and an explicit compatibility comparison. |
 
-Start with the method appropriate for the session:
-
-| Session | First choice |
-|---------|--------------|
-| Local Windows desktop | Omit the option (ORCHAV selects `screen`). |
-| Linux VNC | Omit the option (`auto`, normally `bitmap`) or force `bitmap`. |
-| Windows Remote Desktop | Start with the inherited Windows `screen` default. Compare `bitmap` and `auto` if playback is slow. |
-| Other local desktops | Omit the option (ORCHAV delegates to rendercanvas with `auto`). |
+Omission selects `screen` on Windows and `auto` elsewhere. Begin with that
+default on a local desktop or Windows RDP. For Linux VNC, `bitmap` is a useful
+compatibility choice. Compare methods with the same scenario and window size.
 
 Force the Linux VNC-compatible path with:
 
@@ -335,40 +371,65 @@ orchav-visualizer --renderer pygfx \
   --scenario path/to/scenario
 ```
 
-ORCHAV does not classify VNC, RDP, or other remote-session products when
-choosing the Windows default. RDP application rendering and display delivery
-depend on the host configuration, so compare methods with the same scenario and
-window size instead of assuming Linux VNC behavior applies to RDP. Explicit
-`auto` delegates to rendercanvas and therefore differs from omission on
-Windows. If direct `screen` initialization fails, ORCHAV retries once with
-`bitmap`. It does not change methods merely because measured playback is slow.
+Explicit `auto` delegates to rendercanvas, so it differs from omission on
+Windows. If `screen` initialization fails, ORCHAV retries once with `bitmap`.
+It does not change methods automatically because playback is slow. The option
+does not affect Open3D, which can use software rendering in a Linux VNC session.
 
-`--pygfx-present-method` does not affect Open3D. On Linux VNC, Open3D follows
-the display's native GL path and may report Mesa llvmpipe. The v0.1 tests
-exercise that as a functional path, but its timing is not NVIDIA
-GPU-performance evidence. ORCHAV v0.1 runs Open3D directly; Open3D through
-VirtualGL was not included in v0.1 testing. Use pygfx for GPU-backed VNC or
-performance measurements, record the selected adapter, and do not interpret
-software Open3D numbers as L40S or V100 performance. SSH X11 forwarding can
-remain latency-bound.
-
-The status-bar **Playback updates** value measures completed scenario-frame
-pipelines on the server, not client-visible FPS. In **System -> Performance**,
-**Render callback** is server-side callback cadence and update-to-callback
-latency, while **Renderer submit** is time spent in the renderer call. These
-server-side values can reflect time spent interacting with the virtual display,
-but they do not measure VNC/RDP encoding, network delivery, or client redraw.
+The status bar and **System → Performance** report server-side frame updates,
+render callbacks and renderer submission time. They do not measure remote
+desktop encoding, network delivery or client-visible frame rate.
 
 ## Performance issues
 
-- Large scenes benefit from GPU acceleration.
-- Reduce ray tracing quality presets for faster generation.
-- In the Visualizer, reduce displayed MPCs using filters.
-- Increase the canonical cache for large scenarios:
-  `export VIZ_CANON_CACHE_MB=4096`
-- Use the pygfx renderer (`--renderer pygfx`) for scenarios with >100k MPCs.
-- For repeatable renderer checks, use the
-  [Synthetic MPC Benchmark](../../scenarios/visualizer/synthetic_mpc_benchmark/README.md).
+First distinguish generation time from recorded playback. For generation,
+review the ray budget and enabled interactions in
+[simulation configuration](../generator/configuration.md). For playback, reduce
+the displayed MPC count if drawing is the bottleneck. Use
+[cache and playback tuning](../visualizer/caching.md) to choose memory budgets
+and diagnose loading costs.
+
+For a controlled renderer workload, use the
+[Synthetic MPC Benchmark](../../scenarios/visualizer/synthetic_mpc_benchmark/README.md).
+
+## OSM Vegetation: ETH Canopy Tile Fails To Download
+
+- The ETH Global Canopy Height tiles live on
+  `https://share.phys.ethz.ch/~pf/nlangdata/ETH_GlobalCanopyHeight_10m_2020_version1/3deg_cogs/`.
+  Anonymous HTTPS requires no authentication, but the ETH server occasionally rate-limits
+  or goes down for maintenance.
+- The Generator logs `ETH canopy tile download failed (...)` and falls
+  back to the 8 m default height for every tree. Other vegetation features
+  (tree rows, WorldCover gap-fill) continue to work.
+- Preserve working canopy tiles and retry the build later. If a particular cached tile is corrupt, remove only that tile and
+  rebuild with `OSM_REFRESH_CACHE=1` once the server is back. Tile files
+  already cached locally are not re-downloaded.
+
+## OSM Vegetation: WorldCover Reports Water Not In OSM
+
+- If a scene emits
+  `WorldCover reports N water cells (~X m²) not present in OSM`, the
+  ESA WorldCover raster contains a permanent-water cell that no OSM
+  polygon covers.
+- Common causes: small ponds, canal segments, or reservoirs that OSM
+  volunteers haven't mapped. The Generator does **not** auto-extend
+  the water mesh. The warning reports a difference between the source datasets.
+- To fix the scene, add the missing water polygon to OSM upstream, or
+  turn off the validation with `scene.osm.worldcover_water_check: false` if that comparison is not
+  needed. This hides the check and does not add water geometry.
+
+## OSM scene generation is slow or Overpass times out
+
+Overpass can reject requests when a server is busy or unavailable. Keep existing
+scenes and working caches, and retry later. Repeated builds or a larger timeout
+do not make a busy server accept a query.
+
+Check `osm_metadata.json` and `osm_acquisition_attempt.json` for incomplete
+layers and failure details. Required-data failures stop the build. Failed
+optional layers can be retried later. Use the
+[OSM reuse and recovery guide](../generator/geography/osm_scene_generation.md#reuse-and-recovery)
+for timeout settings, cache location and explicit refresh controls. Refresh
+bypasses scene reuse, so it is not a remedy for a temporary service outage.
 
 ---
 

@@ -227,7 +227,7 @@ class MaterialPayload:
     glass_thickness: float = 0.0
     # Tint that transmitted light picks up as it passes through the
     # material — Filament ``MaterialRecord.absorption_color``. Default
-    # white means no tint. Pygfx has no equivalent in 0.15.3 and does not
+    # white means no tint. Pygfx has no equivalent in 0.17 and does not
     # apply the value.
     absorption_color: tuple[float, float, float] = (1.0, 1.0, 1.0)
     # ``texture_path`` is the albedo map. The remaining maps add surface detail
@@ -249,8 +249,10 @@ class MaterialPayload:
     uv_repeat_scale: Optional[tuple[float, float]] = None
     # Shader variant override. ``"defaultLitSSR"`` opts a material into
     # Filament's screen-space reflection shader on the Open3D renderer.
-    # Pygfx 0.15.3 has no equivalent and does not apply this value.
+    # Pygfx 0.17 has no equivalent and does not apply this value.
     shader_variant: Optional[str] = None
+    # Optional linear roughness mask for the clearcoat layer (pygfx physical).
+    clearcoat_roughness_map_path: Optional[str] = None
 
     @property
     def has_advanced_pbr(self) -> bool:
@@ -259,15 +261,14 @@ class MaterialPayload:
         Used by the pygfx renderer to decide between MeshStandardMaterial
         (fast path) and MeshPhysicalMaterial (heavier shader).
 
-        ``anisotropy`` is intentionally excluded: pygfx 0.15.3 can emit a
-        ``getTangentFrame`` call without the corresponding function definition
-        unless a normal map is bound, which crashes the shader compile.
+        ``anisotropy`` is intentionally excluded: pygfx 0.17 reads unassigned
+        texture coordinates during shader generation without a normal map.
         Anisotropy is therefore Open3D-renderer-only in this release. The
         Open3D renderer applies it via
         ``MaterialRecord.base_anisotropy`` regardless of this predicate.
 
         Transmission and glass thickness are also excluded because pygfx has
-        no equivalent in 0.15.3.
+        no equivalent in 0.17.
         """
         return (
             self.clearcoat > 0.0
@@ -344,6 +345,7 @@ def material_payload_from_mapping(material: MaterialPayload | dict[str, Any]) ->
         texture_path=_opt_str("texture_path"),
         clearcoat=float(material.get("clearcoat", 0.0)),
         clearcoat_roughness=float(material.get("clearcoat_roughness", 0.0)),
+        clearcoat_roughness_map_path=_opt_str("clearcoat_roughness_map_path"),
         anisotropy=float(material.get("anisotropy", 0.0)),
         emissive_color=_rgb(material.get("emissive_color", (0.0, 0.0, 0.0)), (0.0, 0.0, 0.0)),
         emissive_intensity=float(material.get("emissive_intensity", 0.0)),
@@ -364,5 +366,63 @@ def material_payload_from_mapping(material: MaterialPayload | dict[str, Any]) ->
     )
 
 
+@dataclass(frozen=True)
+class VolumePayload:
+    """Scalar z/y/x samples with nearest-neighbour display and an RGBA palette.
+
+    Integer voxel centres are transformed into world coordinates by RenderObject.
+    The slice plane is expressed in world coordinates, ax + by + cz + d = 0.
+    MIP chooses the largest scalar along each ray; it is not an average or a
+    probability integration and can hide lower-valued cells behind other cells.
+    ISO ray-marches the occupied region above ``threshold``. It draws sample-cell
+    boundaries; they do not interpolate new measurements or establish a physical
+    contour between measured locations.
+    """
+
+    values: np.ndarray
+    palette: np.ndarray
+    limits: tuple[float, float]
+    mode: str = "slice"
+    plane: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 0.0)
+    opacity: float = 0.6
+    threshold: float = 0.5
+    lighting: bool = False
+    surface_grid: bool = False
+
+    def __post_init__(self):
+        values = np.asarray(self.values, dtype=np.float32)
+        palette = np.asarray(self.palette, dtype=np.float32)
+        if values.ndim != 3 or min(values.shape) < 1 or values.nbytes > 64 * 1024 * 1024:
+            raise ValueError("Volume needs a nonempty 3D array of at most 64 MiB")
+        if not np.all(np.isfinite(values)):
+            raise ValueError("Use an explicit transparent palette value for unknown voxels")
+        if palette.ndim != 2 or palette.shape[1] != 4 or len(palette) < 2:
+            raise ValueError("Volume palette must contain RGBA entries")
+        if not np.all(np.isfinite(palette)) or np.any((palette < 0) | (palette > 1)):
+            raise ValueError("Volume palette values must lie in [0, 1]")
+        if self.mode not in {"slice", "mip", "iso"} or not 0 <= self.opacity <= 1:
+            raise ValueError("Invalid volume display mode or opacity")
+        if not np.isfinite(self.threshold):
+            raise ValueError("Volume threshold must be finite")
+        if type(self.surface_grid) is not bool:
+            raise ValueError("Volume surface_grid must be boolean")
+        if type(self.lighting) is not bool:
+            raise ValueError("Volume lighting must be boolean")
+        if (
+            len(self.limits) != 2
+            or not np.all(np.isfinite(self.limits))
+            or self.limits[0] >= self.limits[1]
+        ):
+            raise ValueError("Volume limits must be finite and increasing")
+        if (
+            len(self.plane) != 4
+            or not np.all(np.isfinite(self.plane))
+            or np.linalg.norm(self.plane[:3]) == 0
+        ):
+            raise ValueError("Invalid world slice plane")
+        object.__setattr__(self, "values", _immutable_array(values))
+        object.__setattr__(self, "palette", _immutable_array(palette))
+
+
 GeometryPayload = Union[MeshPayload, LineSetPayload, PointCloudPayload, OrientationFramePayload]
-RenderPayload = Union[GeometryPayload, TextLabelPayload]
+RenderPayload = Union[GeometryPayload, TextLabelPayload, VolumePayload]

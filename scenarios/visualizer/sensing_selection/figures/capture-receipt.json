@@ -1,0 +1,1018 @@
+{
+  "schema": "orchav.visual-selection-capture.v1",
+  "source_base_commit": "23501c46f90668e86657fcfe0b7250b9626fca7b",
+  "code_state": "Runtime code matches source_base_commit. Documentation and capture receipts were updated after capture.",
+  "runtime": {
+    "pygfx": "0.17.0",
+    "wgpu": "0.31.1",
+    "rendercanvas": "2.6.3",
+    "PySide6": "6.8.3",
+    "pyqtgraph": "0.14.0",
+    "rendering_backend": "Mesa lavapipe software Vulkan",
+    "ui": "Native Qt widgets with offscreen bitmap presentation",
+    "theme": "dark",
+    "theme_control": "Display > Theme > Dark",
+    "acquisition": "Existing recordings reused without generation or reprocessing. Acquisition identity is recorded separately below."
+  },
+  "interpretation": "Unedited native application captures after actual Qt control and plot interactions. No screenshot reconstruction, compositing, synthetic overlays, or generated imagery. Numerical bin support is not target localization, uncertainty, or GPU qualification.",
+  "recordings": {
+    "bistatic_range_locus": {
+      "scenario_path": "examples/visualizer_experiments/bistatic_range_locus",
+      "scenario_yaml_sha256": "c639f30e93aa1fb7d408e366f71527e826a266396d98540015069853cec82e18",
+      "current_scenario_yaml_sha256": "1ecba9d14b77598d5d56d7c122dd41f66b51f56a1b70827969175d750d487991",
+      "input_note": "The acquisition YAML included the subsequently removed export_path_metrics: true setting. All other parsed YAML settings and the scene and mesh bytes match the capture source.",
+      "scene_xml_sha256": "bc61c8a67d64b54a3af38d747f9ce65f169d3ebd5f7d25577b31a7ba2a80d5c7",
+      "manifest_sha256": "1db0eb33cbab5731202b1607a713905f7bcea499240edf5eb92ef4c044b27b45",
+      "manifest_identity": {
+        "generation_id": "f5d9314d-f8f0-4aec-a647-c656d0a30dc9",
+        "frame_set_id": "f11bc52ba88b562ff826b92cdc5fdfd74ca47bf78719facf54e21cf6cad6550c",
+        "created_utc": "2026-11-05T18:59:31.672355+00:00",
+        "frame_ids": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "total_frames": 8,
+        "storage_layout": "packed_ragged_v2"
+      },
+      "generation_provenance": {
+        "git_sha": "133731f06eff4c15eef6b0a09e30fef53132aa26",
+        "python_version": "3.12.16",
+        "quality": "low",
+        "quality_profile": {
+          "diffraction": false,
+          "diffuse_reflection": false,
+          "los": false,
+          "max_depth": 1,
+          "max_num_paths_per_src": 1000,
+          "refraction": false,
+          "samples_per_src": 10000,
+          "seed": 42,
+          "specular_reflection": true,
+          "synthetic_array": true
+        }
+      },
+      "chunks": [
+        {
+          "file": "mpc_frames_00000-00006.h5",
+          "bytes": 121576,
+          "sha256": "ad823941496d2b0d659c300049d5dde8af4c05c74577e38cacd4eda45ddcc4ea"
+        },
+        {
+          "file": "mpc_frames_00007-00007.h5",
+          "bytes": 395351,
+          "sha256": "9144c29c4c6a1126fcdc1dd62c9889401d867582ee2f689302d42e7f08a4d61e"
+        }
+      ],
+      "meshes": [
+        {
+          "file": "meshes/reflecting_wall.ply",
+          "bytes": 249,
+          "sha256": "6ad3369cc508dbf5aab5faeee6e720eca02e750b77beb3084f5ca16f15dd3548"
+        }
+      ],
+      "sensing_result": {
+        "storage_frame": 7,
+        "clock": {
+          "clock_id": "f5d9314d-f8f0-4aec-a647-c656d0a30dc9",
+          "domain": "scenario",
+          "origin": "scenario_start",
+          "origin_time_s": 0.0,
+          "unit": "s"
+        },
+        "acquisition_id": "3100d363-cfff-5930-a61c-3a75889807be",
+        "pair_id": "8604d3808a576d7fb710a03a3e2b83cb18d8e311e094016e0c0bb471f5f35346",
+        "result": {
+          "processing_recipe_id": "c238aa5f972d7aaa6ac6574d9bc2dd19d3926c5b7154ea1eac3181058e1b307b",
+          "processing_run_id": "f5d9314d-f8f0-4aec-a647-c656d0a30dc9",
+          "reference_time_policy": "solve_start",
+          "reference_time_s": 0.0
+        },
+        "display_binding": {
+          "policy": "source_scene_exact",
+          "reason": "one_solve_coherent_geometry_epoch",
+          "scene_frame_id": 0
+        },
+        "products": {
+          "range_doppler_cfar_noise_power_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+            "contract_data_sha256": "03f30da8d88d5b24e909a34c919c8513380c6400784867de59f6f21baaae38b5",
+            "product_id": "e6b8a5973f78b8c86129bdf45a16d0fdfe8d1ad7ebc924ff31e3d40d386892aa"
+          },
+          "range_doppler_cfar_eligible_mask_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "bool",
+            "raw_c_order_bytes_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+            "contract_data_sha256": "8c4259eed806d19f6b0d24e7cd1fc42772fb8c84aac26a339e227b7b1cb0c055",
+            "product_id": "097354ae1e212f758eb7f66f90f4af9db891c0688b989c431d0bc78b017b782f"
+          },
+          "range_doppler_nms_mask_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "bool",
+            "raw_c_order_bytes_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+            "contract_data_sha256": "8c4259eed806d19f6b0d24e7cd1fc42772fb8c84aac26a339e227b7b1cb0c055",
+            "product_id": "f71671c455359a7f32c1bd7a617f03cbe5d77cec09a8f0466729214cfa95f7e1"
+          },
+          "range_doppler_cfar_mask_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "bool",
+            "raw_c_order_bytes_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+            "contract_data_sha256": "8c4259eed806d19f6b0d24e7cd1fc42772fb8c84aac26a339e227b7b1cb0c055",
+            "product_id": "5633a91232808a2b3790935748285a14e73f9d4a9775ebfb0f165887e57e8985"
+          },
+          "slow_time_axis_s": {
+            "shape": [
+              8
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "ab3ab6a1d14b0beb2e0550d8d5dc7b9bb6ef07dc688b08f909d5ce072009a8e7"
+          },
+          "range_doppler_cfar_training_cell_count_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "int32",
+            "raw_c_order_bytes_sha256": "ad7facb2586fc6e966c004d7d1d16b024f5805ff7cb47c7a85dabd8b48892ca7",
+            "contract_data_sha256": "93b1dd03bd4388e9aedd53547289f883331b42196f1d52d7d0ffe51eb7453956",
+            "product_id": "ad36ce6362c691c3af1b9eb026e1d758cda19f27fc2e5d55ef9b025c77ac9661"
+          },
+          "doppler_axis_hz": {
+            "shape": [
+              8
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "71e00c03f0983ee5ee731a7ee4af9b8aae1d6f15b665d8fbdaaf8eeb7e7f2914"
+          },
+          "frequency_axis_hz": {
+            "shape": [
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "ee374cbcfcb0b1565384a384f4ff0ce2f5e1c797537b4c0c972955674fddc7f1"
+          },
+          "range_doppler_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "47d879e150cd026e4bfabe0e9bba5e4bdf7fc371bd3b26441687c937c745fb05",
+            "contract_data_sha256": "1e69c2c43987c6c11a11c250acb108c023644069dbdbc840abe2faff3a29d5f7",
+            "product_id": "218d93e3815af1e04f9029932189faf5ce6747f2ec95cfef61a7da3e32c6f689"
+          },
+          "range_axis_m": {
+            "shape": [
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "4f72e9589ee66fe662be16370780b811617453cb77708b233a3b7b84944ff088"
+          },
+          "range_doppler_cluster_labels_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "int32",
+            "raw_c_order_bytes_sha256": "f47a8ec3e9aff2318d896942282ad4fe37d6391c82914f54a5da8a37de1300c6",
+            "contract_data_sha256": "9a411487f4a409dd57b25e0d283f995ed5b3e7b162f6bbf58d5763ed9ba571e1",
+            "product_id": "03f96f39ca9ae5176c42f06588d2f71d4ccb0e2f2fb1436cf6939d3d59d3fab3"
+          },
+          "range_doppler_snr_db_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+            "contract_data_sha256": "03f30da8d88d5b24e909a34c919c8513380c6400784867de59f6f21baaae38b5",
+            "product_id": "0eb71f8a6481c82cab70d867d09785ebf0714db1308e27b0e34f471d9ae29c5d"
+          },
+          "cfr_by_pair_rx_element": {
+            "shape": [
+              1,
+              1,
+              8,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "9a11be6ddc28b4d6d58e4f3f756209d6ec9ad2d8a2d7cfaa3f7cd8e2f87822f3",
+            "contract_data_sha256": "5df0c8469f0241c45985857b669a4a97f5f8a533f3526e2ff2709e47cd635bca",
+            "product_id": "777e1753fbd716b0058ffb0e2ae74f05dda82a6fb77e2ab30414b20ce8ad6912"
+          },
+          "range_profile_by_pair": {
+            "shape": [
+              1,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "84c486638cc47a6eb3ecdad531c33f7d2ef4c4efe5076fe02341110ded469339",
+            "contract_data_sha256": "294f0f69864647b02796dd42195c9cb9cb2807c130ed20bf357ec1dd596051d1",
+            "product_id": "556673e00d22ca588813b0080762122f6b5ba6546208307e5e9015c74e6509c9"
+          },
+          "range_doppler_snr_valid_mask_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "bool",
+            "raw_c_order_bytes_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+            "contract_data_sha256": "8c4259eed806d19f6b0d24e7cd1fc42772fb8c84aac26a339e227b7b1cb0c055",
+            "product_id": "ab0a555453ccf8060e363fd30730aacd4173016c4b9cb7fb8f0d22b950165313"
+          },
+          "slow_time_by_pair_rx_element": {
+            "shape": [
+              1,
+              1,
+              8,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "a8405e6586b875daa5f7c68bc4322c37468b5b7ce7b4ed3a4a1baad6dbd5cfda",
+            "contract_data_sha256": "de9fd8308b9fd687b7b6587ef28bbf3ae7df2511cf0abff08a0b677399bde7a6",
+            "product_id": "f2ded425c3d8a0b425e40eadefdb27fefce6548a8ea038be9029166d45607f96"
+          },
+          "range_doppler_cfar_threshold_power_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+            "contract_data_sha256": "03f30da8d88d5b24e909a34c919c8513380c6400784867de59f6f21baaae38b5",
+            "product_id": "974447896e2ae41e7fb07d528950816d3794c259d7a2e54d93e55296c8421e02"
+          },
+          "range_profile_raw_by_pair": {
+            "shape": [
+              1,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "84c486638cc47a6eb3ecdad531c33f7d2ef4c4efe5076fe02341110ded469339",
+            "contract_data_sha256": "294f0f69864647b02796dd42195c9cb9cb2807c130ed20bf357ec1dd596051d1",
+            "product_id": "69de1e675e39e80eb45e7f21423b06b0ea81ec406835192565fa1b7bc9596ce7"
+          },
+          "cir_by_pair_rx_element": {
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "09d817713fbbdbb52dbd139d864924b915edc9493677cc4e08bf85164575c542",
+            "contract_data_sha256": "2f11fa1e0b0ba11280c67de8be141ecd9bf62ab2e928942e4e670cedeb694a36",
+            "product_id": "9989935383dc3cfe26b3225fcc7bfa475b02e3a82cb52d8b9229754cc2a3987a"
+          },
+          "range_doppler_detection_input_power_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "2135261fab3098e45a34e0234e153f130f078cb4b146c14c55201b9ae02a0fcb",
+            "contract_data_sha256": "04866141e688652e609baa93629950695d31759061f7ca731c976ab88c895fa1",
+            "product_id": "33241cc188dc7f5e7518d62a9949a3b608a9710734d39f77c1d8e7a092117cda"
+          },
+          "range_doppler_raw_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "47d879e150cd026e4bfabe0e9bba5e4bdf7fc371bd3b26441687c937c745fb05",
+            "contract_data_sha256": "1e69c2c43987c6c11a11c250acb108c023644069dbdbc840abe2faff3a29d5f7",
+            "product_id": "5fafbacc7abc3b967303f8ad5eaecf9f5fd57a59b96807e0f2ca968051772c91"
+          }
+        }
+      },
+      "verified_values": {
+        "name": "bistatic_range_locus",
+        "frames": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "paths_by_pair": [
+          {
+            "pair_index": 0,
+            "delay_ns": [
+              56.999454498291016
+            ],
+            "delay_equivalent_length_m": [
+              17.08800656870182
+            ],
+            "aoa_az_deg": [
+              110.55615234375
+            ]
+          }
+        ],
+        "sensing": {
+          "published_frame": 7,
+          "bound_scene_frame": 0,
+          "reference_time_s": 0.0,
+          "coherent_samples": 8,
+          "rt_solves": 1,
+          "range_mode": "bistatic",
+          "peak_cell_doppler_range": [
+            4,
+            17
+          ],
+          "peak_range_m": 16.988239286666666,
+          "peak_doppler_hz": 0.0,
+          "range_sample_spacing_m": 0.9993081933333333,
+          "geometric_range_m": 17.08800749063506
+        },
+        "viewer_binding": {
+          "main_scene_step": 0,
+          "bound_scene_step": 0,
+          "storage_frame": 7,
+          "surface_count": 2,
+          "detector_stage_inspection_available": true,
+          "label": "Frozen-reference bistatic_path_length locus: L=16.9882 m; bin 17",
+          "foci_m": [
+            [
+              -3.0,
+              0.0,
+              1.5
+            ],
+            [
+              3.0,
+              0.0,
+              1.5
+            ]
+          ]
+        }
+      }
+    },
+    "monostatic_range_locus": {
+      "scenario_path": "examples/visualizer_experiments/monostatic_range_locus",
+      "scenario_yaml_sha256": "1e94bb02537595d9b2af6aeb45ee5d6a1e0ab52a87f766c68d58fb725d2ba6ed",
+      "current_scenario_yaml_sha256": "3c609d16b26d19144604f184551909db7c558badeac0d24e20655afc4dc043d8",
+      "input_note": "The acquisition YAML included the subsequently removed export_path_metrics: true setting. All other parsed YAML settings and the scene and mesh bytes match the capture source.",
+      "scene_xml_sha256": "bc61c8a67d64b54a3af38d747f9ce65f169d3ebd5f7d25577b31a7ba2a80d5c7",
+      "manifest_sha256": "e0e8057bdeee3e9968bbccea9040a6e1c736be10f67896bcf942b6b0bd03deed",
+      "manifest_identity": {
+        "generation_id": "f72af19e-ffe7-47f4-91fe-cc840b755419",
+        "frame_set_id": "ed9e6eca2fb2e46a75a5c799e4f23f47ec402bd09b3039479f49385d26461de4",
+        "created_utc": "2026-11-05T18:59:34.416251+00:00",
+        "frame_ids": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "total_frames": 8,
+        "storage_layout": "packed_ragged_v2"
+      },
+      "generation_provenance": {
+        "git_sha": "133731f06eff4c15eef6b0a09e30fef53132aa26",
+        "python_version": "3.12.16",
+        "quality": "low",
+        "quality_profile": {
+          "diffraction": false,
+          "diffuse_reflection": false,
+          "los": false,
+          "max_depth": 1,
+          "max_num_paths_per_src": 1000,
+          "refraction": false,
+          "samples_per_src": 10000,
+          "seed": 42,
+          "specular_reflection": true,
+          "synthetic_array": true
+        }
+      },
+      "chunks": [
+        {
+          "file": "mpc_frames_00000-00006.h5",
+          "bytes": 121576,
+          "sha256": "440692c59e4c2f1e83d341336a611bcc0b0bfb3d92fa5d291eb9f6791fad0e98"
+        },
+        {
+          "file": "mpc_frames_00007-00007.h5",
+          "bytes": 395420,
+          "sha256": "62395ac98deab676224bba6b70166c3aee9895e1de36c0f9d3b0ee813754a719"
+        }
+      ],
+      "meshes": [
+        {
+          "file": "meshes/reflecting_wall.ply",
+          "bytes": 249,
+          "sha256": "6ad3369cc508dbf5aab5faeee6e720eca02e750b77beb3084f5ca16f15dd3548"
+        }
+      ],
+      "sensing_result": {
+        "storage_frame": 7,
+        "clock": {
+          "clock_id": "f72af19e-ffe7-47f4-91fe-cc840b755419",
+          "domain": "scenario",
+          "origin": "scenario_start",
+          "origin_time_s": 0.0,
+          "unit": "s"
+        },
+        "acquisition_id": "09f90735-34e0-58d5-8bae-13cf42c35a56",
+        "pair_id": "8604d3808a576d7fb710a03a3e2b83cb18d8e311e094016e0c0bb471f5f35346",
+        "result": {
+          "processing_recipe_id": "ceb614b6519535a2ef118d3e81c6ba75690e9b51d7d6d719053863758178c68c",
+          "processing_run_id": "f72af19e-ffe7-47f4-91fe-cc840b755419",
+          "reference_time_policy": "solve_start",
+          "reference_time_s": 0.0
+        },
+        "display_binding": {
+          "policy": "source_scene_exact",
+          "reason": "one_solve_coherent_geometry_epoch",
+          "scene_frame_id": 0
+        },
+        "products": {
+          "range_doppler_cfar_noise_power_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+            "contract_data_sha256": "03f30da8d88d5b24e909a34c919c8513380c6400784867de59f6f21baaae38b5",
+            "product_id": "8c789c3542fe72413cd8f77b9dff69f7b8b6011fda47028ee624e38688543d2c"
+          },
+          "range_doppler_cfar_eligible_mask_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "bool",
+            "raw_c_order_bytes_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+            "contract_data_sha256": "8c4259eed806d19f6b0d24e7cd1fc42772fb8c84aac26a339e227b7b1cb0c055",
+            "product_id": "1cb5e8ff7b378908797de5cb146bfbc2aad08c924d5a1abc203e04f07c641c79"
+          },
+          "range_doppler_nms_mask_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "bool",
+            "raw_c_order_bytes_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+            "contract_data_sha256": "8c4259eed806d19f6b0d24e7cd1fc42772fb8c84aac26a339e227b7b1cb0c055",
+            "product_id": "b6bb154a8278922d8e9c7ea53ed3e33759c0198192bf8b28426d2bfd7450db6b"
+          },
+          "range_doppler_cfar_mask_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "bool",
+            "raw_c_order_bytes_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+            "contract_data_sha256": "8c4259eed806d19f6b0d24e7cd1fc42772fb8c84aac26a339e227b7b1cb0c055",
+            "product_id": "74640f1713f808e1cf09649e2b81e74f9c88c039c51e76c3ef9c791dca8c2a45"
+          },
+          "slow_time_axis_s": {
+            "shape": [
+              8
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "ab3ab6a1d14b0beb2e0550d8d5dc7b9bb6ef07dc688b08f909d5ce072009a8e7"
+          },
+          "range_doppler_cfar_training_cell_count_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "int32",
+            "raw_c_order_bytes_sha256": "ad7facb2586fc6e966c004d7d1d16b024f5805ff7cb47c7a85dabd8b48892ca7",
+            "contract_data_sha256": "93b1dd03bd4388e9aedd53547289f883331b42196f1d52d7d0ffe51eb7453956",
+            "product_id": "443ca5ef1acd81b3450e07b7bea3ff04050e1b45605fa1ab6ee8e778156fa565"
+          },
+          "doppler_axis_hz": {
+            "shape": [
+              8
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "71e00c03f0983ee5ee731a7ee4af9b8aae1d6f15b665d8fbdaaf8eeb7e7f2914"
+          },
+          "frequency_axis_hz": {
+            "shape": [
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "ee374cbcfcb0b1565384a384f4ff0ce2f5e1c797537b4c0c972955674fddc7f1"
+          },
+          "range_doppler_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "68af63effcb34a7f45e942544205230858fbca03462c4a75b9b7f0838aa835c1",
+            "contract_data_sha256": "42d64f221292e81156357dcd6597fd6f6949531f415e7b3a1d77751bdeb80794",
+            "product_id": "87df0d0e82d2119074faeeebaeb5c2ee1a07f7bde4a9a0f649a0d71e9b4e8925"
+          },
+          "range_axis_m": {
+            "shape": [
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "f1b1db87636badd89c80c1c79e4bfb3873ab068d150730c5bb438bf1cc5eb882"
+          },
+          "range_doppler_cluster_labels_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "int32",
+            "raw_c_order_bytes_sha256": "f47a8ec3e9aff2318d896942282ad4fe37d6391c82914f54a5da8a37de1300c6",
+            "contract_data_sha256": "9a411487f4a409dd57b25e0d283f995ed5b3e7b162f6bbf58d5763ed9ba571e1",
+            "product_id": "ce4a3ef14b2ab0c6e70e1b1ef0d37ebd7384c0f9d98c73f55f3671f3cc37018c"
+          },
+          "range_doppler_snr_db_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+            "contract_data_sha256": "03f30da8d88d5b24e909a34c919c8513380c6400784867de59f6f21baaae38b5",
+            "product_id": "0b693a23dadea88ea7b9cc1e5646d3159cbbc915729d4d386ad702dbf9006a21"
+          },
+          "cfr_by_pair_rx_element": {
+            "shape": [
+              1,
+              1,
+              8,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "1a5c4a902d904cc01c25bf2457691d1b52bb98003ca41c5b479cdce345694e7f",
+            "contract_data_sha256": "cc22c1d4685c117068e3e06a1a554d446b7ed9c6ea74a1b098dad5c014cd2650",
+            "product_id": "d251e94904f8b8b655890a4fe88578e1d7eb469302eaa63f6ec347e29c9e993e"
+          },
+          "range_profile_by_pair": {
+            "shape": [
+              1,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "4e94b018161aa3d27e587dfc37b1ade3bfb5b41e218a9734481ac4c35cd63b96",
+            "contract_data_sha256": "a54d7da036ec23973fce29064dc238eea7272fdcd4f762fd114fbe5a549b4e45",
+            "product_id": "7ebf344cf15a66037cbe7701743987861cf6352443162ee9bb2f63c59c4dc426"
+          },
+          "range_doppler_snr_valid_mask_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "bool",
+            "raw_c_order_bytes_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+            "contract_data_sha256": "8c4259eed806d19f6b0d24e7cd1fc42772fb8c84aac26a339e227b7b1cb0c055",
+            "product_id": "363cebbdc5b71656cd1f325a4093c8dc902b7e52385b2676f12a28c2bf077b8c"
+          },
+          "slow_time_by_pair_rx_element": {
+            "shape": [
+              1,
+              1,
+              8,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "0a0f88f3c8c71c900be7a2a4a3b72692a79411842860eca6487989b30abcc204",
+            "contract_data_sha256": "f163163778fd5d16231b4d998ff7b0072bb104c41a10d2d60fbb1dd63d61e038",
+            "product_id": "0c2860a95d866ee584b92380a1da89635251daac0751bd2a457650b2df85726b"
+          },
+          "range_doppler_cfar_threshold_power_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+            "contract_data_sha256": "03f30da8d88d5b24e909a34c919c8513380c6400784867de59f6f21baaae38b5",
+            "product_id": "9f341f020b11b0d8b9a53bb8b197859e9b09b113f6a11c2d94f7fecf9daffe24"
+          },
+          "range_profile_raw_by_pair": {
+            "shape": [
+              1,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "4e94b018161aa3d27e587dfc37b1ade3bfb5b41e218a9734481ac4c35cd63b96",
+            "contract_data_sha256": "a54d7da036ec23973fce29064dc238eea7272fdcd4f762fd114fbe5a549b4e45",
+            "product_id": "64c5bb962764e8445808d52fb76ce6c905b84609f176bdd1b511314c3df8e3dc"
+          },
+          "cir_by_pair_rx_element": {
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "2aa7aef351516eb802b8f3d8f40b90bb31e18f9b41b21ff7e1052f4b9fcec67b",
+            "contract_data_sha256": "bf73b238b109f12d371f454af362f44510292baa01af80adf6636fb286c1ed67",
+            "product_id": "1f414f6ff986cb849aa1b270318cc1c94300285f95ca171ba11042ce08200c66"
+          },
+          "range_doppler_detection_input_power_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "float64",
+            "raw_c_order_bytes_sha256": "42228b7ad6635fa5b78f41bbdbd48661f74bdacad1b755db1795fd39e410eb93",
+            "contract_data_sha256": "421bd7802973f38ff577c9b2c82e49abf7683803a4a82b0aec7333c9a96f8601",
+            "product_id": "818f186f9a183aea5f4660bca49ab911f4bbb72a1518a04a2edae6241ed93936"
+          },
+          "range_doppler_raw_by_pair": {
+            "shape": [
+              1,
+              8,
+              128
+            ],
+            "dtype": "complex128",
+            "raw_c_order_bytes_sha256": "68af63effcb34a7f45e942544205230858fbca03462c4a75b9b7f0838aa835c1",
+            "contract_data_sha256": "42d64f221292e81156357dcd6597fd6f6949531f415e7b3a1d77751bdeb80794",
+            "product_id": "d935ae6d2421ac7aa3014e64c9602feace90ae86c3789b26dcf88ac0b9feac30"
+          }
+        }
+      },
+      "verified_values": {
+        "name": "monostatic_range_locus",
+        "frames": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "paths_by_pair": [
+          {
+            "pair_index": 0,
+            "delay_ns": [
+              53.37025451660156
+            ],
+            "delay_equivalent_length_m": [
+              15.999999785617586
+            ],
+            "aoa_az_deg": [
+              90.0
+            ]
+          }
+        ],
+        "sensing": {
+          "published_frame": 7,
+          "bound_scene_frame": 0,
+          "reference_time_s": 0.0,
+          "coherent_samples": 8,
+          "rt_solves": 1,
+          "range_mode": "monostatic",
+          "peak_cell_doppler_range": [
+            4,
+            16
+          ],
+          "peak_range_m": 7.9944655466666665,
+          "peak_doppler_hz": 0.0,
+          "range_sample_spacing_m": 0.49965409666666666,
+          "geometric_range_m": 8.0
+        },
+        "viewer_binding": {
+          "main_scene_step": 0,
+          "bound_scene_step": 0,
+          "storage_frame": 7,
+          "surface_count": 2,
+          "detector_stage_inspection_available": true,
+          "label": "Frozen-reference monostatic_range locus: R=7.99447 m; bin 16",
+          "foci_m": [
+            [
+              0.0,
+              0.0,
+              1.5
+            ],
+            [
+              0.0,
+              0.0,
+              1.5
+            ]
+          ]
+        }
+      }
+    },
+    "arrival_courtyard": {
+      "scenario_path": "examples/visualizer_experiments/arrival_courtyard",
+      "scenario_yaml_sha256": "40c941ebca53b8610029ef9e6c574ae288b2e9e5d5b6110ce82d3f49bfbae2f6",
+      "current_scenario_yaml_sha256": "7f02b4aa38274e1725cbc8b70b042aacea1c649f5be2b0f938ffb3d4685d5224",
+      "input_note": "The acquisition YAML included the subsequently removed export_path_metrics: true setting. All other parsed YAML settings and the scene and mesh bytes match the capture source.",
+      "scene_xml_sha256": "02653cf9d0b07f54fe99948dfabc66641a8c280cb9be4d286fd3afe9a76848f1",
+      "manifest_sha256": "9125f80920533da16c43b378c875981d6dc37d18488059811e8d323926dec249",
+      "manifest_identity": {
+        "generation_id": "e3a58838-59cd-43ea-96d5-6742f9368a40",
+        "frame_set_id": "038996220f118be6cd763acf6dfe64d3f3a7c64cc0a064d25fa70dc80bec67a7",
+        "created_utc": "2026-11-05T18:59:25.259445+00:00",
+        "frame_ids": [
+          0
+        ],
+        "total_frames": 1,
+        "storage_layout": "packed_ragged_v2"
+      },
+      "generation_provenance": {
+        "git_sha": "133731f06eff4c15eef6b0a09e30fef53132aa26",
+        "python_version": "3.12.16",
+        "quality": "low",
+        "quality_profile": {
+          "diffraction": false,
+          "diffuse_reflection": false,
+          "los": true,
+          "max_depth": 1,
+          "max_num_paths_per_src": 1000,
+          "refraction": false,
+          "samples_per_src": 10000,
+          "seed": 42,
+          "specular_reflection": true,
+          "synthetic_array": true
+        }
+      },
+      "chunks": [
+        {
+          "file": "mpc_frames_00000-00000.h5",
+          "bytes": 121576,
+          "sha256": "a4978c44588f4c23df07064244242a8d6fd57ed21d07077e5430eb57c9db851c"
+        }
+      ],
+      "meshes": [
+        {
+          "file": "meshes/far_wall.ply",
+          "bytes": 253,
+          "sha256": "0eb9e5074705ede0a2f41d2dfb54f245c63db594eae48a10ce0d4b909e062376"
+        },
+        {
+          "file": "meshes/near_wall.ply",
+          "bytes": 249,
+          "sha256": "ef4f9a97294eb104956e91797ea702d9146e6ec20ab42af47e85073309d7fb89"
+        }
+      ],
+      "verified_values": {
+        "name": "arrival_courtyard",
+        "frames": [
+          0
+        ],
+        "paths_by_pair": [
+          {
+            "pair_index": 0,
+            "delay_ns": [
+              26.68512725830078,
+              48.107295989990234,
+              33.356407165527344
+            ],
+            "delay_equivalent_length_m": [
+              7.999999892808793,
+              14.422204512572717,
+              9.999999294202256
+            ],
+            "aoa_az_deg": [
+              180.0,
+              236.30975341796875,
+              143.13031005859375
+            ]
+          },
+          {
+            "pair_index": 1,
+            "delay_ns": [
+              27.506399154663086,
+              29.83487892150879,
+              53.78559494018555
+            ],
+            "delay_equivalent_length_m": [
+              8.246211013305569,
+              8.94427168601151,
+              16.12451571211059
+            ],
+            "aoa_az_deg": [
+              194.0362548828125,
+              153.43519592285156,
+              240.25497436523438
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "images": [
+    {
+      "file": "bistatic-selected-bin.png",
+      "sha256": "e01831477de8fbd53706180be94f94dee8a55a61f7102b1aadca389f6aa02117",
+      "bytes": 167139,
+      "dimensions_px": [
+        1400,
+        1450
+      ],
+      "saved_at_utc": "2026-11-10T22:12:26.053059+00:00",
+      "scenario": "bistatic_range_locus",
+      "selection": {
+        "range_bin": 17,
+        "doppler_bin": 4,
+        "range_m": 16.988239286666666,
+        "range_mode": "bistatic",
+        "cutaway": true,
+        "surface": "Native Qt widget grab with the current controls visible"
+      }
+    },
+    {
+      "file": "bistatic-cutaway.png",
+      "sha256": "dc89413989f7ed08f6693fe6ae288dc8bcb1976a342915c04378c3bf720ca5d0",
+      "bytes": 116570,
+      "dimensions_px": [
+        1600,
+        1100
+      ],
+      "saved_at_utc": "2026-11-10T22:12:27.362051+00:00",
+      "scenario": "bistatic_range_locus",
+      "selection": {
+        "range_bin": 17,
+        "doppler_bin": 4,
+        "cutaway": true,
+        "surface": "Native Qt widget grab with the current controls visible"
+      }
+    },
+    {
+      "file": "monostatic-selected-bin.png",
+      "sha256": "2c43fbf652f5d965cc6b38e6b6e60082745af767ad315f743fbf3ae916fd9267",
+      "bytes": 160688,
+      "dimensions_px": [
+        1400,
+        1450
+      ],
+      "saved_at_utc": "2026-11-10T22:12:42.704955+00:00",
+      "scenario": "monostatic_range_locus",
+      "selection": {
+        "range_bin": 16,
+        "doppler_bin": 4,
+        "range_m": 7.9944655466666665,
+        "range_mode": "monostatic",
+        "cutaway": false,
+        "surface": "Native Qt widget grab with the current controls visible"
+      }
+    },
+    {
+      "file": "monostatic-sphere.png",
+      "sha256": "afe0cb4a0484f8c0c07238fde6dd7c29a91262a04842c2da757430d14e40470c",
+      "bytes": 114195,
+      "dimensions_px": [
+        1600,
+        1100
+      ],
+      "saved_at_utc": "2026-11-10T22:12:43.840948+00:00",
+      "scenario": "monostatic_range_locus",
+      "selection": {
+        "range_bin": 16,
+        "doppler_bin": 4,
+        "cutaway": false,
+        "surface": "Native Qt widget grab with the current controls visible"
+      }
+    },
+    {
+      "file": "arrival-delay-gate.png",
+      "sha256": "a61636c0236d9d29e503d39f299b63160c7b7a926ac2d0dca04ced989c637e2d",
+      "bytes": 67134,
+      "dimensions_px": [
+        1250,
+        950
+      ],
+      "saved_at_utc": "2026-11-10T22:12:51.190902+00:00",
+      "scenario": "arrival_courtyard",
+      "selection": {
+        "frame": 0,
+        "tx_id": 0,
+        "rx_id": 0,
+        "lower_gate_ns": 30,
+        "selected_path_count": 2,
+        "surface": "Native Qt widget grab with the current controls visible",
+        "upper_gate_policy": "unchanged full-precision recorded maximum"
+      },
+      "also_used_at": [
+        "docs/visualizer/figures/experimental-arrival-gate.png"
+      ]
+    },
+    {
+      "file": "delay-angle-selected-bin.png",
+      "sha256": "afb357bf78cc4ee9a9561c3542d302f45ee3e9d1cc2d609edac9f2926ed1a3fa",
+      "bytes": 65019,
+      "dimensions_px": [
+        1250,
+        950
+      ],
+      "saved_at_utc": "2026-11-10T22:12:56.745867+00:00",
+      "scenario": "arrival_courtyard",
+      "selection": {
+        "frame": 0,
+        "tx_id": 0,
+        "rx_id": 0,
+        "delay_interval_ns": [
+          40,
+          50
+        ],
+        "angle_interval_deg": [
+          -130,
+          -120
+        ],
+        "selected_path_ids": [
+          1
+        ],
+        "surface": "Native Qt widget grab with the current controls visible"
+      },
+      "also_used_at": [
+        "docs/visualizer/figures/experimental-delay-angle.png"
+      ]
+    }
+  ],
+  "controls_verified": [
+    "Display > Theme > Dark action",
+    "bistatic dashboard shell row hidden when popped out",
+    "bistatic selection details hidden before selection",
+    "bistatic actual heatmap click selects a cell",
+    "bistatic exact saved bin",
+    "bistatic selection details available after click",
+    "bistatic selection details expanded for capture",
+    "bistatic main 3D options visible",
+    "bistatic Frame shell enabled for selected cell",
+    "bistatic range-only bin has no Focus in 3D position",
+    "dark theme at bistatic-selected-bin.png",
+    "dark theme at bistatic-cutaway.png",
+    "bistatic path inspection carries cell context",
+    "bistatic summary hides selected-cell controls",
+    "bistatic clear hides selection details",
+    "bistatic dashboard shell row hidden when docked",
+    "monostatic dashboard shell row hidden when popped out",
+    "monostatic selection details hidden before selection",
+    "monostatic actual heatmap click selects a cell",
+    "monostatic exact saved bin",
+    "monostatic selection details available after click",
+    "monostatic selection details expanded for capture",
+    "monostatic main 3D options visible",
+    "monostatic Frame shell enabled for selected cell",
+    "monostatic range-only bin has no Focus in 3D position",
+    "dark theme at monostatic-selected-bin.png",
+    "dark theme at monostatic-sphere.png",
+    "monostatic path inspection carries cell context",
+    "monostatic summary hides selected-cell controls",
+    "monostatic clear hides selection details",
+    "monostatic dashboard shell row hidden when docked",
+    "arrival gate retains two paths",
+    "dark theme at arrival-delay-gate.png",
+    "joint delay-angle cell retains one path",
+    "dark theme at path-explorer-verification.png",
+    "dark theme at delay-angle-selected-bin.png"
+  ],
+  "runtime_source_sha256": {
+    "visualizer/src/panels/sensing_panel.py": "2295e24b70bf827ea59170633609ee9d1a125644eda6a1389bf95b1703b4faeb",
+    "visualizer/src/sensing/linked_selection.py": "89e7e082922f0dd1d798d73cad86795520d8e12798cd4f04de0571edbf544f83",
+    "visualizer/src/panels/mpc_panel.py": "b0ffd142f9e3487fe98ca12b1add56069c49f9ac16c56ec9a6a0123cfaef7170",
+    "visualizer/src/experiments/window.py": "a82b7e5d60113315bd63e819b2ca1831192787a00533d4e835e7e90b7ff777d0"
+  }
+}

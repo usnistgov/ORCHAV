@@ -1,59 +1,24 @@
-# ORCHAV Test Suite
+# ORCHAV test suite
 
-Tests are organized by package and workflow. The release smoke command runs
-formatting, linting, type checks, generator tests, selected shared and
-visualizer tests, package build and import checks, scenario validation,
-Hello World generation and cleanup, and an optional display-backed visualizer
-benchmark.
+Run tests from the repository root in an environment with the [development dependencies](../CONTRIBUTING.md) installed. Some integration and rendering tests also require Sionna RT, a GPU, or a display.
 
-## Test Organization
+## Find a test
 
-### Shared Tests
+| Folder | What it tests |
+| --- | --- |
+| [generator/](generator/README.md) | Scenario preparation, ray-tracing orchestration, and frame generation. |
+| `visualizer/` | Rendering, playback, UI controls, and scenario authoring. |
+| `shared/` | The frame contract, data providers, scenario loading, and processing utilities. |
+| `statistics_shared/` | Statistics and observables computed from frames. |
+| `integration/` | Interactions between packages and [gRPC round trips](integration/test_grpc_roundtrip.py). |
+| `regression/` | Behavior and [frame schema compatibility](regression/test_frame_schema_regression.py) across changes. |
+| `ci/` | Repository checks, archive contents, and release smoke safeguards. |
 
-- `tests/shared/`: frame schema, frame providers, validation, coverage data, and
-  shared utilities.
-- `tests/regression/`: schema and behavior regression checks.
-- `tests/statistics_shared/`: statistics utilities.
+Top-level `test_*.py` files include gRPC transport and frame compatibility checks. Put new package tests in the folder that owns the behavior and keep reusable test data with its fixtures.
 
-### Generator Tests
+## Run a focused check
 
-- `tests/generator/unit/`: generator unit tests.
-- `tests/generator/integration/`: generator integration smoke tests.
-- `tests/generator/scenarios/`: small test fixtures.
-
-See [tests/generator/README.md](generator/README.md).
-
-### Visualizer Tests
-
-- `tests/visualizer/unit/`: renderer, services, controllers, and UI logic.
-- `tests/visualizer/integration/`: data loading and renderer playback checks.
-- `tests/visualizer/fixtures/`: synthetic frame and scene fixtures.
-
-### Integration and Transport Tests
-
-- `tests/integration/`: generator/visualizer and gRPC round-trip checks.
-- Top-level `tests/test_grpc_*.py`: focused gRPC transport checks.
-
-## Running Tests
-
-Run the complete release smoke from a clean Git checkout. This command checks
-that the checkout is clean before it starts and verifies that its status is
-unchanged when it finishes:
-
-```bash
-bash scripts/ci/release_smoke.sh
-```
-
-The normal release smoke uses Qt's offscreen platform. To exercise a Linux VNC
-display, open a terminal inside the VNC session, confirm the display assigned
-to that session, and select Qt's XCB platform explicitly:
-
-```bash
-echo "$DISPLAY"
-QT_QPA_PLATFORM=xcb RUN_VISUALIZER_BENCHMARK=1 bash scripts/ci/release_smoke.sh
-```
-
-Run focused checks during development:
+Install the test tools with `python -m pip install -e ".[dev,grpc]"`. Each example below runs independently.
 
 ```bash
 python -m pytest --no-cov tests/shared/test_frame_schema.py -q
@@ -61,40 +26,30 @@ python -m pytest --no-cov tests/generator/unit/test_generator_cli.py -q
 QT_QPA_PLATFORM=offscreen python -m pytest --no-cov tests/visualizer/unit/test_frame_types.py -q
 ```
 
-The notebook and standalone headless renderer tests do not use Qt. Disable the
-`pytest-qt` plugin for that focused process so the test environment preserves
-the same Qt-free boundary as the supported runtime:
+Run notebook tests in a separate process with the Qt plugin disabled.
 
 ```bash
-QT_QPA_PLATFORM=offscreen python -m pytest --no-cov -p no:pytest-qt \
-  tests/visualizer/unit/test_notebook_generator.py \
-  tests/visualizer/unit/test_notebook_pygfx.py -q
+python -m pytest --no-cov -p no:pytest-qt tests/visualizer/unit/test_notebook_generator.py tests/visualizer/unit/test_notebook_pygfx.py -q
 ```
 
-On Apple Silicon macOS, use the release smoke and focused test files as the
-normal contributor checks. A very large Visualizer collection in one pytest
-process can encounter native Qt teardown instability after otherwise passing
-files. Run broader macOS investigations in test-file or package partitions.
-The monolithic coverage command in `CONTRIBUTING.md` is not the macOS v0.1
-release gate.
+To test the pygfx notebook renderer against an existing recording, supply a scenario directory with frame 0 and scene geometry.
 
-## Prerequisites
+```bash
+ORCHAV_NOTEBOOK_TEST_SCENARIO=/path/to/generated/scenario python -m pytest --no-cov -p no:pytest-qt tests/visualizer/unit/test_notebook_pygfx.py -q
+```
 
-- Install the package with the relevant extras, for example
-  `python -m pip install -e ".[dev]"`.
-- Use `QT_QPA_PLATFORM=offscreen` for visualizer tests on headless machines.
-- Some integration, renderer, [Sionna RT](https://nvlabs.github.io/sionna/),
-  CUDA, and performance tests need a
-  configured local environment. Run those explicitly when validating the
-  corresponding workflow.
+## Run the release smoke test
 
-## Adding New Tests
+From a clean Git checkout, run the [release smoke script](../scripts/ci/release_smoke.sh). It checks formatting, types, documentation, the package build, test collection, selected tests, and the Hello World workflow. It defaults to Qt's offscreen platform.
 
-1. Put the test in the matching package area:
-   - Generator unit tests -> `tests/generator/unit/`
-   - Generator integration tests -> `tests/generator/integration/`
-   - Visualizer tests -> `tests/visualizer/unit/` or `tests/visualizer/integration/`
-   - Shared data tests -> `tests/shared/`
-2. Use the `test_*.py` naming convention.
-3. Prefer deterministic fixtures and mock heavy external systems where possible.
-4. Keep generated frames, logs, and cache directories out of version control.
+```bash
+bash scripts/ci/release_smoke.sh
+```
+
+To include the display-backed benchmark in a Linux VNC session, run the following in that session's terminal.
+
+```bash
+QT_QPA_PLATFORM=xcb RUN_VISUALIZER_BENCHMARK=1 bash scripts/ci/release_smoke.sh
+```
+
+On Apple Silicon, run broader Visualizer tests one file or package at a time. Large test collections in one process can encounter native Qt teardown failures.

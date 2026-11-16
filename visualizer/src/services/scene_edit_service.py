@@ -18,6 +18,7 @@ from ..scene.geometry_helpers import (
 )
 from ..services.base import BaseService
 from ..services.cache_service import CacheInvalidationScope
+from ..services.source_edit_policy import visual_surface_source_edit_message
 from ..types.render_payloads import MeshPayload
 from ..utils import geometry as viz_geometry
 
@@ -41,6 +42,8 @@ class SceneEditService(BaseService):
         target_entry = self._resolve_scene_entry(entry)
         if target_entry is None:
             logger.warning("Cannot update position: entry not found")
+            return
+        if self._reject_visual_surface_source_edit(target_entry):
             return
 
         mesh = target_entry.get("mesh")
@@ -98,6 +101,8 @@ class SceneEditService(BaseService):
         target_entry = self._resolve_scene_entry(entry)
         if target_entry is None:
             logger.warning("Cannot update rotation: entry not found")
+            return
+        if self._reject_visual_surface_source_edit(target_entry):
             return
 
         mesh = target_entry.get("mesh")
@@ -165,6 +170,8 @@ class SceneEditService(BaseService):
         if target_entry is None:
             logger.warning("Cannot update scale: entry not found")
             return
+        if self._reject_visual_surface_source_edit(target_entry):
+            return
 
         mesh = target_entry.get("mesh")
         xml_shape = target_entry.get("xml_shape")
@@ -214,6 +221,17 @@ class SceneEditService(BaseService):
                 )
         except (ValueError, TypeError, RuntimeError):
             logger.exception("Failed to update object scale")
+
+    def _reject_visual_surface_source_edit(self, entry: Dict[str, Any]) -> bool:
+        """Keep derived fragments and their common RF source synchronized."""
+        message = visual_surface_source_edit_message(entry)
+        if message is None:
+            return False
+        logger.warning(message)
+        status = getattr(self.visualizer, "_set_status_message", None)
+        if callable(status):
+            status(message, 10000)
+        return True
 
     # Scene live gRPC update helpers
     def push_scene_updates_online(self, reason: str) -> bool:
@@ -424,10 +442,17 @@ class SceneEditService(BaseService):
         entry_type = entry.get("entry_type", "mesh")
 
         def _match(entries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-            """Find a canonical entry by object identity or display name."""
+            """Resolve ownership before considering a possibly duplicated label."""
             for candidate in entries:
                 if candidate is entry:
                     return entry
+            for key in ("object_id", "stable_mesh_id", "stable_target_id", "geometry_name"):
+                identity = entry.get(key)
+                if identity:
+                    for candidate in entries:
+                        if candidate and candidate.get(key) == identity:
+                            return candidate
+            for candidate in entries:
                 if not candidate:
                     continue
                 if entry_name and candidate.get("name") == entry_name:
@@ -443,6 +468,13 @@ class SceneEditService(BaseService):
 
     def _ensure_original_center(self, entry: Dict[str, Any], mesh) -> np.ndarray:
         """Cache and return the original mesh center."""
+        styled = entry.get("_building_style_payloads")
+        if styled is not None and isinstance(mesh, RenderObjectState) and mesh.payload is styled[1]:
+            # Architectural UV repeats can subdivide render faces. Transform
+            # the source topology; material resolution will rebuild the style.
+            mesh.replace_payload(styled[0])
+            entry.pop("_building_style_payloads", None)
+            entry.pop("_building_style_key", None)
         original_center = entry.get("original_center")
         if original_center is None:
             original_center = viz_geometry.mesh_center(mesh)

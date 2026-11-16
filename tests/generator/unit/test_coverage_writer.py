@@ -212,3 +212,22 @@ def test_save_coverage_map_requires_a_scenario_root(tmp_path, monkeypatch):
         coverage_writer.save_coverage_map(_coverage_payload(), None)
 
     assert not (tmp_path / "coverage").exists()
+
+
+def test_availability_optional_sidecar_preserves_canonical_arrays(tmp_path):
+    payload = _coverage_payload()
+    payload["path_gain_linear"][0, 0, 0, 0, :2] = np.nan
+    codes = np.ones_like(payload["path_gain_linear"], dtype=np.uint8)
+    codes[0, 0, 0, 0, :2] = [2, 3]
+    payload["availability"] = codes
+    output = tmp_path / "evidence.h5"
+    coverage_writer.save_coverage_hdf5(payload, output)
+    with h5py.File(output) as f:
+        np.testing.assert_equal(f["values/path_gain_linear"][()], payload["path_gain_linear"])
+        np.testing.assert_equal(f["availability/path_gain"][()], codes)
+        assert f["availability/path_gain"].attrs["schema_version"] == 1
+    original = output.read_bytes()
+    payload["availability"][0, 0, 0, 0, 2] = 2
+    with pytest.raises(ValueError, match="disagrees"):
+        coverage_writer.save_coverage_hdf5(payload, output)
+    assert output.read_bytes() == original

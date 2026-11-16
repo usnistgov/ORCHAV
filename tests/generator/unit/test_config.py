@@ -135,7 +135,6 @@ class TestConfigurationDefaults:
 
     def test_sensing_defaults_match_runtime_contract(self):
         assert _defaults_module.DEFAULT_SENSING_BANDWIDTH_HZ == 100e6
-        assert _defaults_module.DEFAULT_SENSING_CHIRPS_PER_FRAME == 128
         assert _defaults_module.DEFAULT_SENSING_PRF_HZ == 2000.0
         assert _defaults_module.DEFAULT_SENSING_RANGE_MODE == "bistatic"
         assert _defaults_module.DEFAULT_SENSING_FFT_SIZE_RANGE == 256

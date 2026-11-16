@@ -1,76 +1,10 @@
 import logging
+import subprocess
 import sys
-import types
+from pathlib import Path
 
 import numpy as np
 import pytest
-
-
-# Create a more complete mock mitsuba module
-class Point3f:
-    def __init__(self, x, y, z):
-        self.x = float(x)
-        self.y = float(y)
-        self.z = float(z)
-
-
-def variant():
-    return "cuda_ad"
-
-
-# Create a mock mitsuba module
-mi_mod = types.ModuleType("mitsuba")
-mi_mod.Point3f = Point3f
-mi_mod.variant = variant
-
-# Force replace mitsuba in sys.modules
-sys.modules["mitsuba"] = mi_mod
-
-# Also mock drjit to avoid CUDA dependencies
-if "drjit" not in sys.modules:
-    drjit_mod = types.ModuleType("drjit")
-    drjit_cuda = types.ModuleType("drjit.cuda")
-    drjit_cuda_ad = types.ModuleType("drjit.cuda.ad")
-
-    class Float:
-        def __init__(self, value):
-            self._value = float(value)
-
-        def __float__(self):
-            return self._value
-
-        def __str__(self):
-            return str(self._value)
-
-    drjit_cuda_ad.Float = Float
-    drjit_cuda.ad = drjit_cuda_ad
-    drjit_mod.cuda = drjit_cuda
-    sys.modules["drjit"] = drjit_mod
-    sys.modules["drjit.cuda"] = drjit_cuda
-    sys.modules["drjit.cuda.ad"] = drjit_cuda_ad
-
-# Mock sionna to avoid heavy dependencies
-if "sionna" not in sys.modules:
-    sionna_mod = types.ModuleType("sionna")
-    sionna_rt = types.ModuleType("sionna.rt")
-
-    # Mock the classes that might be imported
-    class MockClass:
-        def __init__(self, *args, **kwargs):
-            pass
-
-    sionna_rt.load_scene = MockClass
-    sionna_rt.Scene = MockClass
-    sionna_rt.Transmitter = MockClass
-    sionna_rt.Receiver = MockClass
-    sionna_rt.PlanarArray = MockClass
-    sionna_rt.PathSolver = MockClass
-    sionna_rt.Camera = MockClass
-    sionna_rt.RadioMaterial = MockClass
-
-    sionna_mod.rt = sionna_rt
-    sys.modules["sionna"] = sionna_mod
-    sys.modules["sionna.rt"] = sionna_rt
 
 from generator.core.mobility import LinearMobility, MobilityPattern
 from generator.core.mobility.base import _numeric_pair, _numeric_triple
@@ -162,3 +96,30 @@ def test_prepare_rejects_zero_steps():
 
     with pytest.raises(ValueError, match="requires at least one scene step"):
         lm.prepare(0, 1.0, start_pos=(0.0, 0.0, 0.0))
+
+
+@pytest.mark.parametrize("preloaded", [False, True])
+def test_collection_preserves_optional_runtime_modules(preloaded):
+    """Collecting pure mobility tests must not replace another test's runtime."""
+    script = r"""
+import runpy
+import sys
+import types
+
+names = ("mitsuba", "drjit", "drjit.cuda", "drjit.cuda.ad", "sionna", "sionna.rt")
+if sys.argv[2] == "1":
+    for name in names:
+        sys.modules[name] = types.ModuleType(name)
+before = {name: sys.modules.get(name) for name in names}
+runpy.run_path(sys.argv[1], run_name="mobility_collection_regression")
+for name, original in before.items():
+    assert sys.modules.get(name) is original, f"Collection replaced {name}"
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(Path(__file__).resolve()), str(int(preloaded))],
+        cwd=Path(__file__).resolve().parents[3],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr

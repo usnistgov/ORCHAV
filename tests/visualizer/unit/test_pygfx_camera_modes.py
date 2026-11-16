@@ -14,7 +14,11 @@ from visualizer.src.materials.appearance import (
     resolve_appearance,
 )
 from visualizer.src.renderers.camera_ops import object_contributes_to_camera_bounds
-from visualizer.src.renderers.pygfx.camera import PygfxCameraMixin, SceneBounds
+from visualizer.src.renderers.pygfx.camera import (
+    PygfxCameraMixin,
+    SceneBounds,
+    _visible_scene_bounds,
+)
 from visualizer.src.renderers.pygfx.renderer import PygfxRenderer
 from visualizer.src.types.camera_state import CameraState
 
@@ -61,6 +65,199 @@ def test_renderer_composes_pygfx_camera_mixin():
     renderer = _make_renderer()
 
     assert isinstance(renderer, PygfxCameraMixin)
+
+
+def _add_depth_test_scene(renderer):
+    renderer._depth_precision_enabled = True
+    renderer._scene = pygfx.Scene()
+    mesh = pygfx.Mesh(pygfx.box_geometry(5200, 1600, 100), pygfx.MeshBasicMaterial())
+    renderer._scene.add(mesh)
+    return mesh
+
+
+@pytest.mark.parametrize("setting, enabled", [(None, False), ("0", False), ("1", True)])
+def test_depth_precision_requires_explicit_opt_in(monkeypatch, setting, enabled):
+    if setting is None:
+        monkeypatch.delenv("ORCHAV_PYGFX_DEPTH_PRECISION", raising=False)
+    else:
+        monkeypatch.setenv("ORCHAV_PYGFX_DEPTH_PRECISION", setting)
+    renderer = PygfxRenderer(SimpleNamespace(app_state=SimpleNamespace(label_screen_space=True)))
+    assert renderer._depth_precision_enabled is enabled
+    renderer._camera = pygfx.PerspectiveCamera(60, 1.5)
+    renderer._camera.local.position = (0, 0, 5000)
+    renderer._camera.look_at((0, 0, 0))
+    if enabled:
+        _add_depth_test_scene(renderer)
+    else:
+
+        def unexpected_bounds():
+            pytest.fail("Disabled depth correction must not visit scene bounds")
+
+        renderer._scene = SimpleNamespace(get_world_bounding_box=unexpected_bounds)
+    renderer._update_camera_depth_precision()
+    assert (renderer._camera.depth_range is not None) is enabled
+
+
+@pytest.mark.parametrize("mode", ["orbit", "fly"])
+def test_disabled_depth_precision_preserves_native_controller_range(mode):
+    renderer = _make_renderer()
+    renderer._depth_precision_enabled = False
+    controller = renderer._create_camera_controller(mode, register_events=False)
+    controller._last_cam_state = renderer._camera.get_state()
+    controller._last_cam_state["depth_range"] = (0.1, 12000)
+    controller._update_cameras()
+    assert renderer._camera.depth_range == (0.1, 12000)
+
+
+def test_depth_precision_keeps_scene_visible_through_direct_camera_motion():
+    renderer = _make_renderer()
+    _add_depth_test_scene(renderer)
+    native_far = renderer._camera.far
+    bounds = SceneBounds(np.array([-2600, -800, -50]), np.array([2600, 800, 50]))
+    # Direct native transforms exercise the path used by orbit/fly controls,
+    # which do not call set_camera_state on every movement.
+    for eye in [(0, -3700, 3100), (0, -18500, 15500), (0, -3e6, 3e6)]:
+        renderer._camera.local.position = eye
+        renderer._camera.look_at((0, 0, 0))
+        renderer._update_camera_depth_precision()
+        ndc = _project_bounds_to_ndc(renderer, bounds)
+        assert np.all((ndc[:, 2] > 0) & (ndc[:, 2] < 1))
+        assert renderer._camera.far >= native_far
+        assert renderer._camera.near > 10
+    renderer._camera.local.position = (0, 0, 10)
+    renderer._camera.look_at((0, 100, 10))
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range is None
+
+
+def test_depth_precision_accounts_for_new_geometry_and_parent_transforms():
+    renderer = _make_renderer()
+    _add_depth_test_scene(renderer)
+    renderer._camera.local.position = (0, 0, 5000)
+    renderer._camera.look_at((0, 0, 0))
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.near > 40
+    group = pygfx.Group()
+    group.local.position = (0, 0, 4995)
+    group.add(pygfx.Mesh(pygfx.box_geometry(1, 1, 1), pygfx.MeshBasicMaterial()))
+    renderer._scene.add(group)
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range is None
+
+
+def test_depth_precision_skips_retained_hidden_annotations_and_hidden_parents(monkeypatch):
+    renderer = _make_renderer()
+    _add_depth_test_scene(renderer)
+    renderer._camera.local.position = (0, 0, 5000)
+    renderer._camera.look_at((0, 0, 0))
+    renderer._update_camera_depth_precision()
+    original_range = renderer._camera.depth_range
+
+    hidden = pygfx.Group(visible=False)
+    near_camera = pygfx.Line(
+        pygfx.Geometry(positions=np.array([[0, 0, 4994], [1, 0, 4995]], dtype=np.float32)),
+        pygfx.LineMaterial(),
+    )
+    hidden.add(near_camera)
+    renderer._scene.add(hidden)
+    original_bounds = near_camera.get_geometry_bounding_box
+
+    def unexpected_bounds():
+        pytest.fail("Hidden annotation subtrees must not perform bounds work")
+
+    monkeypatch.setattr(near_camera, "get_geometry_bounding_box", unexpected_bounds)
+    monkeypatch.setattr(renderer._scene, "get_world_bounding_box", unexpected_bounds)
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range == original_range
+
+    monkeypatch.setattr(near_camera, "get_geometry_bounding_box", original_bounds)
+    hidden.visible = True
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range is None
+    hidden.visible = False
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range == original_range
+
+
+def test_visible_bounds_include_text_cards_and_nested_world_transforms():
+    scene = pygfx.Scene()
+    group = pygfx.Group()
+    group.local.matrix = np.array(
+        [[0, -2, 0, 8], [3, 0, 0, -7], [0, 0, 4, 6], [0, 0, 0, 1]], dtype=float
+    )
+    label = pygfx.Text("Street", screen_space=True, material=pygfx.TextMaterial())
+    label.local.position = (2, 1, 3)
+    plate = pygfx.Mesh(pygfx.plane_geometry(4, 2), pygfx.MeshBasicMaterial())
+    plate.local.position = (0, 0, 1)
+    label.add(plate)
+    group.add(label)
+    scene.add(group)
+    points = [label.world.position]
+    for x in (-2, 2):
+        for y in (-1, 1):
+            points.append(la.vec_transform([x, y, 0], plate.world.matrix))
+    points = np.asarray(points)
+    np.testing.assert_allclose(_visible_scene_bounds(scene), [points.min(0), points.max(0)])
+    label.visible = False
+    assert _visible_scene_bounds(scene) is None
+
+
+def test_visible_bounds_include_native_instance_transforms():
+    scene = pygfx.Scene()
+    mesh = pygfx.InstancedMesh(pygfx.box_geometry(2, 4, 6), pygfx.MeshBasicMaterial(), 2)
+    mesh.local.position = (0, 0, 30)
+    for index, x in enumerate((-100, 100)):
+        transform = np.eye(4)
+        transform[:3, 3] = (x, index * 10, 0)
+        mesh.set_matrix_at(index, transform)
+    scene.add(mesh)
+    np.testing.assert_allclose(_visible_scene_bounds(scene), [[-101, -2, 27], [101, 12, 33]])
+    mesh.set_matrix_at(1, np.full((4, 4), np.nan))
+    np.testing.assert_allclose(_visible_scene_bounds(scene), [[-101, -2, 27], [-99, 2, 33]])
+
+
+def test_depth_precision_honors_explicit_range_and_orthographic_camera():
+    renderer = _make_renderer()
+    _add_depth_test_scene(renderer)
+    renderer._camera.depth_range = (0.02, 25000)
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range == (0.02, 25000)
+    renderer._camera = pygfx.OrthographicCamera(10, 10)
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range is None
+
+
+def test_depth_precision_releases_managed_range_when_scene_is_empty():
+    renderer = _make_renderer()
+    mesh = _add_depth_test_scene(renderer)
+    renderer._camera.local.position = (0, 0, 5000)
+    renderer._camera.look_at((0, 0, 0))
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range is not None
+    renderer._scene.remove(mesh)
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range is None
+
+
+@pytest.mark.parametrize("mode", ["orbit", "fly"])
+def test_controller_cannot_restore_stale_depth_range_during_drag(mode):
+    renderer = _make_renderer()
+    _add_depth_test_scene(renderer)
+    controller = renderer._create_camera_controller(mode, register_events=False)
+    renderer._camera.local.position = (0, 0, 5000)
+    renderer._camera.look_at((0, 0, 0))
+    renderer._update_camera_depth_precision()
+    controller._last_cam_state = renderer._camera.get_state()
+    assert controller._last_cam_state["depth_range"][0] > 40
+    renderer._camera.local.position = (0, 0, 10)
+    renderer._update_camera_depth_precision()
+    assert renderer._camera.depth_range is None
+    # As in an ongoing drag, the controller updates position while retaining
+    # the other fields captured at the start of that interaction.
+    controller._last_cam_state["position"] = (0, 0, 8)
+    controller._update_cameras()
+    assert renderer._camera.depth_range is None
+    np.testing.assert_allclose(renderer._camera.local.position, (0, 0, 8))
 
 
 def test_authoring_decorations_are_excluded_from_camera_fit_bounds():
@@ -531,3 +728,21 @@ def test_resize_invalidates_minimap_gpu_overlay_size():
     assert renderer._height == 480
     assert renderer._minimap_overlay_size is None
     assert calls == ["hud", "draw"]
+
+
+def test_depth_precision_live_toggle_releases_only_managed_clip_range():
+    renderer = _make_renderer()
+    _add_depth_test_scene(renderer)
+    renderer._camera.local.position = (0, 0, 10000)
+    renderer._camera.look_at((0, 0, 0))
+    renderer._depth_precision_enabled = False
+    renderer.set_depth_precision_enabled(True)
+    assert renderer.get_depth_precision_enabled()
+    assert renderer._camera.depth_range is not None
+    renderer.set_depth_precision_enabled(False)
+    assert renderer._camera.depth_range is None
+    renderer._camera.depth_range = (2, 20000)
+    renderer.set_depth_precision_enabled(True)
+    assert renderer._camera.depth_range == (2, 20000)
+    renderer.set_depth_precision_enabled(False)
+    assert renderer._camera.depth_range == (2, 20000)

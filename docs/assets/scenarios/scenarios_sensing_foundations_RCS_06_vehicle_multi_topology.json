@@ -1,0 +1,311 @@
+{
+  "scenario": "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+  "scene_source": {
+    "id": "scene.xml",
+    "source": "local"
+  },
+  "source_files": {
+    "generator/core/target/representation.py": "72f0589ab16a8c10e2b6e0e0ad9aaf9f5bf77d5486adea86f7c370e2627a56f7",
+    "generator/figures/topology_targets.py": "5d3ca58b697140c614cf7aff988fd9cf8c5eced47f9b926cfe36deb638f90bbf",
+    "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml": "9ac6f4d8cd6a1bd13eaf02da80db799dda0fcb3fbf3c765c8ace5667635ad587",
+    "scenarios/sensing/foundations/RCS/06_vehicle_multi/scene.xml": "e1632b3f855b07178d3329f59fdc000b2637fc76eb97abe1f44385311bba83f4"
+  },
+  "sample_indices": [
+    0,
+    511
+  ],
+  "sample_times_s": [
+    0.0,
+    1.022
+  ],
+  "steps": 512,
+  "actors": [
+    {
+      "name": "Monostatic radar",
+      "role": "radar",
+      "members": [
+        "radar_tx",
+        "radar_rx"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          0.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "native_vehicle",
+      "role": "target",
+      "members": [
+        "native_vehicle"
+      ],
+      "sample_positions_m": [
+        [
+          50.0,
+          0.0,
+          0.8
+        ],
+        [
+          43.868,
+          0.0,
+          0.8
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 256,
+          "mesh_index": 0,
+          "source": "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+          "time_s": 0.512,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 511,
+          "mesh_index": 0,
+          "source": "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+          "time_s": 1.022,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            50.0,
+            0.0,
+            0.8
+          ],
+          "rotation_matrix": [
+            [
+              -1.0,
+              -1.2246467991473532e-16,
+              0.0
+            ],
+            [
+              1.2246467991473532e-16,
+              -1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            -1.0,
+            1.2246467991473532e-16,
+            0.0
+          ]
+        }
+      ],
+      "representation": "tr38901",
+      "proxy_geometry": {
+        "type": "box",
+        "scaling": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "length_m": 5.0,
+        "width_m": 2.0,
+        "height_m": 1.6
+      }
+    }
+  ],
+  "display_groups": [],
+  "material_legend": [],
+  "output_sha256": "be52bec450e8a85628a16c4caa21ae974319f162ea9b3bfa14f6f841eff71b6e",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -2.1,
+        -1.0800000000000003,
+        -0.064
+      ],
+      [
+        54.6,
+        1.0800000000000003,
+        1.6640000000000001
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 30,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [
+    {
+      "name": "native_vehicle",
+      "projection_axes": [
+        "X",
+        "Y"
+      ],
+      "displacement_m": 6.131999999999998,
+      "start_position_m": [
+        50.0,
+        0.0,
+        0.8
+      ],
+      "end_position_m": [
+        43.868,
+        0.0,
+        0.8
+      ],
+      "start_time_s": 0.0,
+      "end_time_s": 1.022,
+      "pose_times_s": {
+        "Start": 0.0,
+        "Middle": 0.512,
+        "End": 1.022
+      }
+    }
+  ],
+  "mesh_snapshot_styles": [
+    {
+      "name": "native_vehicle",
+      "index": 511,
+      "time_s": 1.022,
+      "style": "filled",
+      "label": "End",
+      "opacity": 0.88
+    },
+    {
+      "name": "native_vehicle",
+      "index": 256,
+      "time_s": 0.512,
+      "style": "filled",
+      "label": "Middle",
+      "opacity": 0.42
+    },
+    {
+      "name": "native_vehicle",
+      "index": 0,
+      "time_s": 0.0,
+      "style": "filled",
+      "label": "Start",
+      "opacity": 0.16
+    }
+  ],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "8832ee6a74cf03bfac1434a265d6ca1d887e04f7f95394323e31955b255118e1",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "motion_renderer_sha256": "8fea0d9a9ed108fe662e2941ee7b19df5b36b935bd1ac67b13769c343795aa58",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.topology",
+    "--scenario",
+    "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml",
+    "--output",
+    "docs/assets/scenarios/scenarios_sensing_foundations_RCS_06_vehicle_multi_topology.png",
+    "--view",
+    "both",
+    "--dpi",
+    "170"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

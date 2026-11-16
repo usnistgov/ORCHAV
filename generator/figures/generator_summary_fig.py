@@ -302,6 +302,29 @@ from shared.geometry.cache import (
     get_scene_geometry,
 )
 
+# Distinct from red TX markers and green targets, shared by 2D/3D summaries.
+_RECEIVER_COLORS = ("#0072B2", "#E69F00", "#CC79A7", "#56B4E9", "#6B4C9A", "#009E73")
+
+
+def _receiver_color(index: int, mode: str) -> str:
+    """Keep the legacy blue or choose a reproducible actor-order palette."""
+    if mode not in {"role", "individual"}:
+        raise ValueError("receiver_color_mode must be 'role' or 'individual'")
+    if mode == "role":
+        return "blue"
+    if index < len(_RECEIVER_COLORS):
+        return _RECEIVER_COLORS[index]
+    # Continue with separate hues when a scenario exceeds the compact palette.
+    from matplotlib.colors import to_hex
+
+    return to_hex(plt.get_cmap("hsv")((index * 0.618033988749895) % 1.0))
+
+
+def _receiver_legend(rx, index: int, mode: str, stage: str) -> str:
+    if mode == "role":
+        return f"RX {stage}"
+    return f"{_summary_actor_label('rx', index, rx, 'name')} {stage.lower()}"
+
 
 def create_2d_scene_summary_figures(
     tx_configs: List,
@@ -313,17 +336,57 @@ def create_2d_scene_summary_figures(
     path_policy=None,
     scenario_context=None,
     scene_geometry=None,
-    rendering_mode: str = "rasterized",
+    rendering_mode: str = "mesh",
     resolution: float = 0.05,
     show_material_legend: bool = False,
     actor_label_mode: str = "role",
+    receiver_color_mode: str = "role",
+    receiver_inset_names: Optional[List[str]] = None,
+    explicit_bounds: Optional[Tuple[float, float, float, float]] = None,
+    target_colors: Optional[dict[str, str]] = None,
 ) -> Path:
     """Create a top-down scene summary with trajectories and optional geometry.
 
-    ``rendering_mode`` selects rasterized, vector, or auto scene drawing.
+    ``rendering_mode`` defaults to native mesh projection; explicit rasterized
+    and vector modes remain available for older figure recipes.
     Bounds use the union of scene geometry and sampled actor positions so
-    stationary actors outside compact meshes remain visible.
+    stationary actors outside compact meshes remain visible. ``explicit_bounds``
+    optionally frames a local view as ``(xmin, xmax, ymin, ymax)`` without
+    changing scene geometry or actor samples.
+    ``receiver_color_mode="individual"`` gives each receiver its own color and
+    named legend entries; the default retains the historical blue role palette.
+    TX markers have priority over receiver markers and trajectories.
+    ``target_colors`` optionally maps target names to Matplotlib colors; omitted
+    names retain the historical green. Named trajectory legend entries make
+    an explicit palette readable independently of the source scene colors.
     """
+
+    _receiver_color(0, receiver_color_mode)  # Validate before allocating a figure.
+    inset_indices = [
+        i
+        for i, rx in enumerate(rx_configs)
+        if _summary_actor_label("rx", i, rx, "name") in (receiver_inset_names or [])
+    ]
+    known_names = {_summary_actor_label("rx", i, rx, "name") for i, rx in enumerate(rx_configs)}
+    if set(receiver_inset_names or []) - known_names:
+        raise ValueError("receiver_inset_names contains unknown receiver names")
+    if explicit_bounds is not None:
+        bounds = np.asarray(explicit_bounds, dtype=float)
+        if (
+            bounds.shape != (4,)
+            or not np.isfinite(bounds).all()
+            or bounds[0] >= bounds[1]
+            or bounds[2] >= bounds[3]
+        ):
+            raise ValueError("explicit_bounds requires finite increasing xmin, xmax, ymin, ymax")
+
+    if target_colors is not None:
+        from matplotlib.colors import is_color_like
+
+        if not all(
+            isinstance(name, str) and is_color_like(color) for name, color in target_colors.items()
+        ):
+            raise ValueError("target_colors must map target names to valid Matplotlib colors")
 
     # Create figure and axis
     fig, ax = plt.subplots(1, 1, figsize=(12, 10), dpi=SUMMARY_FIGURE_DPI)
@@ -402,6 +465,9 @@ def create_2d_scene_summary_figures(
     y_min -= y_pad
     y_max += y_pad
 
+    if explicit_bounds is not None:
+        x_min, x_max, y_min, y_max = map(float, explicit_bounds)
+
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
@@ -441,8 +507,8 @@ def create_2d_scene_summary_figures(
                     markerfacecolor="none",
                     markeredgecolor="red",
                     markeredgewidth=2,
-                    alpha=0.8,
-                    zorder=4,
+                    alpha=1.0,
+                    zorder=8,
                     label=_legend_label("TX Stationary"),
                 )
             else:
@@ -451,7 +517,7 @@ def create_2d_scene_summary_figures(
                     start_pos[1],
                     "r^",
                     markersize=12,
-                    zorder=4,
+                    zorder=8,
                     label=_legend_label("TX Start"),
                 )
             _annotate_marker_label(
@@ -468,7 +534,7 @@ def create_2d_scene_summary_figures(
                     end_pos[1],
                     "rv",
                     markersize=12,
-                    zorder=4,
+                    zorder=8,
                     label=_legend_label("TX End"),
                 )
 
@@ -500,6 +566,7 @@ def create_2d_scene_summary_figures(
 
     # Plot RX actors using the same prepared state consumed by propagation.
     for i, rx in enumerate(rx_configs):
+        color = _receiver_color(i, receiver_color_mode)
         positions_list = _get_actor_positions_from_state_data(actor_state_data, "rx", i)
         positions = [point_to_xy(p) for p in positions_list]
         if positions:
@@ -509,23 +576,29 @@ def create_2d_scene_summary_figures(
                 ax.plot(
                     start_pos[0],
                     start_pos[1],
-                    "bo",
+                    "o",
+                    color=color,
                     markersize=6,
                     markerfacecolor="none",
-                    markeredgecolor="blue",
+                    markeredgecolor=color,
                     markeredgewidth=2,
                     alpha=0.8,
                     zorder=4,
-                    label=_legend_label("RX Stationary"),
+                    label=_legend_label(_receiver_legend(rx, i, receiver_color_mode, "Stationary")),
                 )
             else:
                 ax.plot(
                     start_pos[0],
                     start_pos[1],
-                    "b^",
+                    "^",
+                    color=color,
                     markersize=12,
                     zorder=4,
-                    label=_legend_label("RX Start"),
+                    label=(
+                        "_nolegend_"
+                        if receiver_color_mode == "individual"
+                        else _legend_label("RX Start")
+                    ),
                 )
             _annotate_marker_label(
                 ax,
@@ -539,10 +612,15 @@ def create_2d_scene_summary_figures(
                 ax.plot(
                     end_pos[0],
                     end_pos[1],
-                    "bv",
+                    "v",
+                    color=color,
                     markersize=12,
                     zorder=4,
-                    label=_legend_label("RX End"),
+                    label=(
+                        "_nolegend_"
+                        if receiver_color_mode == "individual"
+                        else _legend_label("RX End")
+                    ),
                 )
 
                 # Draw trajectory through all positions
@@ -552,14 +630,15 @@ def create_2d_scene_summary_figures(
                 ax.plot(
                     x_coords,
                     y_coords,
-                    "b-",
+                    "-",
+                    color=color,
                     linewidth=2,
                     marker=".",
                     markersize=5,
                     markevery=markevery,
                     alpha=0.7,
                     zorder=2,
-                    label=_legend_label("RX Trajectory"),
+                    label=_legend_label(_receiver_legend(rx, i, receiver_color_mode, "Trajectory")),
                 )
 
                 # Add arrow at the end to show direction
@@ -568,11 +647,13 @@ def create_2d_scene_summary_figures(
                         "",
                         xy=end_pos[:2],
                         xytext=positions[-2][:2],
-                        arrowprops=dict(arrowstyle="->", color="blue", lw=2),
+                        arrowprops=dict(arrowstyle="->", color=color, lw=2),
                     )
 
     # Plot targets using the same prepared state consumed by propagation.
     for i, target in enumerate(target_configs):
+        color = (target_colors or {}).get(target.config.name, "g")
+        edge_color = (target_colors or {}).get(target.config.name, "green")
         positions_list = _get_actor_positions_from_state_data(actor_state_data, "target", i)
         positions = [point_to_xy(p) for p in positions_list]
         if positions:
@@ -582,10 +663,11 @@ def create_2d_scene_summary_figures(
                 ax.plot(
                     start_pos[0],
                     start_pos[1],
-                    "go",
+                    "o",
+                    color=color,
                     markersize=5,
                     markerfacecolor="none",
-                    markeredgecolor="green",
+                    markeredgecolor=edge_color,
                     markeredgewidth=2,
                     alpha=0.8,
                     zorder=4,
@@ -595,7 +677,8 @@ def create_2d_scene_summary_figures(
                 ax.plot(
                     start_pos[0],
                     start_pos[1],
-                    "g^",
+                    "^",
+                    color=color,
                     markersize=10,
                     zorder=4,
                     label=_legend_label("Target Start"),
@@ -608,7 +691,8 @@ def create_2d_scene_summary_figures(
                 ax.plot(
                     end_pos[0],
                     end_pos[1],
-                    "gv",
+                    "v",
+                    color=color,
                     markersize=10,
                     zorder=4,
                     label=_legend_label("Target End"),
@@ -621,14 +705,17 @@ def create_2d_scene_summary_figures(
                 ax.plot(
                     x_coords,
                     y_coords,
-                    "g--",
+                    "--",
+                    color=color,
                     linewidth=2,
                     marker=".",
                     markersize=4,
                     markevery=markevery,
                     alpha=0.7,
                     zorder=2,
-                    label=_legend_label("Target Trajectory"),
+                    label=_legend_label(
+                        target.config.name if target_colors else "Target Trajectory"
+                    ),
                 )
 
                 # Add arrow at the end to show direction
@@ -637,7 +724,7 @@ def create_2d_scene_summary_figures(
                         "",
                         xy=end_pos[:2],
                         xytext=positions[-2][:2],
-                        arrowprops=dict(arrowstyle="->", color="green", lw=2, alpha=0.7),
+                        arrowprops=dict(arrowstyle="->", color=edge_color, lw=2, alpha=0.7),
                     )
         else:
             marker_position = _resolve_target_marker_position(target)
@@ -647,15 +734,50 @@ def create_2d_scene_summary_figures(
             ax.plot(
                 start_pos[0],
                 start_pos[1],
-                "go",
+                "o",
+                color=color,
                 markersize=5,
                 markerfacecolor="none",
-                markeredgecolor="green",
+                markeredgecolor=edge_color,
                 markeredgewidth=2,
                 alpha=0.8,
                 label=_legend_label("Target Stationary"),
             )
             _annotate_marker_label(ax, f"{target.config.name}", start_pos, "target")
+
+    if inset_indices:
+        inset = ax.inset_axes((0.035, 0.06, 0.42, 0.39))
+        all_points = []
+        if geom_to_plot:
+            plot_scene_geometry_2d(
+                inset,
+                geom_to_plot,
+                rendering_mode=rendering_mode,
+                resolution=resolution,
+                show_material_legend=False,
+            )
+        for index in inset_indices:
+            points = np.asarray(
+                [
+                    point_to_xy(p)
+                    for p in _get_actor_positions_from_state_data(actor_state_data, "rx", index)
+                ]
+            )
+            if not len(points):
+                continue
+            all_points.extend(points)
+            color = _receiver_color(index, receiver_color_mode)
+            label = _summary_actor_label("rx", index, rx_configs[index], "name")
+            inset.plot(points[:, 0], points[:, 1], color=color, lw=2, label=label, zorder=4)
+            inset.scatter(points[[0, -1], 0], points[[0, -1], 1], color=color, s=18, zorder=5)
+        if all_points:
+            bounds = np.asarray(all_points)
+            lower, upper = bounds.min(axis=0) - 2, bounds.max(axis=0) + 2
+            inset.set(xlim=(lower[0], upper[0]), ylim=(lower[1], upper[1]), aspect="equal")
+            inset.tick_params(labelsize=6)
+            inset.set_title("Receiver trajectories (m)", fontsize=8)
+            inset.legend(fontsize=7, loc="upper left", framealpha=0.95)
+            ax.indicate_inset_zoom(inset, edgecolor="0.3", alpha=0.8)
 
     # Add legend
     ax.legend(loc="upper right", bbox_to_anchor=(1, 1), ncol=2, fontsize=8, framealpha=0.9)
@@ -708,21 +830,23 @@ def create_3d_scene_summary_figures(
     path_policy=None,
     scenario_context=None,
     scene_geometry=None,
-    rendering_mode: str = "floor_plan",
+    rendering_mode: str = "mesh",
     alpha: float = 0.3,
     z_exaggeration: Any = None,
     camera: Optional[Dict[str, float]] = None,
     bounds_mode: str = "union",
     explicit_bounds: Optional[Any] = None,
     actor_label_mode: str = "role",
+    receiver_color_mode: str = "role",
 ) -> Path:
     """Create a 3D scene summary with trajectories and optional geometry.
 
-    ``rendering_mode`` selects floor-plan, mesh, wireframe, hybrid, or
+    ``rendering_mode`` selects mesh (default), floor-plan, wireframe, hybrid, or
     city-scale drawing. Bounds can use scene geometry, device trajectories,
     their union, or explicit six-value limits.
     """
 
+    _receiver_color(0, receiver_color_mode)
     # Create figure and 3D axis
     fig = plt.figure(figsize=(12, 10), dpi=SUMMARY_FIGURE_DPI)
     ax = fig.add_subplot(111, projection="3d")
@@ -1011,6 +1135,7 @@ def create_3d_scene_summary_figures(
 
     # Plot RX actors using the same prepared state consumed by propagation.
     for i, rx in enumerate(rx_configs):
+        color = _receiver_color(i, receiver_color_mode)
         positions_list = _get_actor_positions_from_state_data(actor_state_data, "rx", i)
         positions = [point_to_xyz(p) for p in positions_list]
         if positions:
@@ -1025,10 +1150,10 @@ def create_3d_scene_summary_figures(
                     s=50,
                     marker="o",
                     facecolors="none",
-                    edgecolors="blue",
+                    edgecolors=color,
                     linewidth=2,
                     alpha=0.8,
-                    label=_legend_label("RX Stationary"),
+                    label=_legend_label(_receiver_legend(rx, i, receiver_color_mode, "Stationary")),
                 )
             else:
                 _scatter(
@@ -1036,10 +1161,14 @@ def create_3d_scene_summary_figures(
                     start_pos[0],
                     start_pos[1],
                     start_pos[2],
-                    c="blue",
+                    c=color,
                     s=100,
                     marker="^",
-                    label=_legend_label("RX Start"),
+                    label=(
+                        "_nolegend_"
+                        if receiver_color_mode == "individual"
+                        else _legend_label("RX Start")
+                    ),
                 )
             ax.text(
                 start_pos[0],
@@ -1057,10 +1186,14 @@ def create_3d_scene_summary_figures(
                     end_pos[0],
                     end_pos[1],
                     end_pos[2],
-                    c="blue",
+                    c=color,
                     s=100,
                     marker="v",
-                    label=_legend_label("RX End"),
+                    label=(
+                        "_nolegend_"
+                        if receiver_color_mode == "individual"
+                        else _legend_label("RX End")
+                    ),
                 )
 
                 # Draw trajectory through all positions
@@ -1072,13 +1205,14 @@ def create_3d_scene_summary_figures(
                     x_coords,
                     y_coords,
                     z_coords,
-                    "b-",
+                    "-",
+                    color=color,
                     linewidth=2,
                     marker=".",
                     markersize=5,
                     markevery=markevery,
                     alpha=0.7,
-                    label=_legend_label("RX Trajectory"),
+                    label=_legend_label(_receiver_legend(rx, i, receiver_color_mode, "Trajectory")),
                 )
 
                 # Add visible but unlabeled step samples along the trajectory.
@@ -1087,7 +1221,7 @@ def create_3d_scene_summary_figures(
                     x_coords,
                     y_coords,
                     z_coords,
-                    c="blue",
+                    c=color,
                     s=12,
                     marker=".",
                     alpha=0.8,

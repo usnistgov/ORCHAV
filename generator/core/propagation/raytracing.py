@@ -36,6 +36,7 @@ from .actor_state_application import (
 )
 from .diagnostics import log_mpc_statistics
 from .live_overrides import apply_live_overrides
+from .native_rcs import compute_native_paths, has_native_targets
 from .snapshots import orientations_to_array, positions_to_array, velocities_to_array
 
 logger = get_logger(__name__)
@@ -170,7 +171,11 @@ def compute_ray_tracing_step(
     if PATH_SOLVER_SUPPORTS_DIFFRACTION_LIT_REGION:
         solver_kwargs["diffraction_lit_region"] = settings.get("diffraction_lit_region", True)
 
-    paths = simulation.path_solver(**solver_kwargs)
+    native_provenance = None
+    if has_native_targets(simulation):
+        paths, native_provenance = compute_native_paths(simulation, solver_kwargs)
+    else:
+        paths = simulation.path_solver(**solver_kwargs)
     log_mpc_statistics(paths, frame_idx)
 
     material_mapping = materials_per_bounce(simulation.scene, paths)
@@ -185,6 +190,35 @@ def compute_ray_tracing_step(
         "material_properties": simulation.material_properties,
         "frame_idx": frame_idx,
     }
+    if native_provenance is not None:
+        frame_data["sionna_sensing"] = native_provenance
+        frame_data["native_targets_metadata_snapshot"] = {
+            index: manager.metadata_snapshot()
+            for index, manager in enumerate(simulation.target_managers)
+            if callable(getattr(manager, "metadata_snapshot", None))
+        }
+        native_provenance["target_state_at_solve"] = list(
+            frame_data["native_targets_metadata_snapshot"].values()
+        )
+
+    if any(
+        getattr(manager.config, "animated_asset", None) is not None
+        for manager in simulation.target_managers
+    ):
+        # The sensing pipeline runs before the final frame builder. Capture
+        # immutable animation evidence now rather than reading live managers
+        # after a later solve has replaced their geometry.
+        target_metadata = []
+        for manager in simulation.target_managers:
+            row = {"name": manager.config.name}
+            animation = getattr(manager.config, "animated_asset", None)
+            if animation is not None:
+                row["animated_asset"] = {
+                    "catalog": animation.catalog_metadata(),
+                    "state": animation.sample_metadata(manager.current_mesh_idx),
+                }
+            target_metadata.append(row)
+        frame_data["targets_metadata"] = target_metadata
 
     if simulation.simulation_config is not None:
         frame_data["simulation_config"] = simulation.simulation_config
@@ -208,9 +242,14 @@ def compute_ray_tracing_step(
     frame_data["rx_positions_snapshot"] = positions_to_array(rx_pos_step)
     frame_data["target_positions_snapshot"] = positions_to_array(tgt_pos_step)
 
-    target_velocity_snapshot = velocities_to_array(tgt_velocities)
-    if target_velocity_snapshot is not None:
-        frame_data["target_velocities_snapshot"] = target_velocity_snapshot
+    for role, velocities in (
+        ("tx", tx_velocities),
+        ("rx", rx_velocities),
+        ("target", tgt_velocities),
+    ):
+        velocity_snapshot = velocities_to_array(velocities, require_complete=True)
+        if velocity_snapshot is not None:
+            frame_data[f"{role}_velocities_snapshot"] = velocity_snapshot
 
     logger.debug(
         "[COMPUTE_FRAME] Snapshots created: TX shape=%s, RX shape=%s",

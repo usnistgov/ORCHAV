@@ -11,6 +11,7 @@ import glob
 import os
 import time
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -33,12 +34,14 @@ from ..model import (
     Transform,
 )
 from ..scene.geometry_payload_factory import extract_wireframe_payload, load_mesh_payload
+from ..scene.native_target_geometry import native_proxy_payload, native_scattering_points
 from ..scene.target_materials import (
     MINIMAL_TARGET_PBR_PROPS,
     resolve_target_pbr_props,
     target_entry_pbr_fields,
 )
 from ..scene.target_runtime import target_label_visible, target_runtime_visible
+from ..scene.target_surface import TargetSurface, target_surface_for_profile
 from ..scene.target_transforms import (
     TargetGeometryMeta,
     build_sionna_rotation_matrix,
@@ -78,7 +81,9 @@ from ..types.render_payloads import (
     LineSetPayload,
     MaterialPayload,
     MeshPayload,
+    PointCloudPayload,
     SurfaceColorSource,
+    TextLabelPayload,
     material_payload_from_mapping,
 )
 
@@ -101,6 +106,7 @@ class _TargetAssetBuildSpec:
     use_ply_position: bool
     uniform_material: MaterialPayload
     vertex_material: MaterialPayload
+    surface: TargetSurface | None = None
 
 
 def _aabb_center(mesh: RenderObjectState) -> np.ndarray:
@@ -296,6 +302,7 @@ class TargetService(BaseService):
         use_ply_position: bool,
         pbr_props: dict[str, Any],
         resolved_material: ResolvedMaterial | None = None,
+        surface: TargetSurface | None = None,
     ) -> _TargetAssetBuildSpec:
         """Resolve immutable materials and transform inputs once per target."""
         try:
@@ -321,6 +328,7 @@ class TargetService(BaseService):
             use_ply_position=bool(use_ply_position),
             uniform_material=uniform_material,
             vertex_material=vertex_material,
+            surface=surface,
         )
 
     @staticmethod
@@ -342,6 +350,7 @@ class TargetService(BaseService):
                 roughness_map_path=None,
                 ao_map_path=None,
                 metallic_map_path=None,
+                clearcoat_roughness_map_path=None,
             )
         return selected
 
@@ -358,6 +367,8 @@ class TargetService(BaseService):
             ),
             mesh_path=source.canonical_path,
         )
+        if spec.surface is not None and isinstance(mesh.payload, MeshPayload):
+            mesh.replace_payload(spec.surface.apply(mesh.payload))
         original_vertices = self._mesh_vertices_array(mesh)
         if abs(spec.scale - 1.0) > 1e-12:
             self._scale_mesh(mesh, spec.scale, _aabb_center(mesh))
@@ -436,6 +447,20 @@ class TargetService(BaseService):
         except (TypeError, ValueError):
             play_direction = 1.0
         direction = -1 if np.isfinite(play_direction) and play_direction < 0.0 else 1
+        future_meshes = self._cached_playback_meshes(entry, requested_count, direction)
+        if future_meshes is not None:
+            token = (str(mesh_file), direction, future_meshes)
+            if entry.get("_target_frame_lookahead_schedule") == token:
+                return
+            self._target_asset_cache.prefetch_sources(
+                target_name,
+                future_meshes,
+                loader=lambda source: self._build_target_asset(source, spec),
+            )
+            entry["_target_frame_lookahead_schedule"] = token
+            entry.pop("_target_lookahead_schedule", None)
+            return
+        entry.pop("_target_frame_lookahead_schedule", None)
         schedule_key = (str(mesh_file), direction)
         prior_schedule = entry.get("_target_lookahead_schedule")
         if isinstance(prior_schedule, tuple) and prior_schedule[:2] == schedule_key:
@@ -456,6 +481,63 @@ class TargetService(BaseService):
             direction=direction,
         )
         entry["_target_lookahead_schedule"] = (*schedule_key, requested_count)
+
+    def _cached_playback_meshes(
+        self, entry: Dict[str, Any], count: int, direction: int
+    ) -> Optional[tuple[str, ...]]:
+        """Resolve playback lookahead from cached metadata, never foreground I/O.
+
+        A stride of one can still traverse sparse scene IDs, including the
+        sensing-only timeline. Even dense frames can share a mesh. Preparing
+        adjacent mesh files instead wastes work and leaves the displayed pose
+        cold; use that fallback only when frame metadata is unavailable.
+        """
+        viz = self.visualizer
+        controller = getattr(viz, "animation_controller", None)
+        get_stride = getattr(controller, "get_current_stride", None)
+        get_steps = getattr(viz, "get_available_animation_steps", None)
+        get_frame = getattr(getattr(viz, "cache_service", None), "get_frame", None)
+        if not all(callable(fn) for fn in (get_stride, get_steps, get_frame)):
+            return None
+        try:
+            stride = int(get_stride())
+            if stride < 1:
+                return None
+            steps = get_steps()
+            current_index = steps.index(int(viz.animation_step))
+        except (AttributeError, TypeError, ValueError):
+            return None
+        target_name = self._target_name(entry)
+        filenames = []
+        for _ in range(count):
+            current_index += direction * stride
+            if current_index >= len(steps):
+                current_index = 0
+            elif current_index < 0:
+                current_index = len(steps) - 1
+            step = steps[current_index]
+            frame = get_frame(step)
+            if not isinstance(frame, dict):
+                return None
+            metadata = frame.get("targets_metadata")
+            if not isinstance(metadata, (list, tuple)):
+                return None
+            target = next(
+                (
+                    item
+                    for item in metadata
+                    if isinstance(item, dict) and item.get("name") == target_name
+                ),
+                None,
+            )
+            if target is None:
+                continue  # No active instance in this future frame.
+            filename = target.get("mesh_file")
+            if not isinstance(filename, str):
+                return None
+            if filename != entry.get("mesh_file"):
+                filenames.append(filename)
+        return tuple(dict.fromkeys(filenames))
 
     def _schedule_target_lookahead_waves(
         self,
@@ -712,6 +794,12 @@ class TargetService(BaseService):
             label = None
             label_name = ""
         if label is not None:
+            custom_labels = getattr(getattr(viz, "app_state", None), "target_labels", ())
+            text = target_entry.get("name", self._target_name(target_entry))
+            if custom_labels and target_index < len(custom_labels) and custom_labels[target_index]:
+                text = custom_labels[target_index]
+            if isinstance(label.payload, TextLabelPayload) and label.payload.text != text:
+                label.replace_payload(replace(label.payload, text=text))
             label_visible = target_label_visible(
                 target_entry,
                 target_index,
@@ -741,7 +829,15 @@ class TargetService(BaseService):
             mesh_visible=desired_visible,
             update_renderer=False,
         )
-        synced = bool(mesh_synced and label_synced and outline_synced)
+        points_synced = True
+        for point in target_entry.get("_native_scattering_points", ()):
+            points_synced = (
+                self._target_render_sync.sync_render_handle(
+                    point, effective_visible=desired_visible and point.visible
+                )
+                and points_synced
+            )
+        synced = bool(mesh_synced and label_synced and outline_synced and points_synced)
         target_entry["_renderer_sync_pending"] = not synced
         return synced
 
@@ -982,12 +1078,22 @@ class TargetService(BaseService):
                 return None
             if R.shape != (3, 3):
                 return None
-            rotated_center = self._resolve_rotated_aabb_center(
-                self._target_name(entry),
-                entry.get("mesh_file"),
-                R,
-                mesh=entry.get("mesh"),
-            )
+            if entry.get("representation") in {"constant_rcs", "tr38901"}:
+                mesh = entry.get("mesh")
+                cache_key = (id(mesh.payload), self._rotation_cache_key(R))
+                cached = entry.get("_native_rotated_center")
+                if cached is None or cached[0] != cache_key:
+                    rotated_center = compute_rotated_aabb_center(self._mesh_vertices_array(mesh), R)
+                    entry["_native_rotated_center"] = (cache_key, rotated_center)
+                else:
+                    rotated_center = cached[1]
+            else:
+                rotated_center = self._resolve_rotated_aabb_center(
+                    self._target_name(entry),
+                    entry.get("mesh_file"),
+                    R,
+                    mesh=entry.get("mesh"),
+                )
             rotation_matrix = R
 
         return target_transform_matrix(
@@ -1210,6 +1316,163 @@ class TargetService(BaseService):
         logger.debug("Applied scale %.3f to target '%s'", new_scale, target_name)
         return True
 
+    def _inspection_asset_directory(
+        self, target_name: str, mesh_file: str, recorded_directory: str
+    ) -> str:
+        """Honor a named YAML asset binding when a relocated recording path is absent.
+
+        Derived inspection YAML resolves source assets absolutely. Frame metadata
+        retains its producer-relative paths and must never be rewritten merely
+        to inspect results outside the source checkout.
+        """
+        if Path(recorded_directory, mesh_file).is_file() or Path(mesh_file).name != mesh_file:
+            return recorded_directory
+        scenario = getattr(self.visualizer, "scenario", None)
+        actors = getattr(scenario, "actors", None)
+        targets = getattr(actors, "targets", ())
+        if not isinstance(targets, (tuple, list)):
+            return recorded_directory
+        for target in targets:
+            if target.name != target_name:
+                continue
+            asset = target.asset
+            if getattr(asset, "source", None) not in {"directory", "file"}:
+                continue
+            path = Path(asset.path)
+            if not path.is_absolute():
+                policy = getattr(self.visualizer, "current_scenario_policy", None)
+                if policy is None:
+                    continue
+                path = policy.resolve_path(str(path))
+            directory = path.parent if asset.source == "file" else path
+            if asset.source == "file" and path.name != mesh_file:
+                continue
+            if (directory / mesh_file).is_file():
+                return str(directory)
+        return recorded_directory
+
+    def _native_mesh_path(self, metadata: Dict[str, Any]) -> Path | None:
+        geometry = metadata.get("geometry", {})
+        if geometry.get("type") != "mesh":
+            return None
+        path = Path(str(geometry.get("path", "")))
+        policy = getattr(self.visualizer, "current_scenario_policy", None)
+        if policy is not None:
+            return Path(policy.resolve_path(str(path)))
+        if not path.is_absolute():
+            raise ValueError("Native mesh proxy requires a scenario path resolver")
+        return path
+
+    def _native_target_entry(self, metadata: Dict[str, Any], index: int) -> Dict[str, Any]:
+        """Create one proxy and stable point handles from retained native evidence."""
+        name = str(metadata["name"])
+        proxy_props = {
+            "color": [0.2, 0.4, 1.0],
+            "alpha": 0.25,
+            "roughness": 0.5,
+            "metallic": 0.0,
+            "reflectance": 0.5,
+        }
+        entry: Dict[str, Any] = {
+            "name": f"{name} ({metadata['representation']})",
+            "target_name": name,
+            "node_name": name,
+            "node_index": index,
+            "entry_type": "target",
+            "representation": metadata["representation"],
+            "visible": True,
+            "show_label": True,
+            "highlighted": False,
+            "color": proxy_props["color"],
+            **target_entry_pbr_fields(proxy_props),
+            "pbr_alpha": proxy_props["alpha"],
+            "material_type": "absorber",
+            "material_id": f"native-absorber-{name}",
+            "mesh_file": "",
+            "scale": 1.0,
+            "supports_position": False,
+            "supports_orientation": False,
+            "supports_scale": False,
+            "supports_label_toggle": True,
+            "supports_highlight_toggle": True,
+            "has_vertex_texture": False,
+            "_native_scattering_points": (),
+        }
+        ensure_target_entry_identity(entry, index)
+        payload = native_proxy_payload(metadata, self._native_mesh_path(metadata))
+        entry["mesh"] = RenderObjectState(
+            id=make_target_entry_geometry_name(entry, "mesh"),
+            payload=payload,
+            material=MaterialPayload(base_color=(0.2, 0.4, 1.0, 0.25)),
+            metadata={
+                "type": "native_absorbing_proxy",
+                "representation": metadata["representation"],
+            },
+        )
+        entry["_native_geometry"] = dict(metadata["geometry"])
+        self._update_native_target_entry(entry, metadata)
+        # Use the same authored PBR and global-opacity policy on first display
+        # as on later selection, material refresh, and workspace restoration.
+        pbr_service = getattr(self.visualizer, "material_pbr_service", None)
+        resolve_material = getattr(pbr_service, "resolve_entry_material", None)
+        if callable(resolve_material):
+            entry["mesh"].material = resolve_material(entry).payload
+        return entry
+
+    def _update_native_target_entry(self, entry: Dict[str, Any], metadata: Dict[str, Any]) -> None:
+        """Keep recorded point positions distinct from display and radio visibility."""
+        ids, positions = native_scattering_points(metadata)
+        position, valid = self._coerce_vec3(metadata.get("current_position"))
+        orientation, orientation_valid = self._coerce_vec3(metadata.get("orientation"))
+        if not orientation_valid:
+            raise ValueError("Native target orientation is missing or invalid")
+        if entry.get("_native_geometry") != metadata.get("geometry"):
+            entry["mesh"].replace_payload(
+                native_proxy_payload(metadata, self._native_mesh_path(metadata))
+            )
+            entry["_native_geometry"] = dict(metadata["geometry"])
+            self._invalidate_target_outline(entry)
+        entry.update(
+            position=position,
+            orientation=orientation,
+            _target_position=position,
+            _rotation_matrix=build_sionna_rotation_matrix(*orientation),
+            _mesh_center=list(_aabb_center(entry["mesh"])),
+            _frame_visible=valid and bool(metadata.get("position_valid", True)),
+            _use_ply_position=False,
+            native_metadata=dict(metadata),
+        )
+        entry["orientation_radians"], entry["orientation_degrees"] = orientation_metadata(
+            orientation
+        )
+        retained = {
+            point.metadata["scattering_point_id"]: point
+            for point in entry.get("_native_scattering_points", ())
+        }
+        for point in retained.values():
+            point.visible = False
+        for point_id, point_position in zip(ids, positions):
+            point = retained.get(point_id)
+            if point is None:
+                point = RenderObjectState(
+                    id=make_target_entry_geometry_name(entry, f"scattering_point_{point_id}"),
+                    payload=PointCloudPayload(points=np.zeros((1, 3), dtype=np.float64)),
+                    material=MaterialPayload(
+                        base_color=(1.0, 0.7, 0.1, 1.0), shader="unlit", point_size=9.0
+                    ),
+                    metadata={
+                        "type": "native_scattering_point",
+                        "target_name": entry["target_name"],
+                        "scattering_point_id": point_id,
+                        "visibility_evidence": "not_recorded",
+                    },
+                )
+                retained[point_id] = point
+            point.visible = True
+            point.world_transform = Transform.from_translation(point_position)
+            point.metadata["metadata_source"] = metadata.get("metadata_source", "unavailable")
+        entry["_native_scattering_points"] = tuple(retained.values())
+
     # Target model loading
 
     def load_target_models(self) -> None:
@@ -1317,6 +1580,17 @@ class TargetService(BaseService):
             )
 
             for i, target_meta in enumerate(targets_metadata):
+                if target_meta.get("representation", "mesh_material") != "mesh_material":
+                    try:
+                        entry = self._native_target_entry(target_meta, len(viz.target_entries))
+                    except (OSError, TypeError, ValueError) as exc:
+                        logger.warning(
+                            "Cannot load native target %s: %s", target_meta.get("name"), exc
+                        )
+                        continue
+                    viz.target_entries.append(entry)
+                    viz.target_meshes[entry["target_name"]] = entry["mesh"]
+                    continue
                 target_name = target_meta["name"]
                 mesh_file = target_meta["mesh_file"]
                 mesh_directory = target_meta["mesh_directory"]
@@ -1338,6 +1612,9 @@ class TargetService(BaseService):
                     except (OSError, ValueError) as e:
                         logger.warning("Failed to resolve mesh path with policy: %s", e)
 
+                mesh_directory = self._inspection_asset_directory(
+                    target_name, mesh_file, mesh_directory
+                )
                 if not os.path.exists(mesh_directory):
                     logger.warning("Mesh directory does not exist: %s", mesh_directory)
 
@@ -1413,6 +1690,14 @@ class TargetService(BaseService):
                     "color": material_defaults.props.get("color", [0.8, 0.6, 0.5]),
                 }
                 target_texture_path = target_meta.get("texture_path")
+                target_surface = None
+                try:
+                    target_surface = target_surface_for_profile(viz, target_name, material_type)
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    logger.warning("Could not load visual skin for %s: %s", target_name, exc)
+                if target_surface is not None:
+                    prototype_entry["_target_surface"] = target_surface
+                    target_texture_path = target_surface.texture_path
                 if target_texture_path:
                     prototype_entry["texture_path"] = target_texture_path
                 material_service = getattr(viz, "material_pbr_service", None)
@@ -1446,6 +1731,7 @@ class TargetService(BaseService):
                     use_ply_position=use_ply_position,
                     pbr_props=pbr_props,
                     resolved_material=resolved_target_material,
+                    surface=target_surface,
                 )
                 try:
                     first_asset = self._load_registered_target_asset(
@@ -1503,6 +1789,7 @@ class TargetService(BaseService):
                     "_last_applied_scale_mesh_file": initial_mesh_filename,
                     "_target_asset": first_asset,
                     "_target_asset_build_spec": build_spec,
+                    "_target_surface": target_surface,
                     "supports_position": True,
                     "supports_orientation": True,
                     "supports_scale": True,
@@ -1631,6 +1918,9 @@ class TargetService(BaseService):
                     mesh_directory = str(resolved)
                 except (OSError, ValueError):
                     pass
+            mesh_directory = self._inspection_asset_directory(
+                target_name, mesh_file, mesh_directory
+            )
             full_path = os.path.join(mesh_directory, mesh_file)
             if not os.path.isfile(full_path):
                 logger.warning("On-demand mesh file not found: %s", full_path)
@@ -1730,6 +2020,28 @@ class TargetService(BaseService):
         state_cache = target_assets.runtime_states
         for i, target_meta in enumerate(view_model.target_metadata):
             target_name = str(target_meta.get("name") or f"target_{i}")
+            if target_meta.get("representation", "mesh_material") != "mesh_material":
+                target_match = target_entries_by_name.get(target_name)
+                try:
+                    if target_match is None:
+                        target_entry = self._native_target_entry(
+                            target_meta, len(viz.target_entries)
+                        )
+                        viz.target_entries.append(target_entry)
+                        viz.target_meshes[target_name] = target_entry["mesh"]
+                        target_entries_by_name[target_name] = (
+                            target_entry["node_index"],
+                            target_entry,
+                        )
+                    else:
+                        _, target_entry = target_match
+                        self._update_native_target_entry(target_entry, target_meta)
+                except (OSError, TypeError, ValueError) as exc:
+                    logger.warning("Cannot update native target %s: %s", target_name, exc)
+                    continue
+                processed_target_names.add(target_name)
+                updated_entries.append(target_entry)
+                continue
             if i >= len(view_model.target_positions):
                 logger.debug("Skipping target %s: missing target_positions[%d]", target_name, i)
                 continue
@@ -1948,6 +2260,7 @@ class TargetService(BaseService):
 
                     target_entry["mesh"] = new_mesh
                     target_entry["mesh_file"] = mesh_file
+                    target_entry["name"] = f"{target_name} ({os.path.splitext(mesh_file)[0]})"
                     target_entry["rel_path"] = new_asset.source.canonical_path
                     target_entry["_target_asset"] = new_asset
                     target_entry["has_vertex_texture"] = new_asset.has_vertex_texture

@@ -1,0 +1,57 @@
+schema_version: 2
+scene:
+  source: local
+  id: scene.xml
+timeline:
+  steps: 1
+  sample_rate_hz: 1000.0
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 3500000000.0
+  bandwidth_hz: 300000000.0
+  antenna:
+    tx:
+      pattern: iso
+      polarization: V
+      num_rows: 1
+      num_cols: 1
+    rx:
+      pattern: iso
+      polarization: V
+      num_rows: 1
+      num_cols: 1
+  quality:
+    preset: low
+    custom:
+      max_depth: 1
+      samples_per_src: 10000
+      max_num_paths_per_src: 1000
+      los: true
+      specular_reflection: true
+      diffuse_reflection: false
+      refraction: false
+      seed: 42
+actors:
+  tx:
+  - name: main_tx
+    mobility:
+      type: stationary
+      position_m:
+      - -4.0
+      - 0.0
+      - 1.5
+  rx:
+  - name: main_rx
+    mobility:
+      type: stationary
+      position_m:
+      - 4.0
+      - 0.0
+      - 1.5
+data:
+  mode: files
+  files:
+    directory: frames
+    chunk_size: 8
+generator_summary:
+  enabled: false

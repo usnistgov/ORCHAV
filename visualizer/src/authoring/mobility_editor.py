@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSpinBox,
-    QStackedWidget,
     QTableWidget,
     QToolButton,
     QVBoxLayout,
@@ -55,6 +54,8 @@ from shared.scenarios.actors import (
     WaypointMobilitySpec,
 )
 
+from ..widgets.form_layout import AlignedFormLayout
+from ..widgets.responsive import CurrentPageStack
 from .mobility_models import (
     MOBILITY_MODELS,
     MobilityKind,
@@ -136,17 +137,17 @@ def _vector_editor(
 ) -> tuple[QWidget, tuple[QDoubleSpinBox, ...]]:
     editor = QWidget(parent)
     editor.setObjectName(f"{prefix}Editor")
-    layout = QHBoxLayout(editor)
+    # Axis rows keep every coordinate reachable in the narrow inspector.
+    layout = AlignedFormLayout(editor)
     layout.setContentsMargins(0, 0, 0, 0)
     spins: list[QDoubleSpinBox] = []
     for dimension in dimensions:
-        layout.addWidget(QLabel(dimension.upper(), editor))
         spin = _configured_spin(
             editor,
             f"{prefix}{dimension.upper()}Spin",
             suffix=" m",
         )
-        layout.addWidget(spin, 1)
+        layout.addRow(dimension.upper(), spin)
         spins.append(spin)
     return editor, tuple(spins)
 
@@ -161,7 +162,7 @@ def _range_editor(
 ) -> tuple[QWidget, PairSpins]:
     editor = QWidget(parent)
     editor.setObjectName(f"{prefix}RangeEditor")
-    layout = QHBoxLayout(editor)
+    layout = AlignedFormLayout(editor)
     layout.setContentsMargins(0, 0, 0, 0)
     low = _configured_spin(
         editor,
@@ -177,10 +178,8 @@ def _range_editor(
         maximum=maximum,
         suffix=suffix,
     )
-    layout.addWidget(QLabel("Min", editor))
-    layout.addWidget(low, 1)
-    layout.addWidget(QLabel("Max", editor))
-    layout.addWidget(high, 1)
+    layout.addRow("Min", low)
+    layout.addRow("Max", high)
     return editor, (low, high)
 
 
@@ -277,7 +276,7 @@ class _TraversalEditor(QWidget):
     def __init__(self, prefix: str, parent: QWidget) -> None:
         super().__init__(parent)
         self.setObjectName(f"{prefix}TraversalEditor")
-        form = QFormLayout(self)
+        form = AlignedFormLayout(self)
         form.setContentsMargins(0, 0, 0, 0)
         self.type_combo = QComboBox(self)
         self.type_combo.setObjectName(f"{prefix}TraversalTypeCombo")
@@ -335,7 +334,7 @@ def _form_page(
     layout = QVBoxLayout(page)
     layout.setContentsMargins(0, 0, 0, 0)
     primary = QWidget(page)
-    form = QFormLayout(primary)
+    form = AlignedFormLayout(primary)
     form.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(primary)
     return page, layout, form
@@ -374,7 +373,7 @@ class MobilityEditor(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         type_row = QWidget(self)
-        type_layout = QFormLayout(type_row)
+        type_layout = AlignedFormLayout(type_row)
         type_layout.setContentsMargins(0, 0, 0, 0)
         self.type_combo = QComboBox(type_row)
         self.type_combo.setObjectName("mobilityTypeCombo")
@@ -383,7 +382,7 @@ class MobilityEditor(QWidget):
         type_layout.addRow("Type", self.type_combo)
         layout.addWidget(type_row)
 
-        self.page_stack = QStackedWidget(self)
+        self.page_stack = CurrentPageStack(self)
         self.page_stack.setObjectName("mobilityPageStack")
         builders = {
             MobilityKind.STATIONARY: self._build_stationary_page,
@@ -444,7 +443,7 @@ class MobilityEditor(QWidget):
             f"mobility{prefix}AdvancedSection",
             page,
         )
-        form = QFormLayout(section.content)
+        form = AlignedFormLayout(section.content)
         layout.addWidget(section)
         return section, form
 
@@ -757,6 +756,12 @@ class MobilityEditor(QWidget):
         self.spiral_clockwise_check.setObjectName("spiralClockwiseCheck")
         advanced.addRow("Start angle", self.spiral_start_angle_spin)
         advanced.addRow("Direction", self.spiral_clockwise_check)
+        self.spiral_interpolation_combo = _add_combo(
+            self.spiral_advanced_section.content,
+            "spiralInterpolationCombo",
+            (("Linear segments", "linear"), ("Analytic curve", "analytic")),
+        )
+        advanced.addRow("Interpolation", self.spiral_interpolation_combo)
         self.spiral_traversal_editor = self._add_traversal(advanced, "Spiral")
         self._expose_traversal("spiral", self.spiral_traversal_editor)
         return page
@@ -1372,6 +1377,7 @@ class MobilityEditor(QWidget):
             self.spiral_turns_spin.setValue(mobility.turns)
             self.spiral_start_angle_spin.setValue(mobility.start_angle_deg)
             self.spiral_clockwise_check.setChecked(mobility.clockwise)
+            _set_combo_data(self.spiral_interpolation_combo, mobility.interpolation)
             self.spiral_traversal_editor.set_traversal(mobility.traversal)
         elif isinstance(mobility, RandomSamplingMobilitySpec):
             has_initial = mobility.initial_position_m is not None
@@ -1569,6 +1575,7 @@ class MobilityEditor(QWidget):
                 turns=self.spiral_turns_spin.value(),
                 start_angle_deg=self.spiral_start_angle_spin.value(),
                 clockwise=self.spiral_clockwise_check.isChecked(),
+                interpolation=str(self.spiral_interpolation_combo.currentData()),
                 traversal=self.spiral_traversal_editor.traversal(),
             )
         if kind is MobilityKind.RANDOM_SAMPLING:

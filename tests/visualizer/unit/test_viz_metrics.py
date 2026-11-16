@@ -133,7 +133,7 @@ def test_metrics_window_uses_platform_default_ui_font(qapp):
     ):
         assert label.font().family() == expected_family
 
-    assert window.title_label.font().pointSize() == 13
+    assert window.title_label.font().pixelSize() == 22
     assert window.title_label.font().bold() is True
     window.close()
 
@@ -177,12 +177,15 @@ def test_metrics_window_uses_selected_path_mask(qapp):
     window.close()
 
 
-def test_metrics_window_angle_selector_and_export_rows_follow_selection(qapp):
+def test_metrics_window_all_angle_histograms_and_export_rows_follow_selection(qapp):
     window = MetricsWindow(update_hz=8)
     window.enqueue(_view_model(), _frame_stats(), context={})
-    window.angle_combo.setCurrentIndex(window.angle_combo.findData("aoa_az"))
     window._refresh()
 
+    assert not hasattr(window, "angle_combo")
+    assert set(window.angle_plots) == {"aod_az", "aod_el", "aoa_az", "aoa_el"}
+    for bars in window.angle_bars.values():
+        assert sum(bars.opts["height"]) == 1
     np.testing.assert_allclose(window._selected_path_values("", "aoa_az"), np.array([65.0]))
     rows = window._selected_path_rows()
     assert rows == [
@@ -298,20 +301,51 @@ def test_provider_statistics_are_computed_once_for_latest_queued_frame(qapp):
     window.close()
 
 
-def test_update_rate_accepts_fixed_hz_and_adaptive_maximum(qapp):
+def test_provider_reentrant_enqueue_never_applies_stats_to_newer_frame(qapp):
+    first = _view_model()
+    latest = _deep_view_model()
+    calls = []
+
+    def provide(view_model):
+        calls.append(view_model)
+        if view_model is first:
+            window.enqueue(latest, context={"step": 6})
+            return _frame_stats()
+        return _deep_frame_stats()
+
+    window = MetricsWindow(frame_stats_provider=provide)
+    window.enqueue(first, context={"step": 0})
+    window._periodic_refresh()
+
+    assert calls == [first]
+    assert window._pending_refresh
+    assert window._stats_revision != window._enqueue_revision
+    assert window._last_stats is None
+    assert "Frame 7" not in window.context_label.text()
+
+    window._periodic_refresh()
+
+    assert calls == [first, latest]
+    assert window._last_stats.total_paths == 3
+    assert window._stats_revision == window._enqueue_revision
+    assert "Frame 7" in window.context_label.text()
+    window.close()
+
+
+def test_update_rate_accepts_fixed_hz_and_automatic(qapp):
     window = MetricsWindow(update_hz=8)
 
     assert window._fixed_refresh_period_ms() == 125
     window.update_rate_spin.setValue(20)
     assert window._fixed_refresh_period_ms() == 50
     window.update_rate_spin.setValue(0)
-    assert window.update_rate_spin.text() == "Maximum (adaptive)"
+    assert window.update_rate_spin.text() == "Automatic"
     assert window._fixed_refresh_period_ms() is None
     assert "Intermediate Metrics frames may be skipped" in window.update_rate_spin.toolTip()
     window.close()
 
 
-def test_adaptive_maximum_cooldown_scales_with_refresh_cost(qapp):
+def test_automatic_cooldown_scales_with_refresh_cost(qapp):
     window = MetricsWindow(update_hz=0)
 
     window._last_refresh_duration_ms = 4.0
@@ -322,11 +356,11 @@ def test_adaptive_maximum_cooldown_scales_with_refresh_cost(qapp):
     window.close()
 
 
-def test_adaptive_maximum_rearms_once_after_measured_refresh_cost(qapp):
+def test_automatic_rearms_once_after_measured_refresh_cost(qapp):
     window = MetricsWindow(update_hz=0)
-    clock_values = iter((10.0, 10.0404, 10.0404))
-    window._clock = lambda: next(clock_values)
-    window._refresh = lambda: None
+    clock = [10.0]
+    window._clock = lambda: clock[0]
+    window._refresh = lambda: clock.__setitem__(0, 10.0404)
 
     window.enqueue(_view_model(), _frame_stats(), context={"step": 0})
     window._periodic_refresh()
@@ -363,9 +397,14 @@ def test_fixed_refresh_near_budget_still_reserves_ui_time(qapp):
 def test_manual_refresh_consumes_pending_timer_and_records_cost(qapp):
     window = MetricsWindow(update_hz=0)
     refresh_calls = []
-    clock_values = iter((10.0, 10.020))
-    window._clock = lambda: next(clock_values)
-    window._refresh = lambda: refresh_calls.append(True)
+    clock = [10.0]
+    window._clock = lambda: clock[0]
+
+    def refresh():
+        refresh_calls.append(True)
+        clock[0] = 10.020
+
+    window._refresh = refresh
     window.enqueue(_view_model(), _frame_stats(), context={"step": 0})
 
     window._manual_refresh()
@@ -757,14 +796,13 @@ def test_metrics_window_deep_dive_views_refresh_without_stale_data(qapp):
     window = MetricsWindow(update_hz=8)
     window.enqueue(_deep_view_model(), _deep_frame_stats(), context={})
     window.tabs.setCurrentWidget(window._channel_tab)
-    window.angular_map_combo.setCurrentIndex(window.angular_map_combo.findData("aoa"))
     window.pair_metric_combo.setCurrentIndex(window.pair_metric_combo.findData("mean_delay"))
 
     window._refresh()
 
-    assert "AoA" in window.angular_heatmap_plot.getPlotItem().titleLabel.text
-    assert "Polar" in window.angular_heatmap_plot.getPlotItem().titleLabel.text
-    assert len(window.angular_polar_scatter.points()) == 3
+    for mode, label in (("aod", "AoD"), ("aoa", "AoA")):
+        assert label in window.direction_plots[mode].getPlotItem().titleLabel.text
+        assert len(window.direction_scatters[mode].points()) == 3
     assert window.pair_heatmap.image is not None
     assert len(window.delay_power_scatter.points()) == 3
     assert "Mean Delay" in window.pair_heatmap_plot.getPlotItem().titleLabel.text
@@ -772,23 +810,76 @@ def test_metrics_window_deep_dive_views_refresh_without_stale_data(qapp):
     window.close()
 
 
-def test_metrics_window_reuses_reflection_order_brushes(qapp):
-    window = MetricsWindow(update_hz=8)
-    orders = np.array([0.0, 0.0, 1.0, 6.0, np.nan])
+def test_direction_maps_use_matching_selected_paths_and_distinct_angles(qapp):
+    window = MetricsWindow()
+    view_model = _deep_view_model()
+    view_model.path_mask = np.array([False, True, True])
+    window.enqueue(view_model, _deep_frame_stats())
+    window.tabs.setCurrentWidget(window._channel_tab)
+    window._refresh()
 
-    first = window._order_brushes(orders)
-    second = window._order_brushes(orders)
-
-    assert first[0] is first[1]
-    assert first[0] is second[0]
-    assert first[2] is second[2]
-    assert first[3] is first[4]
-    assert first[3] is second[3]
-    assert first[0].color().name() == "#2f7ed8"
-    assert first[2].color().name() == "#5cb85c"
-    assert first[3].color().name() == "#888888"
-
+    canonical = view_model.canonical_data
+    for mode in ("aod", "aoa"):
+        points = window.direction_scatters[mode].points()
+        assert [point.data() for point in points] == [1, 2]
+        azimuth = np.radians(getattr(canonical, f"path_{mode}_az")[1:])
+        radius = (90 - getattr(canonical, f"path_{mode}_el")[1:]) / 180
+        np.testing.assert_allclose(
+            [(point.pos().x(), point.pos().y()) for point in points],
+            np.column_stack((radius * np.cos(azimuth), radius * np.sin(azimuth))),
+            atol=1e-7,
+        )
     window.close()
+
+
+@pytest.mark.parametrize("missing", ["aod", "aoa"])
+def test_missing_directions_clear_only_the_affected_map(qapp, missing):
+    window = MetricsWindow()
+    window.tabs.setCurrentWidget(window._channel_tab)
+    window.enqueue(_deep_view_model(), _deep_frame_stats())
+    window._refresh()
+    assert all(len(scatter.points()) == 3 for scatter in window.direction_scatters.values())
+
+    view_model = _deep_view_model()
+    getattr(view_model.canonical_data, f"path_{missing}_az")[:] = np.nan
+    window.enqueue(view_model, _deep_frame_stats())
+    window._refresh()
+    other = "aoa" if missing == "aod" else "aod"
+    assert len(window.direction_scatters[missing].points()) == 0
+    assert len(window.direction_scatters[other].points()) == 3
+    label = "AoD" if missing == "aod" else "AoA"
+    assert f"No {label}" in window.data_status_label.text()
+    window.close()
+
+
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_metrics_window_reuses_reflection_order_brushes(qapp, mode):
+    from visualizer.src.app.plot_theme import dashboard_series_color
+    from visualizer.src.app.theme import get_theme_manager
+
+    manager = get_theme_manager()
+    previous = manager.mode
+    manager.install(qapp, mode=mode, persist=False)
+    window = None
+    try:
+        window = MetricsWindow(update_hz=8)
+        orders = np.array([0.0, 0.0, 1.0, 6.0, np.nan])
+
+        first = window._order_brushes(orders)
+        second = window._order_brushes(orders)
+
+        assert first[0] is first[1]
+        assert first[0] is second[0]
+        assert first[2] is second[2]
+        assert first[3] is first[4]
+        assert first[3] is second[3]
+        assert first[0].color().name() == dashboard_series_color(window._ORDER_COLORS[0])
+        assert first[2].color().name() == dashboard_series_color(window._ORDER_COLORS[1])
+        assert first[3].color().name() == dashboard_series_color(window._ORDER_FALLBACK_COLOR)
+    finally:
+        if window is not None:
+            window.close()
+        manager.set_mode(previous, persist=False)
 
 
 def test_metrics_window_single_pair_count_remains_visible(qapp):
@@ -937,28 +1028,29 @@ def test_overview_axis_freeze_does_not_disable_channel_or_material_fitting(qapp,
     window.close()
 
 
-def test_channel_layout_keeps_pair_view_and_summary_to_half_width(qapp):
+def test_channel_layout_pairs_direction_maps_and_other_graphs(qapp):
     window = MetricsWindow(update_hz=8)
-    channel_grid = window._channel_tab.layout().itemAt(0).layout()
+    channel_grid = window._channel_grid
 
+    for column, mode in enumerate(("aod", "aoa")):
+        assert channel_grid.getItemPosition(channel_grid.indexOf(window.direction_plots[mode])) == (
+            0,
+            column,
+            1,
+            1,
+        )
     assert channel_grid.getItemPosition(channel_grid.indexOf(window.delay_power_plot)) == (
-        0,
+        1,
         0,
         1,
         1,
     )
-    assert channel_grid.getItemPosition(channel_grid.indexOf(window.angular_heatmap_plot)) == (
-        0,
-        1,
-        1,
-        1,
-    )
-    assert channel_grid.getItemPosition(channel_grid.indexOf(window.pair_stack)) == (1, 0, 1, 1)
+    assert channel_grid.getItemPosition(channel_grid.indexOf(window.pair_stack)) == (1, 1, 1, 1)
     assert channel_grid.getItemPosition(channel_grid.indexOf(window.channel_summary_label)) == (
+        2,
+        0,
         1,
-        1,
-        1,
-        1,
+        2,
     )
 
     window.close()
@@ -983,7 +1075,7 @@ def test_metrics_window_redraws_only_the_visible_tab(qapp, monkeypatch):
     channel_updaters = (
         "_update_channel_summary",
         "_update_delay_power_scatter",
-        "_update_angular_heatmap",
+        "_update_direction_maps",
         "_update_pair_heatmap",
     )
     for name in (*overview_updaters, *channel_updaters, "_update_material_breakdown"):

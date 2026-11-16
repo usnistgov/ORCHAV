@@ -15,14 +15,17 @@ from typing import Any, Dict, Optional
 import numpy as np
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QRadioButton,
     QSlider,
     QSpinBox,
     QVBoxLayout,
@@ -33,10 +36,24 @@ from shared.logging import get_logger
 from shared.scenarios.app_paths import load_app_paths
 from shared.scenarios.paths import find_project_root
 
+from ..lighting.assets import environment_catalog
 from ..renderers.protocol import renderer_capabilities
 from ..scene.defaults import DEFAULT_SCENE_BACKGROUND_PRESET, SCENE_BACKGROUND_PRESETS
-from ..state import normalize_viewport_hud_mode
+from ..state import normalize_viewport_hud_mode, normalize_viewport_hud_style
 from .base import BasePanel
+from .collapsible_section import CollapsibleSection
+from .environment_download import EnvironmentDownload
+from .render_effects import (
+    create_contour_controls,
+    create_dusk_controls,
+    sync_effect_controls,
+)
+from .scene_guide_controls import (
+    create_dimensions_control,
+    create_grid_compass_controls,
+    restore_guide_controls,
+    sync_guide_controls,
+)
 
 logger = get_logger("orchav.render_panel")
 
@@ -82,14 +99,16 @@ class RenderPanel(BasePanel):
         self._renderer_control_widgets: list[QWidget] = []
         self._open3d_scene_shader_widgets: list[QWidget] = []
         self._clipping_widgets: list[QWidget] = []
-        self._capture_widgets: list[QWidget] = []
+        self._quality_widgets: list[QWidget] = []
         self._viewport_hud_widgets: list[QWidget] = []
         self._pygfx_renderer_widgets: list[QWidget] = []
         self._syncing_lighting_profile = False
+        self._background_skybox_shown: bool | None = None
         # IBL library (name -> identifier/path)
         self._ibl_library = {"Default": "default"}
         self._ibl_custom_index = 0
         self._ibl_dir: Optional[Path] = None
+        self._hdr_ibl_mode = renderer_capabilities(getattr(parent, "renderer", None)).hdr_ibl
         self._project_root = find_project_root(Path.cwd())
         self._pygfx_light_widgets: list[QWidget] = []
         self._environment_light_widgets: list[QWidget] = []
@@ -113,7 +132,7 @@ class RenderPanel(BasePanel):
         layout.addWidget(self.create_scene_style_panel())
         layout.addWidget(self.create_scene_view_panel())
         layout.addWidget(self.create_lighting_panel())
-        layout.addWidget(self.create_figure_capture_panel())
+        layout.addWidget(self.create_image_quality_panel())
         layout.addWidget(self.create_viewport_hud_panel())
         layout.addStretch()
         QTimer.singleShot(0, self._sync_from_visualizer)
@@ -129,28 +148,38 @@ class RenderPanel(BasePanel):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addWidget(self.create_scene_style_panel())
         layout.addWidget(self.create_scene_view_panel())
-        layout.addWidget(self.create_figure_capture_panel())
+        layout.addWidget(self.create_image_quality_panel())
         layout.addStretch()
         return group
 
     def create_scene_style_panel(self) -> QWidget:
         """Create the primary scene styling controls."""
-        group = self.create_group_box("Scene Style")
+        group = self.create_group_box("Surfaces")
         layout = QVBoxLayout(group)
         layout.setSpacing(6)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Background preset (both renderers)
-        bg_row = QHBoxLayout()
-        bg_row.addWidget(QLabel("Background:"))
-        self.widgets["bg_combo"] = QComboBox()
-        for name in self._BG_PRESETS:
-            self.widgets["bg_combo"].addItem(name)
-        self.widgets["bg_combo"].setToolTip("Scene background color preset")
-        self.widgets["bg_combo"].currentTextChanged.connect(self._on_background_changed)
-        bg_row.addWidget(self.widgets["bg_combo"])
-        bg_row.addStretch()
-        layout.addLayout(bg_row)
+        self.widgets["paper_mode_cb"] = QCheckBox("Paper Mode")
+        self.widgets["paper_mode_cb"].setChecked(False)
+        self.widgets["paper_mode_cb"].setToolTip(
+            "One-click preset for publication-ready views:\n"
+            "white background, flat lighting, shadows off,\n"
+            "and building outlines when supported."
+        )
+        self.widgets["paper_mode_cb"].toggled.connect(self._on_paper_mode_toggled)
+        layout.addWidget(self.widgets["paper_mode_cb"])
+        if getattr(self.parent, "appearance_preset_service", None) is not None:
+            self.widgets["paper_mode_cb"].hide()
+
+        self.widgets["texture_mipmaps_cb"] = QCheckBox("Texture mipmaps")
+        self.widgets["texture_mipmaps_cb"].setToolTip(
+            "Less shimmer, softer distant detail. Uses prefiltered texture levels, "
+            "with about one third more texture memory. Turn off for sharper "
+            "facades with more potential shimmer. Enable Texture maps to use this control. "
+            "Changes surface textures only, not geometry or volume data."
+        )
+        self.widgets["texture_mipmaps_cb"].toggled.connect(self._on_texture_mipmaps_toggled)
+        layout.addWidget(self.widgets["texture_mipmaps_cb"])
 
         # Opacity sliders use renderer alpha semantics: 0 is invisible, 100 is solid.
         opacity_group = self.create_subgroup_box("Opacity")
@@ -170,7 +199,9 @@ class RenderPanel(BasePanel):
         )
         opacity_row.addWidget(self.widgets["building_alpha_slider"])
 
-        opacity_row.addWidget(QLabel("Target:"))
+        opacity_layout.addLayout(opacity_row)
+        opacity_row = QHBoxLayout()
+        opacity_row.addWidget(QLabel("Targets:"))
         self.widgets["target_alpha_slider"] = QSlider(Qt.Horizontal)
         self.widgets["target_alpha_slider"].setRange(0, 100)
         self.widgets["target_alpha_slider"].setValue(100)
@@ -209,8 +240,9 @@ class RenderPanel(BasePanel):
         self.widgets["wireframe_cb"].setToolTip("Render scene meshes as wireframe (pygfx only)")
         self.widgets["wireframe_cb"].toggled.connect(self._on_wireframe_toggled)
         edges_row.addWidget(self.widgets["wireframe_cb"])
-        edges_row.addWidget(self._create_edge_width_controls(), 1)
+        edges_row.addStretch()
         edges_layout.addLayout(edges_row)
+        edges_layout.addWidget(self._create_edge_width_controls())
         self._pygfx_renderer_widgets.append(self.widgets["wireframe_cb"])
 
         layout.addWidget(edges_group)
@@ -218,37 +250,31 @@ class RenderPanel(BasePanel):
 
     def create_scene_view_panel(self) -> QWidget:
         """Create controls for view helpers and scene inspection tools."""
-        group = self.create_group_box("Scene View")
+        group = self.create_group_box("Guides and inspection")
         layout = QVBoxLayout(group)
         layout.setSpacing(6)
         layout.setContentsMargins(8, 8, 8, 8)
 
         view_row = QHBoxLayout()
-        self.widgets["show_axes_cb"] = QCheckBox("Show Axes")
+        self.widgets["show_axes_cb"] = QCheckBox("World axes (X/Y/Z)")
         self.widgets["show_axes_cb"].setChecked(False)
         self.widgets["show_axes_cb"].setToolTip("Show XYZ coordinate axes at origin")
         self.widgets["show_axes_cb"].toggled.connect(self._on_show_axes_toggled)
         view_row.addWidget(self.widgets["show_axes_cb"])
 
-        self.widgets["screen_space_labels_cb"] = QCheckBox("Screen-space Labels")
+        self.widgets["screen_space_labels_cb"] = QCheckBox("Screen-space labels")
         self.widgets["screen_space_labels_cb"].setChecked(True)
         self.widgets["screen_space_labels_cb"].setToolTip(
             "Render TX/RX labels at a fixed pixel size regardless of zoom (pygfx only)"
         )
         self.widgets["screen_space_labels_cb"].toggled.connect(self._on_screen_space_labels_toggled)
-        view_row.addWidget(self.widgets["screen_space_labels_cb"])
 
-        self.widgets["culling_cb"] = QCheckBox("Culling")
-        self.widgets["culling_cb"].setChecked(False)
-        self.widgets["culling_cb"].setToolTip(
-            "Enable view frustum culling (hides geometry outside camera view)"
-        )
-        self.widgets["culling_cb"].toggled.connect(self._on_culling_toggled)
-        view_row.addWidget(self.widgets["culling_cb"])
         view_row.addStretch()
         view_container = self._make_row_container(view_row)
         layout.addWidget(view_container)
         self._renderer_control_widgets.append(view_container)
+        layout.addWidget(create_grid_compass_controls(self))
+        layout.addWidget(create_dimensions_control(self))
 
         hover_row = QHBoxLayout()
         hover_row.addWidget(QLabel("Hover Info:"))
@@ -258,12 +284,14 @@ class RenderPanel(BasePanel):
         self.widgets["hover_info_combo"].setCurrentText("Essential")
         self.widgets["hover_info_combo"].setToolTip(
             "Off: no hover labels. Essential: rays, TX/RX, and targets only. "
-            "Inspect All: also show scene geometry."
+            "Inspect All: also show scene geometry. "
+            "Requires the HUD switch and Rendering > Viewport HUD > Hover to be enabled."
         )
         self.widgets["hover_info_combo"].currentIndexChanged.connect(
             self._on_hover_info_mode_changed
         )
         hover_row.addWidget(self.widgets["hover_info_combo"])
+        hover_row.addWidget(self.widgets["screen_space_labels_cb"])
         hover_row.addStretch()
         hover_container = self._make_row_container(hover_row)
         self.widgets["hover_info_container"] = hover_container
@@ -306,7 +334,6 @@ class RenderPanel(BasePanel):
             spin.setRange(-10000.0, 10000.0)
             spin.setDecimals(1)
             spin.setValue(0.0)
-            spin.setFixedWidth(70)
             spin.setSuffix(" m")
             spin.valueChanged.connect(lambda value, a=axis: self._on_clip_spin_changed(a, value))
             self.widgets[f"clip_{axis}_spin"] = spin
@@ -331,62 +358,53 @@ class RenderPanel(BasePanel):
         reset_row.addWidget(reset_btn)
         reset_row.addStretch()
         cutaway_layout.addLayout(reset_row)
+        cutaway_layout.addWidget(create_contour_controls(self))
 
         layout.addWidget(cutaway_group)
         self._clipping_widgets.append(cutaway_group)
 
         return group
 
-    def create_figure_capture_panel(self) -> QWidget:
-        """Create publication and capture-oriented render controls."""
-        group = self.create_group_box("Figure Capture")
+    def create_image_quality_panel(self) -> QWidget:
+        """Create live rendering quality controls, independent of file export."""
+        group = self.create_group_box("Image quality")
         layout = QVBoxLayout(group)
-        layout.setSpacing(6)
-        layout.setContentsMargins(8, 8, 8, 8)
-
-        self.widgets["paper_mode_cb"] = QCheckBox("Paper Mode")
-        self.widgets["paper_mode_cb"].setChecked(False)
-        self.widgets["paper_mode_cb"].setToolTip(
-            "One-click preset for publication-ready views:\n"
-            "white background, flat lighting, shadows off,\n"
-            "and building outlines when supported."
-        )
-        self.widgets["paper_mode_cb"].toggled.connect(self._on_paper_mode_toggled)
-        layout.addWidget(self.widgets["paper_mode_cb"])
-
-        capture_group = self.create_subgroup_box("Capture")
-        capture_layout = QVBoxLayout(capture_group)
-        capture_layout.setSpacing(4)
+        layout.setSpacing(8)
+        layout.setContentsMargins(0, 4, 0, 4)
 
         aa_row = QHBoxLayout()
-        aa_row.addWidget(QLabel("AA:"))
+        aa_row.addWidget(QLabel("Antialiasing:"))
         self.widgets["aa_combo"] = QComboBox()
-        for label in ("Off", "FXAA", "DDAA", "PPAA"):
+        for label in ("Off", "FXAA"):
             self.widgets["aa_combo"].addItem(label)
         self.widgets["aa_combo"].setToolTip(
-            "Interactive anti-aliasing mode.\n"
-            "FXAA — fast, slight softness.\n"
-            "DDAA — directional; cleaner lines.\n"
-            "PPAA — post-process; highest quality."
+            "FXAA smooths edges in the live view with a small amount of softness. "
+            "Off preserves unfiltered pixels."
         )
         self.widgets["aa_combo"].currentTextChanged.connect(self._on_aa_mode_changed)
         aa_row.addWidget(self.widgets["aa_combo"])
         aa_row.addStretch()
-        capture_layout.addLayout(aa_row)
-
-        extras_row = QHBoxLayout()
-        self.widgets["ground_grid_cb"] = QCheckBox("Ground Grid")
-        self.widgets["ground_grid_cb"].setToolTip(
-            "Overlay an axis-aligned ground grid at scene floor for\n"
-            "scale reference in figures and demos."
+        aa_container = self._make_row_container(aa_row)
+        self.widgets["aa_container"] = aa_container
+        layout.addWidget(aa_container)
+        self.widgets["depth_precision_cb"] = QCheckBox("Improve distant depth precision")
+        self.widgets["depth_precision_cb"].setToolTip(
+            "Reduce distant water/ground and nearby-surface flicker by adjusting "
+            "camera depth precision as you move. Adds a scene-bounds check; "
+            "does not repair intersecting geometry or change ray tracing. "
+            "Explicit camera clipping ranges are respected."
         )
-        self.widgets["ground_grid_cb"].toggled.connect(self._on_ground_grid_toggled)
-        extras_row.addWidget(self.widgets["ground_grid_cb"])
-        extras_row.addStretch()
-        capture_layout.addLayout(extras_row)
+        self.widgets["depth_precision_cb"].toggled.connect(self._on_depth_precision_toggled)
+        layout.addWidget(self.widgets["depth_precision_cb"])
 
-        layout.addWidget(capture_group)
-        self._capture_widgets.append(capture_group)
+        self.widgets["culling_cb"] = QCheckBox("Cull geometry outside the camera view")
+        self.widgets["culling_cb"].setChecked(False)
+        self.widgets["culling_cb"].setToolTip(
+            "Enable view frustum culling (hides geometry outside camera view)"
+        )
+        self.widgets["culling_cb"].toggled.connect(self._on_culling_toggled)
+        layout.addWidget(self.widgets["culling_cb"])
+        self._quality_widgets.append(group)
         return group
 
     def create_viewport_hud_panel(self) -> QWidget:
@@ -396,8 +414,24 @@ class RenderPanel(BasePanel):
         layout.setSpacing(6)
         layout.setContentsMargins(8, 8, 8, 8)
 
+        style_row = QHBoxLayout()
+        style_row.addWidget(QLabel("Style:"))
+        style_combo = QComboBox()
+        for label, style in (("Classic", "classic"), ("Card", "card"), ("Minimal", "minimal")):
+            style_combo.addItem(label, style)
+        style_combo.setToolTip(
+            "Classic uses translucent dark panels. Card uses the light surface and navy text "
+            "of actor callout cards. Minimal uses compact ink panels. "
+            "The style changes appearance without changing visible content."
+        )
+        style_combo.currentIndexChanged.connect(self._on_viewport_hud_style_changed)
+        self.widgets["viewport_hud_style_combo"] = style_combo
+        style_row.addWidget(style_combo)
+        style_row.addStretch()
+        layout.addLayout(style_row)
+
         mode_row = QHBoxLayout()
-        mode_row.addWidget(QLabel("Mode:"))
+        mode_row.addWidget(QLabel("Legend/filter detail:"))
         mode_combo = QComboBox()
         for label, mode in (
             ("Compact", "compact"),
@@ -405,7 +439,9 @@ class RenderPanel(BasePanel):
         ):
             mode_combo.addItem(label, mode)
         mode_combo.setToolTip(
-            "Compact shows bounded summaries; Detailed expands active filter information. "
+            "Compact summarizes active filters and shows up to 4 material entries. "
+            "Detailed shows filter limits and up to 12 material entries. "
+            "Other legends and status cues are the same in both modes. "
             "Use the persistent HUD control or Ctrl+H to show or hide all overlays."
         )
         mode_combo.currentIndexChanged.connect(self._on_viewport_hud_mode_changed)
@@ -415,7 +451,7 @@ class RenderPanel(BasePanel):
         layout.addLayout(mode_row)
 
         categories = (
-            ("status", "Status", "Renderer and active-feature status chips"),
+            ("status", "Status", "Known simulation time, cutaway and historical-path cues"),
             ("legends", "Legends", "Coverage, MPC, RF X-Ray, trajectory, and marker legends"),
             (
                 "filters",
@@ -450,10 +486,11 @@ class RenderPanel(BasePanel):
 
     def create_lighting_panel(self) -> QWidget:
         """Create the lighting sub-panel (shader, skybox, IBL, light rig)."""
-        group = self.create_group_box("Lighting")
+        group = self.create_group_box("Lighting and environment")
         layout = QVBoxLayout(group)
         layout.setSpacing(4)
         layout.setContentsMargins(8, 8, 8, 8)
+        layout.addWidget(create_dusk_controls(self))
 
         shader_group = self.create_subgroup_box("Shader")
         shader_layout = QHBoxLayout(shader_group)
@@ -477,35 +514,72 @@ class RenderPanel(BasePanel):
         self.widgets["shader_group"] = shader_group
         self._open3d_scene_shader_widgets.append(shader_group)
 
-        environment_group = self.create_subgroup_box("Environment")
-        environment_layout = QVBoxLayout(environment_group)
+        background_row = QHBoxLayout()
+        background_row.addWidget(QLabel("Background:"))
+        self.widgets["background_solid_radio"] = QRadioButton("Solid color")
+        # Keep the established key used by appearance snapshots and Paper mode.
+        self.widgets["skybox_cb"] = QRadioButton("Skybox")
+        modes = QButtonGroup(group)
+        modes.addButton(self.widgets["background_solid_radio"])
+        modes.addButton(self.widgets["skybox_cb"])
+        self._background_modes = modes
+        self.widgets["background_solid_radio"].setChecked(True)
+        self.widgets["background_solid_radio"].setToolTip(
+            "Use a solid backdrop. Environment lighting and reflections remain active."
+        )
+        self.widgets["skybox_cb"].setToolTip(
+            "Show the selected environment image behind the scene."
+        )
+        self.widgets["skybox_cb"].toggled.connect(self._on_skybox_toggled)
+        background_row.addWidget(self.widgets["background_solid_radio"])
+        background_row.addWidget(self.widgets["skybox_cb"])
+        background_row.addStretch()
+        layout.addLayout(background_row)
+
+        environment_group = CollapsibleSection(
+            "Environment lighting (IBL)", start_open=False, flat_header=True
+        )
+        environment_group.setToolTip(
+            "The environment provides lighting and reflections with either background. "
+            "Selecting Skybox also displays its image."
+        )
+        environment_layout = environment_group.content_layout()
         environment_layout.setSpacing(4)
         environment_layout.setContentsMargins(6, 6, 6, 6)
 
-        skybox_row = QHBoxLayout()
-        self.widgets["skybox_cb"] = QCheckBox("Show Skybox")
-        self.widgets["skybox_cb"].setChecked(False)
-        self.widgets["skybox_cb"].setToolTip("Show environment skybox background")
-        self.widgets["skybox_cb"].toggled.connect(self._on_skybox_toggled)
-        skybox_row.addWidget(self.widgets["skybox_cb"])
-        skybox_row.addStretch()
-        environment_layout.addLayout(skybox_row)
+        # Background preset (both renderers)
+        bg_row = QHBoxLayout()
+        bg_row.addWidget(QLabel("Color:"))
+        self.widgets["bg_combo"] = QComboBox()
+        for name in self._BG_PRESETS:
+            self.widgets["bg_combo"].addItem(name)
+        self.widgets["bg_combo"].setToolTip("Scene background color preset")
+        self.widgets["bg_combo"].currentTextChanged.connect(self._on_background_changed)
+        bg_row.addWidget(self.widgets["bg_combo"])
+        bg_row.addStretch()
+        self.widgets["background_color_row"] = self._make_row_container(bg_row)
+        layout.addWidget(self.widgets["background_color_row"])
 
         ibl_row = QHBoxLayout()
-        ibl_row.addWidget(QLabel("IBL:"))
+        ibl_row.addWidget(QLabel("Map:"))
         self.widgets["ibl_combo"] = QComboBox()
         with QSignalBlocker(self.widgets["ibl_combo"]):
             for name in self._ibl_library:
                 self.widgets["ibl_combo"].addItem(name)
         self.widgets["ibl_combo"].setToolTip("Select an HDRI/IBL environment for lighting")
         self.widgets["ibl_combo"].currentTextChanged.connect(self._on_ibl_changed)
-        ibl_row.addWidget(self.widgets["ibl_combo"])
+        ibl_row.addWidget(self.widgets["ibl_combo"], 1)
         self.widgets["ibl_load_btn"] = QPushButton("Load HDRI...")
         self.widgets["ibl_load_btn"].setToolTip("Load a custom HDR/EXR environment")
         self.widgets["ibl_load_btn"].clicked.connect(self._on_load_ibl)
+        # Load stays beside the selector without forcing the sidebar wider.
+        self.widgets["ibl_load_btn"].setText("Load…")
         ibl_row.addWidget(self.widgets["ibl_load_btn"])
-        ibl_row.addStretch()
         environment_layout.addLayout(ibl_row)
+
+        self.widgets["environment_download"] = EnvironmentDownload(environment_group)
+        self.widgets["environment_download"].ready.connect(self._apply_optional_environment)
+        environment_layout.addWidget(self.widgets["environment_download"])
 
         ibl_ctrl_row = QHBoxLayout()
         ibl_ctrl_row.addWidget(QLabel("Intensity:"))
@@ -528,24 +602,25 @@ class RenderPanel(BasePanel):
         self.widgets["environment_group"] = environment_group
         self._environment_light_widgets.append(environment_group)
 
-        direct_group = self.create_subgroup_box("Direct Lights")
-        direct_layout = QVBoxLayout(direct_group)
+        direct_group = CollapsibleSection("Direct lights", start_open=False, flat_header=True)
+        direct_layout = direct_group.content_layout()
         direct_layout.setSpacing(4)
         direct_layout.setContentsMargins(6, 6, 6, 6)
 
         profile_row = QHBoxLayout()
-        self.widgets["lighting_profile_label"] = QLabel("Profile:")
+        self.widgets["lighting_profile_label"] = QLabel("Lighting preset:")
         profile_row.addWidget(self.widgets["lighting_profile_label"])
         self.widgets["lighting_profile_combo"] = QComboBox()
         self.widgets["lighting_profile_combo"].setToolTip(
-            "pygfx lighting profile. Inspection keeps the scene bright; "
-            "Outdoor Realistic uses lower fill for directional sun contrast."
+            "Set ambient, key, fill and camera-follow lights, their directions, "
+            "environment intensity and shadow settings together. "
+            "The environment image and background choice stay unchanged."
         )
         self.widgets["lighting_profile_combo"].currentIndexChanged.connect(
             self._on_lighting_profile_changed
         )
         profile_row.addWidget(self.widgets["lighting_profile_combo"], 1)
-        direct_layout.addLayout(profile_row)
+        layout.addLayout(profile_row)
 
         head_row = QHBoxLayout()
         self.widgets["headlight_cb"] = QCheckBox("Headlight")
@@ -553,7 +628,7 @@ class RenderPanel(BasePanel):
         self.widgets["headlight_cb"].setToolTip("Camera-follow light for stable highlights")
         self.widgets["headlight_cb"].toggled.connect(self._on_headlight_toggled)
         head_row.addWidget(self.widgets["headlight_cb"])
-        head_row.addWidget(QLabel("I:"))
+        head_row.addWidget(QLabel("Intensity:"))
         self.widgets["headlight_intensity_spin"] = QDoubleSpinBox()
         self.widgets["headlight_intensity_spin"].setDecimals(2)
         self.widgets["headlight_intensity_spin"].setRange(0.0, 20.0)
@@ -566,23 +641,25 @@ class RenderPanel(BasePanel):
         head_row.addStretch()
         direct_layout.addLayout(head_row)
 
-        key_row = QHBoxLayout()
-        key_row.addWidget(QLabel("Key Az/El/I:"))
         self.widgets["key_light_az_spin"] = QDoubleSpinBox()
+        self.widgets["key_light_az_spin"].setAccessibleName("Key light azimuth")
+        self.widgets["key_light_az_spin"].setToolTip("Key light azimuth" + " in degrees")
         self.widgets["key_light_az_spin"].setDecimals(1)
         self.widgets["key_light_az_spin"].setRange(-180.0, 180.0)
         self.widgets["key_light_az_spin"].setSingleStep(5.0)
         self.widgets["key_light_az_spin"].setValue(-123.0)
         self.widgets["key_light_az_spin"].valueChanged.connect(self._on_key_light_angles_changed)
-        key_row.addWidget(self.widgets["key_light_az_spin"])
         self.widgets["key_light_el_spin"] = QDoubleSpinBox()
+        self.widgets["key_light_el_spin"].setAccessibleName("Key light elevation")
+        self.widgets["key_light_el_spin"].setToolTip("Key light elevation" + " in degrees")
         self.widgets["key_light_el_spin"].setDecimals(1)
         self.widgets["key_light_el_spin"].setRange(-89.0, 89.0)
         self.widgets["key_light_el_spin"].setSingleStep(2.0)
         self.widgets["key_light_el_spin"].setValue(-48.0)
         self.widgets["key_light_el_spin"].valueChanged.connect(self._on_key_light_angles_changed)
-        key_row.addWidget(self.widgets["key_light_el_spin"])
         self.widgets["key_light_intensity_spin"] = QDoubleSpinBox()
+        self.widgets["key_light_intensity_spin"].setAccessibleName("Key light intensity")
+        self.widgets["key_light_intensity_spin"].setToolTip("Key light intensity")
         self.widgets["key_light_intensity_spin"].setDecimals(2)
         self.widgets["key_light_intensity_spin"].setRange(0.0, 50.0)
         self.widgets["key_light_intensity_spin"].setSingleStep(0.1)
@@ -590,27 +667,26 @@ class RenderPanel(BasePanel):
         self.widgets["key_light_intensity_spin"].valueChanged.connect(
             self._on_key_light_intensity_changed
         )
-        key_row.addWidget(self.widgets["key_light_intensity_spin"])
-        key_row.addStretch()
-        direct_layout.addLayout(key_row)
 
-        fill_row = QHBoxLayout()
-        fill_row.addWidget(QLabel("Fill Az/El/I:"))
         self.widgets["fill_light_az_spin"] = QDoubleSpinBox()
+        self.widgets["fill_light_az_spin"].setAccessibleName("Fill light azimuth")
+        self.widgets["fill_light_az_spin"].setToolTip("Fill light azimuth" + " in degrees")
         self.widgets["fill_light_az_spin"].setDecimals(1)
         self.widgets["fill_light_az_spin"].setRange(-180.0, 180.0)
         self.widgets["fill_light_az_spin"].setSingleStep(5.0)
         self.widgets["fill_light_az_spin"].setValue(53.0)
         self.widgets["fill_light_az_spin"].valueChanged.connect(self._on_fill_light_angles_changed)
-        fill_row.addWidget(self.widgets["fill_light_az_spin"])
         self.widgets["fill_light_el_spin"] = QDoubleSpinBox()
+        self.widgets["fill_light_el_spin"].setAccessibleName("Fill light elevation")
+        self.widgets["fill_light_el_spin"].setToolTip("Fill light elevation" + " in degrees")
         self.widgets["fill_light_el_spin"].setDecimals(1)
         self.widgets["fill_light_el_spin"].setRange(-89.0, 89.0)
         self.widgets["fill_light_el_spin"].setSingleStep(2.0)
         self.widgets["fill_light_el_spin"].setValue(-45.0)
         self.widgets["fill_light_el_spin"].valueChanged.connect(self._on_fill_light_angles_changed)
-        fill_row.addWidget(self.widgets["fill_light_el_spin"])
         self.widgets["fill_light_intensity_spin"] = QDoubleSpinBox()
+        self.widgets["fill_light_intensity_spin"].setAccessibleName("Fill light intensity")
+        self.widgets["fill_light_intensity_spin"].setToolTip("Fill light intensity")
         self.widgets["fill_light_intensity_spin"].setDecimals(2)
         self.widgets["fill_light_intensity_spin"].setRange(0.0, 50.0)
         self.widgets["fill_light_intensity_spin"].setSingleStep(0.1)
@@ -618,18 +694,24 @@ class RenderPanel(BasePanel):
         self.widgets["fill_light_intensity_spin"].valueChanged.connect(
             self._on_fill_light_intensity_changed
         )
-        fill_row.addWidget(self.widgets["fill_light_intensity_spin"])
-        fill_row.addStretch()
-        direct_layout.addLayout(fill_row)
+        light_grid = QGridLayout()
+        light_grid.setHorizontalSpacing(8)
+        for column, title in enumerate(("Light", "Azimuth °", "Elevation °", "Intensity")):
+            light_grid.addWidget(QLabel(title), 0, column)
+        for row, prefix in enumerate(("key", "fill"), start=1):
+            light_grid.addWidget(QLabel(prefix.title()), row, 0)
+            for column, field in enumerate(("az", "el", "intensity"), start=1):
+                light_grid.addWidget(self.widgets[f"{prefix}_light_{field}_spin"], row, column)
+        direct_layout.addLayout(light_grid)
         layout.addWidget(direct_group)
         self.widgets["direct_lights_group"] = direct_group
         self._pygfx_light_widgets.append(direct_group)
 
-        advanced_group = self.create_subgroup_box("Advanced")
-        advanced_layout = QHBoxLayout(advanced_group)
+        advanced_group = self.create_subgroup_box("Shadows")
+        advanced_layout = QVBoxLayout(advanced_group)
         advanced_layout.setSpacing(4)
         advanced_layout.setContentsMargins(6, 6, 6, 6)
-        self.widgets["shadows_cb"] = QCheckBox("Shadows")
+        self.widgets["shadows_cb"] = QCheckBox("Cast shadows")
         self.widgets["shadows_cb"].setChecked(True)
         self.widgets["shadows_cb"].setToolTip("Enable/disable shadow mapping")
         self.widgets["shadows_cb"].toggled.connect(self._on_shadows_toggled)
@@ -643,10 +725,76 @@ class RenderPanel(BasePanel):
         )
         self.widgets["o3d_settings_cb"].toggled.connect(self._on_o3d_settings_toggled)
         advanced_layout.addWidget(self.widgets["o3d_settings_cb"])
-        advanced_layout.addStretch()
         layout.addWidget(advanced_group)
         self.widgets["advanced_lighting_group"] = advanced_group
         self._advanced_light_widgets.append(advanced_group)
+
+        shadow_group = CollapsibleSection("Shadow detail", start_open=False, flat_header=True)
+        shadow_layout = shadow_group.content_layout()
+        quality_row = QHBoxLayout()
+        quality_row.addWidget(QLabel("Coverage:"))
+        quality = QComboBox()
+        quality.addItem("Standard (whole scene)", "standard")
+        quality.addItem("Fitted scene", "scene")
+        quality.addItem("Inspection focus", "focus")
+        quality.setToolTip(
+            "Fitted scene uses the native 1024² map more efficiently. "
+            "Inspection focus limits shadow coverage to a pinned region; "
+            "use Refocus here after moving to a different area."
+        )
+        quality.currentIndexChanged.connect(self._on_shadow_quality_changed)
+        quality_row.addWidget(quality, 1)
+        self.widgets["shadow_quality_combo"] = quality
+        shadow_layout.addLayout(quality_row)
+
+        focus_row = QHBoxLayout()
+        focus_label = QLabel("Focus radius:")
+        focus_row.addWidget(focus_label)
+        self.widgets["shadow_focus_label"] = focus_label
+        radius = QDoubleSpinBox()
+        radius.setRange(0.1, 100000.0)
+        radius.setDecimals(1)
+        radius.setValue(25.0)
+        radius.setSuffix(" m")
+        radius.setToolTip("Half-size of a pinned world-space cube around the look-at point")
+        radius.valueChanged.connect(self._on_shadow_focus_radius_changed)
+        self.widgets["shadow_focus_radius_spin"] = radius
+        focus_row.addWidget(radius)
+        refocus = QPushButton("Refocus here")
+        refocus.setToolTip("Move the shadow focus to the current camera look-at point")
+        refocus.clicked.connect(self._on_shadow_refocus)
+        self.widgets["shadow_refocus_btn"] = refocus
+        focus_row.addWidget(refocus)
+        shadow_layout.addLayout(focus_row)
+
+        bias_row = QHBoxLayout()
+        bias_row.addWidget(QLabel("Depth offset:"))
+        bias = QDoubleSpinBox()
+        bias.setRange(0.0, 8.0)
+        bias.setDecimals(2)
+        bias.setSingleStep(0.25)
+        bias.setValue(1.5)
+        bias.setSuffix(" texels")
+        bias.setToolTip(
+            "Fitted modes only. Increase to reduce self-shadow stripes; "
+            "decrease if shadows appear detached from objects."
+        )
+        bias.valueChanged.connect(self._on_shadow_bias_changed)
+        self.widgets["shadow_bias_spin"] = bias
+        bias_row.addWidget(bias)
+        shadow_layout.addLayout(bias_row)
+        summary = QLabel("Native shadow map: 1024 × 1024")
+        summary.setWordWrap(True)
+        self.widgets["shadow_detail_summary"] = summary
+        shadow_layout.addWidget(summary)
+        self.widgets["shadow_detail_group"] = shadow_group
+        # Metadata only: the canvas still exclusively owns frame rendering.
+        summary_timer = QTimer(shadow_group)
+        summary_timer.setInterval(1000)
+        summary_timer.timeout.connect(self._refresh_shadow_summary)
+        summary_timer.start()
+        self._shadow_summary_timer = summary_timer
+        advanced_layout.addWidget(shadow_group)
 
         return group
 
@@ -685,6 +833,14 @@ class RenderPanel(BasePanel):
 
     # Sync helpers
 
+    def sync_presentation_effects(self) -> None:
+        """Refresh optional effect availability after a scenario is configured."""
+        sync_effect_controls(self)
+
+    def sync_scene_guides(self) -> None:
+        """Refresh guide availability after geographic metadata changes."""
+        sync_guide_controls(self)
+
     def _sync_from_visualizer(self) -> None:
         """Sync widget values and visibility from visualizer and renderer state."""
         viz = self.parent
@@ -694,6 +850,9 @@ class RenderPanel(BasePanel):
         renderer = getattr(viz, "renderer", None)
         app_state = getattr(viz, "app_state", None)
         capabilities = renderer_capabilities(renderer)
+
+        sync_effect_controls(self)
+        sync_guide_controls(self)
 
         # Capability flags decide visibility; individual callbacks still guard
         # protocol hooks because tests and startup can provide partial renderers.
@@ -713,7 +872,20 @@ class RenderPanel(BasePanel):
         supports_ground_grid = renderer is not None and capabilities.ground_grid
         supports_viewport_hud = renderer is not None and capabilities.viewport_hud
 
+        wireframe_cb = self.widgets.get("wireframe_cb")
+        if wireframe_cb is not None and supports_wireframe and hasattr(renderer, "get_wireframe"):
+            with QSignalBlocker(wireframe_cb):
+                wireframe_cb.setChecked(renderer.get_wireframe())
+
         # Sync outline checkboxes
+        for key, attr in (
+            ("building_alpha_slider", "current_building_alpha"),
+            ("target_alpha_slider", "current_target_alpha"),
+        ):
+            slider = self.widgets.get(key)
+            if slider is not None:
+                with QSignalBlocker(slider):
+                    slider.setValue(round(float(getattr(viz, attr, 1.0)) * 100))
         outline_cb = self.widgets.get("outline_cb")
         if outline_cb is not None and hasattr(viz, "outlines_enabled"):
             with QSignalBlocker(outline_cb):
@@ -747,6 +919,26 @@ class RenderPanel(BasePanel):
             if intensity is not None:
                 self._sync_ibl_widgets(int(intensity))
 
+        depth_cb = self.widgets.get("depth_precision_cb")
+        if depth_cb is not None:
+            supported = renderer is not None and capabilities.depth_precision
+            depth_cb.setVisible(supported)
+            depth_cb.setEnabled(supported)
+            if supported:
+                with QSignalBlocker(depth_cb):
+                    depth_cb.setChecked(renderer.get_depth_precision_enabled())
+
+        mipmaps_cb = self.widgets.get("texture_mipmaps_cb")
+        if mipmaps_cb is not None:
+            supported = renderer is not None and capabilities.texture_mipmaps
+            mipmaps_cb.setVisible(supported)
+            from ..materials.texture_policy import textures_globally_enabled
+
+            mipmaps_cb.setEnabled(supported and textures_globally_enabled())
+            if supported:
+                with QSignalBlocker(mipmaps_cb):
+                    mipmaps_cb.setChecked(renderer.get_texture_mipmaps_enabled())
+
         if app_state is not None:
             screen_space_cb = self.widgets.get("screen_space_labels_cb")
             if screen_space_cb is not None:
@@ -763,8 +955,8 @@ class RenderPanel(BasePanel):
                 aa_label = {
                     "off": "Off",
                     "fxaa": "FXAA",
-                    "ddaa": "DDAA",
-                    "ppaa": "PPAA",
+                    "ddaa": "FXAA",
+                    "ppaa": "FXAA",
                 }.get(str(aa_mode).lower(), "Off")
                 with QSignalBlocker(aa_combo):
                     aa_combo.setCurrentText(aa_label)
@@ -821,6 +1013,7 @@ class RenderPanel(BasePanel):
                         flip.setChecked(flipped)
 
         if renderer is not None and supports_ibl:
+            self._refresh_ibl_library(renderer)
             ibl_name = renderer.get_ibl_name() if hasattr(renderer, "get_ibl_name") else None
             if ibl_name:
                 self._sync_ibl_selection(ibl_name)
@@ -852,11 +1045,17 @@ class RenderPanel(BasePanel):
         if renderer is not None and capabilities.clipping_planes:
             self._sync_cutaway_ranges(renderer)
 
-        # Apply the default skybox state when the backend exposes that control.
+        # Backdrop radios and disclosure follow the actual renderer, including
+        # appearance presets and Demo restoration that bypass widget signals.
         if supports_skybox:
             skybox_cb = self.widgets.get("skybox_cb")
-            if skybox_cb is not None and skybox_cb.isChecked():
+            if skybox_cb is not None and callable(getattr(renderer, "get_skybox_visible", None)):
+                self._sync_background_controls(renderer.get_skybox_visible())
+            elif skybox_cb is not None and skybox_cb.isChecked():
                 viz.renderer.show_skybox(True)
+                self._sync_background_controls()
+        else:
+            self._sync_background_controls(False)
 
     def restore_session_state(self, state: Dict[str, Any]) -> None:
         """Apply saved renderer controls once and mirror widgets without signals."""
@@ -940,6 +1139,7 @@ class RenderPanel(BasePanel):
                     widget.setChecked(enabled)
             if renderer is not None and renderer_capabilities(renderer).axes:
                 renderer.show_axes(enabled)
+        restore_guide_controls(self, state)
 
     def _update_renderer_visibility(
         self,
@@ -969,14 +1169,14 @@ class RenderPanel(BasePanel):
         for w in self._clipping_widgets:
             w.setVisible(supports_clipping_planes)
 
-        for w in self._capture_widgets:
-            w.setVisible(renderer_available and (supports_antialiasing or supports_ground_grid))
+        for w in self._quality_widgets:
+            w.setVisible(renderer_available)
         for w in self._viewport_hud_widgets:
             w.setVisible(renderer_available and supports_viewport_hud)
 
-        aa_combo = self.widgets.get("aa_combo")
-        if aa_combo is not None:
-            aa_combo.setVisible(supports_antialiasing)
+        aa_container = self.widgets.get("aa_container")
+        if aa_container is not None:
+            aa_container.setVisible(supports_antialiasing)
 
         ground_grid_cb = self.widgets.get("ground_grid_cb")
         if ground_grid_cb is not None:
@@ -1013,9 +1213,10 @@ class RenderPanel(BasePanel):
         for w in self._environment_light_widgets:
             w.setVisible(environment_visible)
 
-        skybox_cb = self.widgets.get("skybox_cb")
-        if skybox_cb is not None:
-            skybox_cb.setVisible(supports_skybox)
+        for key in ("skybox_cb", "background_solid_radio"):
+            button = self.widgets.get(key)
+            if button is not None:
+                button.setVisible(supports_skybox)
 
         for key in ("ibl_combo", "ibl_load_btn", "ibl_intensity_slider", "ibl_intensity_spin"):
             widget = self.widgets.get(key)
@@ -1072,6 +1273,9 @@ class RenderPanel(BasePanel):
         has_light_rig = renderer is not None and capabilities.direct_lighting
         for widget in self._pygfx_light_widgets:
             widget.setVisible(has_light_rig)
+        shadow_group = self.widgets.get("shadow_detail_group")
+        if shadow_group is not None:
+            shadow_group.setVisible(renderer is not None and capabilities.shadow_quality)
         has_profiles = has_light_rig and capabilities.lighting_profiles
         for key in ("lighting_profile_label", "lighting_profile_combo"):
             widget = self.widgets.get(key)
@@ -1115,6 +1319,81 @@ class RenderPanel(BasePanel):
         _set_spin("fill_light_el_spin", float(state.get("fill_elevation_deg", -45.0)))
         _set_spin("fill_light_intensity_spin", float(state.get("fill_intensity", 1.0)))
         self._sync_lighting_profile_widgets(renderer)
+        self._sync_shadow_quality_widgets(renderer)
+
+    def _sync_shadow_quality_widgets(self, renderer: object) -> None:
+        """Mirror actual fitted coverage without triggering another fit."""
+        if not renderer_capabilities(renderer).shadow_quality:
+            return
+        state = renderer.get_shadow_quality_state()
+        combo = self.widgets.get("shadow_quality_combo")
+        if combo is None:
+            return
+        with QSignalBlocker(combo):
+            combo.setCurrentIndex(combo.findData(state["quality"]))
+        for key, field in (
+            ("shadow_focus_radius_spin", "focus_radius"),
+            ("shadow_bias_spin", "bias_texels"),
+        ):
+            widget = self.widgets.get(key)
+            if widget is not None:
+                with QSignalBlocker(widget):
+                    widget.setValue(float(state[field]))
+        focused = state["quality"] == "focus"
+        for key in ("shadow_focus_label", "shadow_focus_radius_spin", "shadow_refocus_btn"):
+            self.widgets[key].setEnabled(focused)
+        self.widgets["shadow_bias_spin"].setEnabled(state["quality"] != "standard")
+        self._update_shadow_summary(state)
+
+    def _refresh_shadow_summary(self) -> None:
+        """Refresh visible coverage metadata after scene loads or animation."""
+        group = self.widgets.get("shadow_detail_group")
+        renderer = getattr(self.parent, "renderer", None)
+        if group is None or not group.isVisible():
+            return
+        if renderer is not None and renderer_capabilities(renderer).shadow_quality:
+            self._update_shadow_summary(renderer.get_shadow_quality_state())
+
+    def _update_shadow_summary(self, state: dict) -> None:
+        label = self.widgets["shadow_detail_summary"]
+        if state["width"] <= 0 or state["height"] <= 0:
+            label.setText("Native shadow map: 1024 × 1024 · waiting for renderer")
+            return
+        focused = state["quality"] == "focus"
+        detail = (
+            f"1024 × 1024 · {state['world_units_per_texel']:.3g} m/texel "
+            f"· {state['width']:.3g} × {state['height']:.3g} m coverage"
+        )
+        if focused:
+            detail += "\nPinned region only; shadows outside it are not guaranteed."
+        elif state["quality"] != "standard" and not state["fit_available"]:
+            detail += "\nWaiting for scene meshes."
+        label.setText(detail)
+
+    def _on_shadow_quality_changed(self, _index: int) -> None:
+        renderer = getattr(self.parent, "renderer", None)
+        if renderer is None or not renderer_capabilities(renderer).shadow_quality:
+            return
+        renderer.set_shadow_quality(self.widgets["shadow_quality_combo"].currentData())
+        self._sync_shadow_quality_widgets(renderer)
+
+    def _on_shadow_focus_radius_changed(self, value: float) -> None:
+        renderer = getattr(self.parent, "renderer", None)
+        if renderer is not None and renderer_capabilities(renderer).shadow_quality:
+            renderer.set_shadow_focus_radius(value)
+            self._sync_shadow_quality_widgets(renderer)
+
+    def _on_shadow_refocus(self) -> None:
+        renderer = getattr(self.parent, "renderer", None)
+        if renderer is not None and renderer_capabilities(renderer).shadow_quality:
+            renderer.refocus_shadows()
+            self._sync_shadow_quality_widgets(renderer)
+
+    def _on_shadow_bias_changed(self, value: float) -> None:
+        renderer = getattr(self.parent, "renderer", None)
+        if renderer is not None and renderer_capabilities(renderer).shadow_quality:
+            renderer.set_shadow_bias_texels(value)
+            self._sync_shadow_quality_widgets(renderer)
 
     def _sync_lighting_profile_widgets(self, renderer: object) -> None:
         """Mirror pygfx's active lighting profile without applying it."""
@@ -1153,6 +1432,13 @@ class RenderPanel(BasePanel):
 
     def _on_paper_mode_toggled(self, checked: bool) -> None:
         """Route paper mode toggle to activate or deactivate."""
+        appearance = getattr(self.parent, "appearance_preset_service", None)
+        if appearance is not None:
+            if checked:
+                appearance.apply("Paper")
+            elif appearance.previous is not None:
+                appearance.restore(appearance.previous)
+            return
         if checked:
             self._activate_paper_mode()
         else:
@@ -1223,7 +1509,9 @@ class RenderPanel(BasePanel):
                     combo = self.widgets.get("shader_combo")
                     if combo is not None:
                         combo.setCurrentText(val)
-                elif key in ("skybox_cb", "outline_cb", "shadows_cb"):
+                elif key == "skybox_cb":
+                    self._sync_background_controls(bool(val))
+                elif key in ("outline_cb", "shadows_cb"):
                     cb = self.widgets.get(key)
                     if cb is not None:
                         cb.setChecked(val)
@@ -1282,13 +1570,35 @@ class RenderPanel(BasePanel):
         if color is None:
             return
         self.parent.scene_appearance_service.set_background_preset(preset_name, color)
+        self._sync_from_visualizer()
 
     def _on_skybox_toggled(self, checked: bool) -> None:
-        """Handle skybox visibility toggle."""
+        """Select one backdrop while retaining independent environment lighting."""
         self._break_paper_mode()
+        self._sync_background_controls(checked)
         renderer = getattr(self.parent, "renderer", None)
         if renderer is not None and renderer_capabilities(renderer).skybox:
             renderer.show_skybox(checked)
+            self._sync_from_visualizer()
+
+    def _sync_background_controls(self, skybox_visible: bool | None = None) -> None:
+        """Mirror exclusive radios without callbacks, opening IBL on sky selection."""
+        skybox = self.widgets.get("skybox_cb")
+        solid = self.widgets.get("background_solid_radio")
+        if skybox is None or solid is None:
+            return
+        if skybox_visible is not None:
+            with QSignalBlocker(skybox), QSignalBlocker(solid):
+                (skybox if skybox_visible else solid).setChecked(True)
+        visible = skybox.isChecked()
+        self.widgets["background_color_row"].setVisible(not visible)
+        # Do not undo a user's manual expansion while editing IBL against a
+        # solid backdrop, or repeatedly unfold controls during Demo playback.
+        if visible != self._background_skybox_shown:
+            environment = self.widgets.get("environment_group")
+            if environment is not None:
+                (environment.expand if visible else environment.collapse)()
+            self._background_skybox_shown = visible
 
     def _on_shader_changed(self, shader_name: str) -> None:
         """Handle scene shader change."""
@@ -1421,11 +1731,7 @@ class RenderPanel(BasePanel):
             self._sync_lighting_profile_widgets(renderer)
 
     def _on_ibl_changed(self, name: str) -> None:
-        """Handle IBL environment selection.
-
-        Only accepts "default" or KTX IBL pairs (_ibl.ktx + _skybox.ktx).
-        HDR/EXR/PNG/JPG files are rejected - use pre-converted KTX files instead.
-        """
+        """Select an installed map or offer an explicit optional-sky download."""
         if not name:
             return
         path = self._ibl_library.get(name)
@@ -1435,12 +1741,25 @@ class RenderPanel(BasePanel):
         if renderer is None or not renderer_capabilities(renderer).ibl:
             return
 
+        download = self.widgets.get("environment_download")
+        if renderer_capabilities(renderer).hdr_ibl:
+            if download is not None:
+                download.select(str(path))
+            if path in environment_catalog():
+                return
+            if not renderer.set_ibl(str(path)):
+                logger.warning("Could not load HDR environment '%s'", path)
+                self._sync_ibl_selection(renderer.get_ibl_name())
+            self._sync_from_visualizer()
+            return
+
         path_str = str(path)
         path_lower = path_str.lower()
 
         # Handle "default" special case
         if path_lower == "default":
             renderer.set_ibl("default")
+            self._sync_from_visualizer()
             return
 
         # Reject non-KTX files (HDR, EXR, PNG, JPG, etc.)
@@ -1471,6 +1790,7 @@ class RenderPanel(BasePanel):
             return
 
         renderer.set_ibl(path_str)
+        self._sync_from_visualizer()
 
         skybox_cb = self.widgets.get("skybox_cb")
         if skybox_cb is not None and skybox_cb.isChecked():
@@ -1480,8 +1800,24 @@ class RenderPanel(BasePanel):
     def _on_load_ibl(self) -> None:
         """Load a custom KTX IBL environment.
 
-        Only accepts _ibl.ktx files. HDR/EXR files must be pre-converted using cmgen.
+        pygfx accepts Radiance HDR directly; Open3D uses a matching KTX pair.
         """
+        renderer = getattr(self.parent, "renderer", None)
+        if renderer_capabilities(renderer).hdr_ibl:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self.parent, "Load HDR Environment", "", "Radiance HDR (*.hdr *.HDR)"
+            )
+            if not file_path:
+                return
+            display_name = self._make_unique_ibl_name(Path(file_path).stem)
+            self._ibl_library[display_name] = file_path
+            combo = self.widgets.get("ibl_combo")
+            if combo is not None:
+                with QSignalBlocker(combo):
+                    combo.addItem(display_name)
+                    combo.setCurrentText(display_name)
+            self._on_ibl_changed(display_name)
+            return
         start_dir = ""
         if self._ibl_dir is not None and self._ibl_dir.exists():
             start_dir = str(self._ibl_dir)
@@ -1519,6 +1855,9 @@ class RenderPanel(BasePanel):
         combo = self.widgets.get("ibl_combo")
         if combo is None or not ibl_name:
             return
+        download = self.widgets.get("environment_download")
+        if download is not None and download.awaiting_download:
+            return  # Keep the pending download visible while the previous sky stays active.
         display_name = self._find_ibl_display_name(ibl_name)
         if display_name is None:
             base_name = Path(ibl_name).stem or "Custom"
@@ -1532,6 +1871,12 @@ class RenderPanel(BasePanel):
     def _find_ibl_display_name(self, ibl_name: str) -> Optional[str]:
         """Return the combo label registered for one renderer IBL identifier."""
         for name, path in self._ibl_library.items():
+            if (
+                self._hdr_ibl_mode
+                and name == "Default"
+                and ibl_name in ("default", "neutral_outdoor")
+            ):
+                return name
             if path == ibl_name:
                 return name
         return None
@@ -1556,6 +1901,13 @@ class RenderPanel(BasePanel):
         ibl_dir = (project_root / ibl_rel).resolve()
         self._ibl_dir = ibl_dir
 
+        if self._hdr_ibl_mode:
+            self._ibl_library = {"Default": "neutral_outdoor"}
+            self._ibl_library.update(
+                {asset.label: asset.id for asset in environment_catalog().values()}
+            )
+            return
+
         if not ibl_dir.exists():
             return
 
@@ -1573,6 +1925,57 @@ class RenderPanel(BasePanel):
             base_name = entry.name[:-8]  # Remove "_ibl.ktx"
             display_name = self._make_unique_ibl_name(base_name)
             self._ibl_library[display_name] = str(entry)
+
+    def _refresh_ibl_library(self, renderer: object) -> None:
+        """Keep pygfx's built-in list small and independent of legacy KTX/LFS files."""
+        hdr = renderer_capabilities(renderer).hdr_ibl
+        if hdr != self._hdr_ibl_mode:
+            download = self.widgets.get("environment_download")
+            if download is not None:
+                download.select("")
+            self._hdr_ibl_mode = hdr
+            self._ibl_library = {"Default": "default"}
+            self._load_ibl_library_from_disk()
+            combo = self.widgets.get("ibl_combo")
+            if combo is not None:
+                with QSignalBlocker(combo):
+                    combo.clear()
+                    combo.addItems(self._ibl_library)
+        button = self.widgets.get("ibl_load_btn")
+        if button is not None:
+            button.setText("Load HDR…" if hdr else "Load KTX…")
+            button.setToolTip(
+                "Load a local Radiance .hdr image" if hdr else "Load a matching KTX IBL/skybox pair"
+            )
+
+    def _apply_optional_environment(self, identifier: str) -> None:
+        """Called on the GUI thread after an explicit selection or verified download."""
+        if getattr(self.parent, "_shutdown_started", False):
+            return
+        renderer = getattr(self.parent, "renderer", None)
+        if not renderer_capabilities(renderer).hdr_ibl:
+            return
+        download = self.widgets["environment_download"]
+        if renderer.set_ibl(identifier):
+            if download.match_lighting.isChecked():
+                renderer.apply_environment_lighting(identifier)
+            skybox = self.widgets.get("skybox_cb")
+            if skybox is not None:
+                renderer.show_skybox(skybox.isChecked())
+            self._sync_ibl_widgets(int(renderer.get_ibl_intensity()))
+            self._sync_light_rig_widgets(renderer)
+            self._sync_ibl_selection(identifier)
+            self._sync_from_visualizer()
+        else:
+            download.status.setText(
+                "Could not load this HDR. Current lighting is unchanged; select Default or retry."
+            )
+
+    def cleanup(self) -> None:
+        """Cancel pending environment I/O before renderer and Qt resources close."""
+        download = self.widgets.get("environment_download")
+        if download is not None:
+            download.cleanup()
 
     def _on_shadows_toggled(self, checked: bool) -> None:
         """Handle shadow enable/disable toggle."""
@@ -1738,6 +2141,14 @@ class RenderPanel(BasePanel):
                 with QSignalBlocker(combo):
                     combo.setCurrentIndex(index)
 
+        style = normalize_viewport_hud_style(getattr(state, "viewport_hud_style", "classic"))
+        style_combo = self.widgets.get("viewport_hud_style_combo")
+        if style_combo is not None:
+            index = style_combo.findData(style)
+            if index >= 0:
+                with QSignalBlocker(style_combo):
+                    style_combo.setCurrentIndex(index)
+
         for key in ("status", "legends", "filters", "annotations"):
             checkbox = self.widgets.get(f"viewport_hud_{key}_cb")
             if checkbox is None:
@@ -1772,6 +2183,14 @@ class RenderPanel(BasePanel):
         mode = normalize_viewport_hud_mode(combo.currentData())
         self._apply_viewport_hud_changes(viewport_hud_mode=mode)
 
+    def _on_viewport_hud_style_changed(self, _index: int) -> None:
+        """Apply the selected HUD appearance independently of content and visibility."""
+        combo = self.widgets.get("viewport_hud_style_combo")
+        if combo is None:
+            return
+        style = normalize_viewport_hud_style(combo.currentData())
+        self._apply_viewport_hud_changes(viewport_hud_style=style)
+
     def _on_viewport_hud_category_changed(self, key: str, checked: bool) -> None:
         """Apply one independent viewport-HUD content category."""
         if key not in {"status", "legends", "filters", "annotations"}:
@@ -1791,6 +2210,20 @@ class RenderPanel(BasePanel):
 
         if renderer is not None and renderer_capabilities(renderer).antialiasing:
             renderer.set_antialiasing_mode(str(getattr(app_state, "antialiasing_mode", "off")))
+        depth_precision = getattr(app_state, "depth_precision", None)
+        if (
+            depth_precision is not None
+            and renderer is not None
+            and renderer_capabilities(renderer).depth_precision
+        ):
+            renderer.set_depth_precision_enabled(bool(depth_precision))
+        mipmaps = getattr(app_state, "texture_mipmaps", None)
+        if (
+            mipmaps is not None
+            and renderer is not None
+            and renderer_capabilities(renderer).texture_mipmaps
+        ):
+            renderer.set_texture_mipmaps_enabled(bool(mipmaps))
         if renderer is not None and renderer_capabilities(renderer).ground_grid:
             renderer.set_ground_grid_visible(bool(getattr(app_state, "show_ground_grid", False)))
         if renderer is not None and renderer_capabilities(renderer).hover_info:
@@ -1897,7 +2330,7 @@ class RenderPanel(BasePanel):
         self._update_clip_app_state(axis, flip=bool(checked))
         self._push_clipping_planes_to_renderer()
 
-    # Capture-mode handlers (pygfx only)
+    # Live image quality and scene-guide handlers
 
     def _on_aa_mode_changed(self, label: str) -> None:
         """Persist and apply the selected interactive anti-aliasing mode."""
@@ -1913,6 +2346,26 @@ class RenderPanel(BasePanel):
                 renderer.set_antialiasing_mode(mode)
             except Exception as exc:
                 logger.debug("Failed to set AA mode: %s", exc)
+
+    def _on_depth_precision_toggled(self, checked: bool) -> None:
+        """Apply camera precision without changing geometry or scene data."""
+        viz = self.parent
+        renderer = getattr(viz, "renderer", None)
+        if renderer is None or not renderer_capabilities(renderer).depth_precision:
+            return
+        renderer.set_depth_precision_enabled(bool(checked))
+        if getattr(viz, "app_state", None) is not None:
+            viz.set_state(depth_precision=bool(checked))
+
+    def _on_texture_mipmaps_toggled(self, checked: bool) -> None:
+        """Apply filtering immediately and retain the explicit workspace choice."""
+        viz = self.parent
+        renderer = getattr(viz, "renderer", None)
+        if renderer is None or not renderer_capabilities(renderer).texture_mipmaps:
+            return
+        renderer.set_texture_mipmaps_enabled(bool(checked))
+        if getattr(viz, "app_state", None) is not None:
+            viz.set_state(texture_mipmaps=bool(checked))
 
     def _on_ground_grid_toggled(self, checked: bool) -> None:
         """Persist and apply the renderer ground-grid visibility."""

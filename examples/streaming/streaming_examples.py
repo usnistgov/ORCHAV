@@ -336,8 +336,8 @@ class RandomWalkMobility(StepwiseMobility):
 
         Args:
             start_position: Starting position (x, y, z)
-            step_size: Maximum step size per update
-            noise_level: Random noise level
+            step_size: Maximum directional step before additive Gaussian noise
+            noise_level: Per-axis standard deviation of unbounded additive noise
         """
         super().__init__()
         self.position = np.array(start_position, dtype=float)

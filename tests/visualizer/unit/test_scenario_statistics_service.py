@@ -15,7 +15,7 @@ from shared.frames.contracts import (
     PATH_METRIC_VALIDITY_BITS,
     FrameReadRequest,
 )
-from shared.frames.provider_base import DataProvider, ProviderInfo
+from shared.frames.provider_base import DataProvider, ProviderCapability, ProviderInfo
 from shared.frames.types import StandardMPCFrame
 from visualizer.src.metrics.scenario_statistics import SCENARIO_STATISTICS_REQUEST
 from visualizer.src.services.scenario_statistics_service import (
@@ -220,3 +220,31 @@ def test_new_generation_cancels_and_suppresses_stale_callbacks(tmp_path: Path):
     assert len(completions) == 1
     assert completions[0].generation == second_generation
     assert completions[0].stats["frame_indices"] == [5]
+
+
+def test_optional_statistics_cache_miss_does_not_enumerate_or_read_frames(tmp_path):
+    _, service, scenario = _services(tmp_path)
+    provider = _ProjectionProvider(generation_id="new", frame_set_id="new")
+    result = service.collect(provider, scenario=scenario, cache_only=True)
+    assert result.stats is None
+    assert provider.list_calls == 0
+    assert provider.load_calls == 0
+    assert provider.projection_requests == []
+    result = service.collect(provider, scenario=scenario)
+    assert result.stats["total_frames"] == 1
+    assert provider.list_calls == 1
+
+
+def test_mutable_collection_computes_current_data_without_persistence(tmp_path):
+    cache, service, scenario = _services(tmp_path)
+    local = _ProjectionProvider(generation_id="local", frame_set_id="local")
+    path = cache.save_cached_stats({"total_mpcs": 6}, scenario, provider=local)
+    original = path.read_bytes()
+    live = _ProjectionProvider(generation_id="local", frame_set_id="local", frame_indices=(0, 1))
+    live._info.capabilities = ProviderCapability.STREAMING | ProviderCapability.OVERRIDES
+    assert service.collect(live, scenario=scenario, cache_only=True).stats is None
+    assert live.list_calls == 0
+    result = service.collect(live, scenario=scenario)
+    assert not result.from_cache
+    assert result.stats["total_mpcs"] == 2
+    assert path.read_bytes() == original

@@ -10,15 +10,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import pickle
 import sys
 import time
 import traceback
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Optional
 
 from shared.frames import StandardMPCFrame
-from shared.source_identity import loaded_source_identity
+from shared.source_identity import loaded_source_identity, resolve_source_identity
 
 from .live_preview_payloads import (
     build_live_overrides,
@@ -83,11 +85,15 @@ def _load_simulation(request: dict[str, Any]) -> Any:
     from generator.core.runtime import build_on_demand_objects
     from generator.core.scenario_actors.runtime import prepare_actor_runtime
     from shared.scenarios import load_scenario_configuration
+    from shared.scenarios.scripted import ACTOR_FACTORY_FILENAME, load_scripted_actors
 
     scenario_root = Path(str(request["scenario_root"]))
     project_root_raw = request.get("project_root")
     project_root = Path(project_root_raw) if project_root_raw else None
     scenario_cfg = load_scenario_configuration(scenario_root, project_root=project_root)
+    if not scenario_cfg.actors.tx or not scenario_cfg.actors.rx:
+        if (scenario_cfg.root / ACTOR_FACTORY_FILENAME).is_file():
+            scenario_cfg = replace(scenario_cfg, actors=load_scripted_actors(scenario_cfg))
     simulation_config = build_simulation_config(scenario_cfg)
     step = int(request.get("step", 0) or 0)
     simulation_config.num_steps = max(
@@ -100,7 +106,11 @@ def _load_simulation(request: dict[str, Any]) -> Any:
     rx_configs = list(actor_runtime.receivers)
     target_configs = list(actor_runtime.targets)
     if not tx_configs or not rx_configs:
-        raise RuntimeError("Preview requires at least one TX and one RX in scenario YAML")
+        raise RuntimeError(
+            "Preview requires at least one TX and one RX in scenario YAML or "
+            "an actors.py factory defining build_actors(scenario). "
+            "The preview worker does not run generate.py."
+        )
 
     return build_on_demand_objects(
         tx_configs,
@@ -111,6 +121,29 @@ def _load_simulation(request: dict[str, Any]) -> Any:
         motion_mode="step",
         raytracing_settings=dict(request.get("solver_settings") or {}),
     )
+
+
+def _preview_scene_time_s(request: dict[str, Any], simulation: Any) -> float | None:
+    """Keep recorded timestamps exact; use a scenario clock only without a recording."""
+    if "scene_time_s" in request:
+        value = request["scene_time_s"]
+        if value is None:
+            return None
+        timestamp = float(value)
+        if not math.isfinite(timestamp):
+            raise ValueError("Preview scene time must be finite")
+        return timestamp
+    config = getattr(simulation, "simulation_config", None)
+    try:
+        steps = int(config.num_steps)
+        duration = float(config.duration)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if steps == 1:
+        return 0.0
+    if steps <= 1 or not math.isfinite(duration) or duration <= 0:
+        return None
+    return int(request.get("step", 0)) * duration / (steps - 1)
 
 
 def _solve_preview_frame(request: dict[str, Any], simulation: Any) -> StandardMPCFrame:
@@ -142,14 +175,14 @@ def _solve_preview_frame(request: dict[str, Any], simulation: Any) -> StandardMP
         raise RuntimeError("Sionna preview solve returned no frame")
 
     settings = dict(request.get("solver_settings") or {})
-    timestamp_s = float(time.time())
+    timestamp_s = _preview_scene_time_s(request, simulation)
     provenance = {
         "provider": "live_preview",
         "preview": True,
         "preview_quality": str(request.get("quality", "release")),
         "frame_idx": int(step),
         "sequence_id": int(sequence),
-        "timestamp": timestamp_s,
+        "computed_at_unix_s": float(time.time()),
         "solver_settings": settings,
         "seed": int(settings.get("seed", 42)),
         "tx_positions": tx_positions.tolist(),
@@ -158,6 +191,8 @@ def _solve_preview_frame(request: dict[str, Any], simulation: Any) -> StandardMP
         "target_orientations": target_orientations.tolist(),
         "scenario_root": str(request.get("scenario_root") or ""),
     }
+    if timestamp_s is not None:
+        provenance["timestamp"] = timestamp_s
     simulation_config = raw.get("simulation_config")
     return process_frame_data(
         step,
@@ -190,10 +225,13 @@ def _emit(message: dict[str, Any]) -> None:
 def _handle_init(state: PreviewWorkerState, request: dict[str, Any]) -> None:
     """Warm the runtime and notify the UI process that solves may start."""
     state.ensure_simulation(request)
+    # Initialization imports generator code lazily. Recheck disk metadata so a
+    # checkout update during initialization cannot pass using the cached hello.
+    current_identity = resolve_source_identity(loaded_source_identity("visualizer").source_root)
     _emit(
         {
             "type": "ready",
-            "source_identity": loaded_source_identity("visualizer").to_dict(),
+            "source_identity": current_identity.to_dict(),
         }
     )
 
@@ -218,6 +256,14 @@ def _handle_solve(state: PreviewWorkerState, request: dict[str, Any]) -> None:
 
 def serve_stdio() -> int:
     """Serve JSON-line init/solve/shutdown commands until stdin closes."""
+    # The UI must approve the loaded checkout before sending init. Capture the
+    # identity before generator/Sionna initialization; ready rechecks metadata.
+    _emit(
+        {
+            "type": "identity",
+            "source_identity": loaded_source_identity("visualizer").to_dict(),
+        }
+    )
     state = PreviewWorkerState()
     for line in sys.stdin:
         text = line.strip()

@@ -24,6 +24,8 @@ Choose where ORCHAV should find the scene identified by `scene.id`:
 | `local` | Resolve `scene.id` relative to the scenario directory. |
 | `sionna` | Resolve a scene bundled with the installed [Sionna RT](https://nvlabs.github.io/sionna/) package, such as `etoile`. |
 
+For a scene built from geographic data, choose [OpenStreetMap](geography/osm_scene_generation.md).
+
 The default source is `library`. Exact `scene` fields are listed in the
 [Scenario YAML Reference](../reference/scenario_yaml.md#scene).
 
@@ -33,20 +35,17 @@ Set `raytracing.enabled: true` when the Generator should compute propagation
 paths. The remaining keys change radio parameters, solver quality, antenna
 arrays, material behavior, and the data retained in each generated frame.
 
-For example, this block selects a 3.5 GHz, 100 MHz study and retains the
-optional path metrics used by downstream analysis:
+For example, this block selects a 3.5 GHz, 100 MHz study:
 
 ```yaml
 raytracing:
   enabled: true
   carrier_frequency_hz: 3.5e9
   bandwidth_hz: 100e6
-  export_path_metrics: true
 ```
 
-Normal generation defaults to the `low` quality preset, a 28 GHz carrier, and
-2 GHz bandwidth. Omit those settings when the defaults represent the intended
-study.
+Set the carrier and bandwidth explicitly when they define the experiment.
+Omitted values follow the [YAML defaults](../reference/scenario_yaml.md#raytracing).
 
 Exact `raytracing`, `quality`, `antenna`, `path_filter`, and `materials`
 fields are listed in the
@@ -54,14 +53,15 @@ fields are listed in the
 
 ### Export Path Metrics
 
-Set `raytracing.export_path_metrics: true` when downstream tools need per-path
-delay, path loss, angle of departure, or angle of arrival. The Generator then
-stores those values with each path in the HDF5 frame output.
+The Generator exports per-path delay, path loss, angle of departure, and angle
+of arrival by default. These saved values support the Visualizer's filters and
+path analysis. No `export_path_metrics` setting is needed to retain them.
 
-Leave this option `false` when those metrics are not needed. The Generator then
-avoids computing and writing the optional metric arrays, which can reduce
-generation work, output size, and write time for frame sets with many paths.
-Path vertices, interaction codes, and material information are still written.
+Set `raytracing.export_path_metrics: false` when those metrics are not needed.
+The Generator skips metric extraction and marks the corresponding frame values
+unavailable. This can reduce generation work, compressed output size, and write
+time for frame sets with many paths. Path vertices, interaction codes, and
+material information are still written.
 
 When `path_filter` sets a threshold or per-pair limit, ORCHAV automatically
 enables path metrics because the filter needs path-loss values to decide which
@@ -80,22 +80,15 @@ budget, then override only the settings the scenario needs to change.
 | `high` | 5 | 10M | 5M | Specular + diffuse | Yes | Yes |
 | `ultra` | 6 | 100M | 10M | Specular + diffuse | Yes | Yes |
 
-Ordinary MPC generation defaults to `low`. Coverage-map generation has its own
-`medium` default.
+`max_depth` limits interactions along a path. `samples_per_src` sets the
+launched-ray budget, and `max_num_paths_per_src` limits retained solver paths
+per source. Ordinary MPC generation uses `low` by default, while coverage
+has an independent `medium` default. Exact fields and constraints remain in
+the [YAML reference](../reference/scenario_yaml.md#raytracing-quality).
 
 ### Synthetic Array Model
 
-All presets set `synthetic_array: true`, which is the array model supported by
-the current ORCHAV frame workflow. Sionna RT traces one geometric path set
-between each transmitter and receiver device, then uses phase shifts to account
-for the individual array elements in the channel response. ORCHAV can therefore
-store the paths at the transmitter-receiver pair level used by the shared frame
-contract.
-
-Sionna RT can instead trace each array element when `synthetic_array` is
-`false`. The current ORCHAV frame contract does not preserve that per-element
-path topology, so leave this setting `true`. Supporting per-element paths would
-require a future extension to the frame contract.
+Keep `synthetic_array: true` for the current frame format. Sionna RT traces geometry per transmitter–receiver pair and accounts for element spacing through phase offsets.
 
 ### Custom Quality
 
@@ -142,40 +135,7 @@ Sionna RT computes diffuse paths only when the effective quality settings have
 `diffuse_reflection: true`. Material scattering coefficients then determine
 how much reflected energy is scattered instead of staying purely specular.
 
-By default, ORCHAV leaves loaded Sionna RT scene material coefficients
-unchanged:
-
-```yaml
-raytracing:
-  scene_materials:
-    scattering_coefficient_preset: none
-```
-
-Use the `itu` preset when the study needs ORCHAV's material-family coefficients
-for known scene materials such as concrete, glass, metal, wood, plasterboard,
-and ceiling board:
-
-```yaml
-raytracing:
-  scene_materials:
-    scattering_coefficient_preset: itu
-```
-
-Explicit overrides under `raytracing.materials` are applied after the broad
-preset and take precedence:
-
-```yaml
-raytracing:
-  quality:
-    preset: low
-    custom:
-      diffuse_reflection: true
-  materials:
-    itu_concrete:
-      scattering_coefficient: 0.4
-    itu_glass:
-      scattering_coefficient: 0.05
-```
+The default `scattering_coefficient_preset: none` keeps the scene's coefficients. To apply ORCHAV's material-family coefficients, set `raytracing.scene_materials.scattering_coefficient_preset: itu`. Individual material overrides take precedence.
 
 ### Material Overrides
 
@@ -187,20 +147,13 @@ Target meshes create their own material entries during scene setup. If a
 target material is named after the target, use that target-specific key, such
 as `itu_metal_Drone`, when overriding its scattering behavior.
 
-A coefficient-only override is valid:
+Set `scattering_coefficient` for the material of interest. Include it when specifying a scattering pattern:
 
 ```yaml
 raytracing:
-  materials:
-    itu_concrete:
-      scattering_coefficient: 0.4
-```
-
-When an override sets a scattering pattern or pattern parameter, it must also
-set `scattering_coefficient`:
-
-```yaml
-raytracing:
+  quality:
+    preset: low
+    custom: {diffuse_reflection: true}
   materials:
     itu_concrete:
       scattering_coefficient: 0.4
@@ -234,6 +187,10 @@ raytracing:
     max_paths_per_pair: 100
 ```
 
+This example keeps paths within 40 dB of the strongest path for each TX/RX
+pair, then retains at most 100 paths per pair. Filtering affects saved output,
+so discarded paths will not be available for later inspection.
+
 Exact path-filter fields are listed in the
 [Scenario YAML Reference](../reference/scenario_yaml.md#raytracing-path-filter).
 
@@ -241,7 +198,7 @@ Exact path-filter fields are listed in the
 
 The coverage solver produces a spatial grid dataset separately from the MPC
 frame stream. Use it when a scenario needs path-gain, RSS, SINR,
-serving-transmitter, or margin products across an area.
+serving-transmitter or margin products across an area.
 
 ```yaml
 coverage:
@@ -255,50 +212,20 @@ coverage:
 `[[x_min, x_max], [y_min, y_max]]` bounds for scenes that do not expose
 geometry bounds. Because `auto` is the default, the example does not repeat
 it. The default coverage solver uses its independent `medium` preset, persists
-canonical path gain with LZF compression, and exposes the standard derived
-metrics. Coverage data is written to the fixed scenario-local path
+canonical path gain and exposes the standard derived metrics. Coverage data is written to the fixed scenario-local path
 `coverage/coverage_maps.h5`. Add `solver`, `metrics`, or `save` only to
 override those defaults.
 
 Exact coverage fields are listed in the
 [Scenario YAML Reference](../reference/scenario_yaml.md#coverage). See
-[Coverage Maps](../concepts/propagation.md#coverage-maps) for metric definitions and
-solver tradeoffs.
+[Coverage Maps](../reference/propagation.md#coverage-maps) for how area estimates
+relate to individual propagation paths.
 
-## Advanced Local Scene Mesh Transforms
-
-Read this section when a local Mitsuba XML scene applies transforms directly
-to PLY or OBJ shapes. Sionna RT and Mitsuba evaluate the complete scene
-transform grammar for ray tracing. ORCHAV also reads those meshes for
-Visualizer and Scenario Builder previews, summary overlays, and fallback scene
-bounds. This lightweight mesh reader accepts the following ordered transform
-subset:
-
-```xml
-<transform name="to_world">
-  <scale value="2"/>
-  <rotate x="1" angle="10"/>
-  <rotate y="1" angle="20"/>
-  <rotate z="1" angle="30"/>
-  <translate x="1" y="2" z="3"/>
-</transform>
-```
-
-Each operation may be omitted. Scale must be one positive uniform scalar.
-Rotations use the positive X, Y, then Z canonical axes. Translation may use
-X/Y/Z attributes or a three-value vector. Keep the written order as scale,
-rotations, then translation.
-
-Matrices, `lookat`, nonuniform or mirrored scale, arbitrary rotation axes,
-repeated or reordered operations, and symbolic values are valid in the wider
-Mitsuba grammar but cannot be represented by ORCHAV's lightweight reader. A
-direct mesh using one of those forms is rejected for ORCHAV preview instead of
-being displayed at an approximate position. Camera and sensor transforms are
-not subject to this lightweight mesh restriction.
+For authored XML geometry, see [local scene mesh transforms](scenario_authoring.md#local-scene-mesh-transforms).
 
 ## Related Tasks
 
-| Task | Guide |
+| Goal | Guide |
 |------|-------|
 | Create the scenario directory and actors | [Scenario Authoring](scenario_authoring.md) |
 | Choose mobility, orientation, or groups | [Mobility and Orientation](mobility_and_orientation.md) |

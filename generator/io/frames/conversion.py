@@ -14,6 +14,7 @@ compact value to storage or transport.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +48,8 @@ def standard_mpc_frame_from_raw(
             frame is serialized.
         output_dir: Optional diagnostic-output directory for path filtering.
         bandwidth_hz: Optional bandwidth used for path-filter diagnostics.
-        timestamp: Optional provenance timestamp.
+        timestamp: Optional provenance timestamp. When omitted, an explicit
+            raw ``scene_time_s`` value is propagated if present.
     Returns:
         Validated ``StandardMPCFrame`` ready for HDF5 writing or protobuf
         serialization.
@@ -64,19 +66,31 @@ def standard_mpc_frame_from_raw(
     sensing_data = frame_data.get("sensing")
     simulation_config = simulation_config or frame_data.get("simulation_config")
 
+    resolved_timestamp = timestamp
+    if resolved_timestamp is None and "scene_time_s" in frame_data:
+        raw_scene_time = frame_data["scene_time_s"]
+        if isinstance(raw_scene_time, bool):
+            raise ValueError("Raw frame scene_time_s must be a finite number")
+        try:
+            resolved_timestamp = float(raw_scene_time)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Raw frame scene_time_s must be a finite number") from exc
+        if not math.isfinite(resolved_timestamp):
+            raise ValueError("Raw frame scene_time_s must be a finite number")
+
     source = {"provider": source_provider, "frame_idx": int(frame_idx)}
     source_rt_frame_idx = frame_data.get("_cached_rt_source_frame_idx")
     if source_rt_frame_idx is None and frame_data.get("paths") is not None:
         source_rt_frame_idx = frame_data.get("frame_idx", frame_idx)
     if source_rt_frame_idx is not None:
         source["source_rt_frame_idx"] = int(source_rt_frame_idx)
-    if timestamp is not None:
-        source["timestamp"] = float(timestamp)
+    if resolved_timestamp is not None:
+        source["timestamp"] = float(resolved_timestamp)
     common_kwargs = {
         "sensing_data": sensing_data,
         "snapshot_overrides": frame_data,
         "provenance": source,
-        "timestamp_s": timestamp,
+        "timestamp_s": resolved_timestamp,
         "beamforming": frame_data.get("beamforming"),
         "recomputed_from_stored_positions": bool(
             frame_data.get("_recomputed_from_stored_positions", False)

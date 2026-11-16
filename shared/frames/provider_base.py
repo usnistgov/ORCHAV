@@ -131,6 +131,17 @@ class DataProvider(ABC):
         """
         ...
 
+    @property
+    def frame_ids_snapshot(self) -> tuple[int, ...] | None:
+        """Return a stable immutable inventory, or ``None`` for dynamic sources.
+
+        Providers opting in must reuse the tuple until their inventory changes
+        and replace it on refresh. Consumers can then cache inventory-derived
+        work by identity without enumerating every frame on every display tick.
+        Generation/frame-set identity must still be checked independently.
+        """
+        return None
+
     @abstractmethod
     def has_frame(self, step: int) -> bool:
         """

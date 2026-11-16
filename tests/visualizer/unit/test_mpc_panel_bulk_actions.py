@@ -1,27 +1,26 @@
 """Unit tests for MPC Panel bulk material selection actions."""
 
-import sys
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel
-
-# Ensure QApplication exists for Qt widgets
-if not QApplication.instance():
-    app = QApplication(sys.argv)
+from PySide6.QtWidgets import QLabel
 
 from visualizer.src.panels.mpc_panel import MPCVisualizationPanel, _get_type_palette_colors
 from visualizer.src.renderers.protocol import RendererCapabilities
 
 
-def _make_panel():
-    parent = Mock()
-    parent.renderer.capabilities = RendererCapabilities(
-        angular_preview=True,
-        mpc_type_markers=True,
+def _make_panel(qtbot):
+    parent = SimpleNamespace(
+        renderer=SimpleNamespace(
+            capabilities=RendererCapabilities(angular_preview=True, mpc_type_markers=True)
+        )
     )
     panel = MPCVisualizationPanel(parent)
     panel._test_group = panel.create_panel()
+    qtbot.addWidget(panel._test_group)
+    panel._test_filters = panel.create_filtering_panel()
+    qtbot.addWidget(panel._test_filters)
     return panel
 
 
@@ -45,39 +44,93 @@ def _legend_labels(panel):
 class TestMPCPanelBulkActions:
     """Tests for bulk material selection functionality."""
 
-    def test_interaction_markers_are_capability_gated(self):
+    def test_hidden_master_shows_unchecked_usable_controls_without_changing_preferences(
+        self, qtbot
+    ):
+        from dataclasses import replace
+
+        from visualizer.src.state import MpcVisibility, create_initial_state
+
+        state = replace(create_initial_state(), mpc_visibility=MpcVisibility(enabled=False))
+        panel = MPCVisualizationPanel(SimpleNamespace(app_state=state))
+        group = panel.create_panel()
+        qtbot.addWidget(group)
+        paths = panel.widgets["mpc_paths_cb"]
+        assert not paths.isChecked() and paths.isEnabled()
+        assert not panel.widgets["mpc_bounce_points_cb"].isChecked()
+        assert panel.widgets["mpc_bounce_points_cb"].isEnabled()
+        assert state.mpc_visibility.paths and state.mpc_visibility.bounce_points
+        assert not panel.widgets["mpc_hidden_label"].isHidden()
+        changed = Mock()
+        paths.toggled.connect(changed)
+        panel.sync_visibility_from_state(
+            replace(state, mpc_visibility=MpcVisibility(enabled=True, paths=False))
+        )
+        assert not paths.isChecked() and paths.isEnabled()
+        assert panel.widgets["mpc_hidden_label"].isHidden()
+        changed.assert_not_called()
+        group.deleteLater()
+
+    def test_delayed_creation_and_restore_reflect_coloring_without_actions(self, qtbot):
+        from visualizer.src.state import create_initial_state, update_state
+
+        parent = SimpleNamespace(app_state=create_initial_state())
+        panel = MPCVisualizationPanel(parent)
+        # A scenario/session may set its mode before this lazy panel is expanded.
+        parent.app_state = update_state(parent.app_state, color_mode="delay")
+        group = panel.create_panel()
+        qtbot.addWidget(group)
+        assert panel.widgets["delay_rb"].isChecked()
+        filters = panel.create_filtering_panel()
+        qtbot.addWidget(filters)
+        assert not panel.widgets["reflection_order_rb"].isChecked()
+        assert not panel.widgets["colorbar_widget"].isHidden()
+        assert panel._current_color_mode == "delay"
+
+        callback = Mock()
+        for button in panel.widgets["color_mode_group"].buttons():
+            button.toggled.connect(callback)
+        for mode in ("material", "path_loss", "reflection_order", "delay"):
+            panel.sync_coloring_from_state(update_state(parent.app_state, color_mode=mode))
+            assert panel.widgets[f"{mode}_rb"].isChecked()
+            assert panel._current_color_mode == mode
+            assert panel.widgets["distinct_material_colors_cb"].isHidden() == (mode != "material")
+        callback.assert_not_called()
+        group.deleteLater()
+
+    def test_interaction_markers_are_capability_gated(self, qtbot):
         """Only renderers that implement marker glyphs expose the control."""
-        supported = _make_panel()
+        supported = _make_panel(qtbot)
         assert supported.widgets["mpc_interaction_markers_cb"].isVisibleTo(supported._test_group)
 
-        parent = Mock()
-        parent.renderer.capabilities = RendererCapabilities()
+        parent = SimpleNamespace(renderer=SimpleNamespace(capabilities=RendererCapabilities()))
         unsupported = MPCVisualizationPanel(parent)
         unsupported._test_group = unsupported.create_panel()
+        qtbot.addWidget(unsupported._test_group)
 
         assert not unsupported.widgets["mpc_interaction_markers_cb"].isVisibleTo(
             unsupported._test_group
         )
 
-    def test_virtual_mpc_type_filter_is_visible(self):
+    def test_virtual_mpc_type_filter_is_visible(self, qtbot):
         """Reconstructed paths have the same explicit filter control as native types."""
-        panel = _make_panel()
+        panel = _make_panel(qtbot)
 
         checkbox = panel.widgets["type_99_cb"]
         assert checkbox.text() == "Virtual"
         assert checkbox.isChecked() is True
-        assert checkbox.isVisibleTo(panel._test_group) is True
+        assert checkbox.isVisibleTo(panel._test_filters) is True
 
-    def test_mpc_type_legend_exposes_virtual_and_unknown_semantic_colors(self):
+    def test_mpc_type_legend_exposes_virtual_and_unknown_semantic_colors(self, qtbot):
         """The control-panel legend uses the canonical special-type colors."""
         colors = _get_type_palette_colors()
 
-        assert len(colors) == 7
+        assert len(colors) == 8
         assert colors[-2:] == ["#ff9933", "#808080"]
 
-    def test_mpc_type_legend_tracks_only_types_in_each_accepted_frame(self):
+    def test_mpc_type_legend_tracks_only_types_in_each_accepted_frame(self, qtbot):
         """Known, virtual, unknown, and empty rows follow the presented tuple."""
-        panel = _make_panel()
+        panel = _make_panel(qtbot)
 
         panel.set_present_mpc_type_codes((0, 1))
         panel.update_color_legend("mpc_type")
@@ -92,9 +145,9 @@ class TestMPCPanelBulkActions:
         panel.set_present_mpc_type_codes(())
         assert _legend_labels(panel) == ["No visible path types"]
 
-    def test_select_all_materials(self):
+    def test_select_all_materials(self, qtbot):
         """Test that 'All' button selects all material checkboxes."""
-        panel = _make_panel()
+        panel = _make_panel(qtbot)
 
         # Set up materials
         materials = ["concrete", "glass", "metal", "wood"]
@@ -111,9 +164,9 @@ class TestMPCPanelBulkActions:
         # Verify all checked
         assert all(checked for _name, checked in _material_rows(panel))
 
-    def test_deselect_all_materials(self):
+    def test_deselect_all_materials(self, qtbot):
         """Test that 'None' button deselects all material checkboxes."""
-        panel = _make_panel()
+        panel = _make_panel(qtbot)
 
         # Set up materials (all checked initially)
         materials = ["concrete", "glass", "metal", "wood"]
@@ -130,9 +183,9 @@ class TestMPCPanelBulkActions:
         # Verify all unchecked
         assert all(not checked for _name, checked in _material_rows(panel))
 
-    def test_invert_material_selection(self):
+    def test_invert_material_selection(self, qtbot):
         """Test that 'Invert' button inverts all material checkbox states."""
-        panel = _make_panel()
+        panel = _make_panel(qtbot)
 
         # Set up materials (mix of checked/unchecked)
         materials = ["concrete", "glass", "metal", "wood"]
@@ -150,9 +203,9 @@ class TestMPCPanelBulkActions:
         final_states = [checked for _name, checked in _material_rows(panel)]
         assert final_states == [not state for state in initial_states]
 
-    def test_bulk_actions_with_no_materials(self):
+    def test_bulk_actions_with_no_materials(self, qtbot):
         """Test that bulk actions handle empty material list gracefully."""
-        panel = _make_panel()
+        panel = _make_panel(qtbot)
 
         # Set up no materials
         panel.set_materials([], checked=set())
@@ -165,9 +218,9 @@ class TestMPCPanelBulkActions:
         panel._on_deselect_all_materials()
         panel._on_invert_material_selection()
 
-    def test_bulk_actions_with_single_material(self):
+    def test_bulk_actions_with_single_material(self, qtbot):
         """Test bulk actions work with single material."""
-        panel = _make_panel()
+        panel = _make_panel(qtbot)
 
         # Set up single material
         materials = ["concrete"]
@@ -191,9 +244,9 @@ class TestMPCPanelBulkActions:
         panel._on_deselect_all_materials()
         assert _material_rows(panel) == [("concrete", False)]
 
-    def test_material_model_rows_stored_correctly(self):
+    def test_material_model_rows_stored_correctly(self, qtbot):
         """Test that material rows are stored in the model."""
-        panel = _make_panel()
+        panel = _make_panel(qtbot)
 
         # Set up materials
         materials = ["concrete", "glass", "metal"]
@@ -206,9 +259,9 @@ class TestMPCPanelBulkActions:
             ("metal", False),
         ]
 
-    def test_multiple_bulk_operations(self):
+    def test_multiple_bulk_operations(self, qtbot):
         """Test multiple consecutive bulk operations."""
-        panel = _make_panel()
+        panel = _make_panel(qtbot)
 
         # Set up materials
         materials = ["concrete", "glass", "metal", "wood", "plastic"]

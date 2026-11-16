@@ -301,6 +301,81 @@ class CoverageHDF5Reader:
         )
         return normalise_coverage_tx_names(names, tx_count), powers
 
+    def read_cell(self, indices_xyz, *, step_index=0):
+        """Read one retained cell for all transmitters, using canonical formulas.
+
+        The observer sees a transmitter-vector hyperslab, never a whole map.
+        Availability is kept separately so a finite numerical dBm floor cannot
+        be mistaken for a physical finite-power observation.
+        """
+        from .availability import (
+            AVAILABILITY_PATH,
+            AVAILABILITY_VERSION,
+            CoverageAvailability,
+            validate_availability,
+        )
+
+        if len(indices_xyz) != 3 or any(type(i) is not int for i in indices_xyz):
+            raise ValueError("Cell indices must be three XYZ integers")
+        x, y, z = indices_xyz
+        with h5py.File(self.path, "r") as h5:
+            self._validate_file(h5)
+            dataset = self._path_gain_dataset(h5)
+            step = self._validate_step_index(step_index, dataset.shape[0])
+            if not (
+                0 <= x < dataset.shape[4]
+                and 0 <= y < dataset.shape[3]
+                and 0 <= z < dataset.shape[1]
+            ):
+                raise ValueError("Cell is outside the recorded grid")
+            selection = (step, z, slice(None), y, x)
+            gains = self._read(dataset, selection, dtype=np.float32)
+            names, powers = self._read_tx_metadata(h5, len(gains))
+            availability = h5.get(AVAILABILITY_PATH)
+            if availability is not None and (
+                not isinstance(availability, h5py.Dataset)
+                or availability.shape != dataset.shape
+                or availability.attrs.get("schema_version") != AVAILABILITY_VERSION
+            ):
+                raise ValueError("Unsupported coverage availability schema or dimensions")
+            codes = (
+                self._read(availability, selection)
+                if availability is not None
+                else np.where(
+                    np.isfinite(gains) & (gains > 0),
+                    CoverageAvailability.POSITIVE,
+                    np.where(
+                        gains == 0,
+                        CoverageAvailability.ZERO_CONTRIBUTION,
+                        CoverageAvailability.UNKNOWN,
+                    ),
+                ).astype(np.uint8)
+            )
+            codes = validate_availability(codes, gains)
+            metadata = h5.get("metadata")
+            noise = float(metadata.attrs.get("noise_power_w", 0)) if metadata is not None else 0.0
+        tensor = gains.reshape(1, 1, -1, 1, 1)
+
+        def metric(name):
+            return float(
+                derive_coverage_metric_layer(
+                    tensor,
+                    name,
+                    tx_power_dbm=powers,
+                    noise_power_w=noise,
+                    tx_names=names,
+                )[0, 0, 0]
+            )
+
+        return dict(
+            names=names,
+            rss_dbm=[metric(f"rss_dbm/{name}") for name in names],
+            sinr_db=[metric(f"sinr_db/{name}") for name in names],
+            availability=codes.tolist(),
+            serving_tx=int(metric("serving_tx")),
+            noise_power_w=noise,
+        )
+
     def _read_materialized_metric(
         self,
         dataset: h5py.Dataset,

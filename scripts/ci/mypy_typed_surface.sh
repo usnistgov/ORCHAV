@@ -34,6 +34,7 @@ TYPED_SURFACE=(
   generator/core/utils/tensor_utils.py
   generator/io/storage/hdf5_frame_output.py
   visualizer/src/authoring/assets.py
+  visualizer/src/authoring/frame_geometry.py
   visualizer/src/authoring/domain.py
   visualizer/src/authoring/mobility_models.py
   visualizer/src/authoring/mobility_control_rig.py

@@ -1,4 +1,4 @@
-# Visual Analysis
+# Channel analysis
 
 The Visualizer is a [frame consumer](../reference/glossary.md#consumer). Use
 **Metrics** to inspect the frame currently displayed, and use the **Analysis**
@@ -10,11 +10,16 @@ selected data mode supports it,
 temporary actor or ray-tracing changes without rewriting the scenario or its
 saved frames.
 
+The main status bar shows **Simulation time** from the displayed frame's
+recorded timestamp, independently of sensing and playback speed. The pygfx
+viewport also shows it when detached. An absent timestamp is shown as
+unavailable; frame numbers are not converted into a guessed time.
+
 | Question | Tool | Data scope |
 |---|---|---|
 | What is happening in the displayed frame? | Metrics window | Current TX/RX and path-filter selection |
 | How does the channel change across the scenario? | Statistics and Graphs | Every frame and represented TX/RX pair available from the frame provider |
-| Which individual MPC produced an observation? | [MPC Explorer](mpc_explorer.md) | One selected path in the displayed frame |
+| What are the delay, loss, and interactions of a selected path? | [MPC Explorer](path_inspection.md) | One selected path in the displayed frame |
 | Where does a coverage metric meet a threshold? | Coverage tab and coverage graphs | Selected coverage metric and height |
 | What would one temporary actor or solver change do? | [Interactive Recomputation](interactive_recomputation.md) | Current session. Scenario files are unchanged. |
 
@@ -33,10 +38,17 @@ Use these included scenarios for hands-on examples:
 
 ## Current-Frame Metrics
 
+![Metrics for the six saved paths in the Hello World recording](../assets/visualizer/hello_world_metrics.png)
+
+This Hello World capture includes all six saved paths. The delay and loss
+histograms count paths, while the power-delay plot weights them by path gain.
+The cards summarize the same selected set. A different recording or filter
+selection changes both the cards and plots.
+
 Open **View > Metrics Window**, or press `M`. The window follows the latest
 displayed frame and redraws only its visible tab:
 
-- **Overview** shows delay, angle, [path-loss](../concepts/propagation.md#path-metrics),
+- **Overview** shows delay, angle, [path-loss](../reference/propagation.md#path-metrics),
   and interaction-order distributions. It also shows the **Power Delay Profile
   (1 ns resolution)**.
 - **Channel** shows a delay-power scatter plot, an AoD or AoA direction map,
@@ -57,7 +69,7 @@ individual bounce.
 ### Scope And Drawing Limits
 
 The TX/RX choice in **Context** and the filters in **Paths** determine which
-paths Metrics analyzes. The **Limit rendered MPCs** Top-K control reduces 3D
+paths Metrics analyzes. **Filtering > Top K > Keep strongest paths** reduces 3D
 drawing work only. It does not reduce Metrics calculations or exports.
 
 **Max plotted markers** is a separate dashboard drawing limit for dense plots.
@@ -69,24 +81,20 @@ off to retain their current X and Y ranges while the scenario plays. Retained
 ranges are the current plot ranges, not global bounds scanned from every
 frame.
 
-### Refresh Behavior
+### Refresh behavior
 
-Choose a fixed update rate when you want a predictable upper refresh limit, or
-choose **Maximum (adaptive)** for the fastest responsive update. Metrics keeps
-only the latest pending frame and leaves a cooldown based on the preceding
-calculation and drawing cost. Dense frames can therefore skip intermediate
-dashboard updates instead of building an unbounded queue behind playback.
-
-Use **Pause** to freeze automatic Metrics work and **Refresh** for one immediate
-update.
+**Automatic** refresh adapts to the work needed by the visible plots. Choose a
+fixed rate to limit dashboard refresh, **Freeze results** to hold it, or **Refresh once** for
+one update. Playback can advance faster than the dashboard redraws.
 
 ## Scenario Statistics And Graphs
 
-Open the **Analysis** tab and expand **Statistics**. The Visualizer automatically
-checks for a matching cache and otherwise streams the required fields from the
-active frame provider. **Compute Statistics** forces a fresh scan when one is
-needed. The result can be exported as CSV, and chart figures can be exported as
-PNG files.
+Open the **Analysis** tab and expand **Statistics**. The Visualizer checks for a
+matching cache. On a first run or cache miss, choose **Compute Statistics** to
+scan the active frame provider. **Compute automatically on cache miss** is an
+optional setting and is off by default. **Compute Statistics** also forces a
+fresh scan of the currently open recording. Export the result as CSV or the
+chart figures as PNG files.
 
 The **Graphs** section includes:
 
@@ -95,12 +103,12 @@ The **Graphs** section includes:
 - Interaction-mechanism and interaction-order evolution.
 - TX/RX pair path-state and channel-metric summaries.
 - coverage distributions and threshold-success curves for the selected height
-  when [coverage data](../concepts/propagation.md#coverage-maps) is loaded.
+  when [coverage data](../reference/propagation.md#coverage-maps) is loaded.
 
 Every graph provides an explanation of what it counts. Hover over a plotted
 item to inspect its value when the chart supports point inspection. Evolution
-graphs appear only when the frame provider offers multiple frames. Graph
-rendering and chart export require Matplotlib.
+graphs appear only when the frame provider offers multiple frames. Inline
+graphs use PyQtGraph; PNG chart export uses Matplotlib.
 
 Statistics describes the complete sequence available from the active frame
 provider. It does not apply the current **Context** or **Paths** filters. Use
@@ -109,55 +117,44 @@ Metrics for selection-scoped analysis.
 ### Statistics Cache
 
 For local and remote HDF5 providers, the Visualizer can reuse derived numeric
-results from a consumer-side cache. Live Generator sessions always scan the
-available frames instead. See [Caching](caching.md#statistics-cache) for cache
+results from a consumer-side cache. For live Generator sessions, explicitly
+compute Statistics to scan the available frames without persistent caching. See [Caching](caching.md#statistics-cache) for cache
 location, identity, deletion, and refresh behavior.
 
-## Coverage Inspection
+## Coverage inspection
 
-When coverage output is present, the **Coverage** tab controls the 3D overlay:
+The **Coverage** tab displays a saved metric at a selected height. Choose the
+metric and transmitter, then adjust the threshold and opacity. Scalar values
+use a continuous color scale. Serving-transmitter identity uses transmitter
+colors. For linear RF quantities, threshold controls show dB for gain/SINR and
+dBm for power in watts. Cell inspection retains the original stored units.
 
-- Choose an available metric and height.
-- Adjust opacity and optional smoothing.
-- Apply a threshold and optionally dim cells that fail it.
-- Draw isolines for a scalar layer.
-- cycle through the available heights.
+**Analysis → Compare heights** compares the percentage of saved cells meeting
+a received-power threshold at each height. Unknown samples appear as an
+uncertainty band. Selecting an XYZ region uses that same region for comparisons.
 
-For a multi-transmitter map, compatible metrics can use either the serving-TX
-layer or one selected transmitter. A one-transmitter map hides this redundant
-choice. The serving/specific-transmitter selection remains in place when you
-change between compatible metrics.
+See [Volume inspection](volume_inspection.md) for slices, cutaways, sweeps and
+cell selection, and the
+[single-transmitter example](../../scenarios/generator/coverage/single_tx/README.md) for generation
+and expected figures. Display controls do not rerun the coverage solve.
 
-Positive linear RF quantities use logarithmic colors where appropriate, while
-tooltips, thresholds, and displayed values retain the metric's documented
-physical units. Coverage graphs in **Analysis** follow the active metric and
-height selection.
+## Related inspection tools
 
-## Camera And Scene Inspection
+<a id="camera-and-scene-inspection"></a>
+[Camera navigation](camera.md) explains Follow, POV, saved views and camera
+sequences. [Path inspection](path_inspection.md) connects path-table selection
+to arrival-time and delay–angle plots. The
+[appearance guide](appearance.md#visibility-and-scene-guides) covers cutaways
+and visibility controls.
 
-The camera and rendering controls provide several non-destructive ways to
-inspect a dense scene:
-
-- **Overview** supports free orbit, pan, and zoom.
-- **Follow** keeps a selected TX, RX, or target centered during playback.
-- **POV** places the camera at the selected actor and looks along its forward
-  direction or a selected cardinal axis.
-- The **Views** controls store four temporary viewpoints for comparison.
-- The pygfx **Minimap** provides a top-view orientation aid.
-- AoD and AoA aperture previews show the selected angular filter around one
-  concrete TX/RX pair.
-- pygfx **Cutaway** planes reveal geometry inside a scene without modifying
-  its XML or generated frames.
-
-See [Renderers](renderers.md) for the capabilities that differ between pygfx
-and Open3D/Filament.
-
-## Interactive Recomputation
-
-The **Edit** tab can ask a local worker or a running Generator to recompute a
-temporary frame when the selected data mode supports it. Remote HDF5 Playback
-remains read-only. Use [Interactive Recomputation](interactive_recomputation.md)
-for the mode boundaries, controls, reset behavior, and persistence rules.
+<a id="sensing-results"></a>
+<a id="first-result-range-and-doppler"></a>
+<a id="add-one-capability-at-a-time"></a>
+<a id="focused-views-and-recording-history"></a>
+<a id="compare-and-export-without-changing-the-evidence"></a>
+For saved radar results, use the [sensing dashboard](sensing_dashboard.md).
+For a temporary actor or solver change, use
+[interactive recomputation](interactive_recomputation.md).
 
 ## RF X-Ray (Advanced, pygfx)
 
@@ -179,4 +176,4 @@ results as comparative inspection aids, not as per-bounce power measurements.
 
 ---
 
-Up: [Visualizer](README.md) | Related: [MPC Explorer](mpc_explorer.md) | [Interactive Recomputation](interactive_recomputation.md)
+Up: [Visualizer](README.md) | Related: [MPC Explorer](path_inspection.md) | [Interactive Recomputation](interactive_recomputation.md)

@@ -82,6 +82,7 @@ class Scenario:
     groups: tuple[GroupSpec, ...] = ()
     sensing: dict[str, Any] = None  # type: ignore[assignment]
     raytracing: dict[str, Any] = None  # type: ignore[assignment]
+    config_path: Path | None = None
 
     @property
     def frames_dir(self) -> Path:
@@ -265,6 +266,7 @@ def load_scenario(
 
         scenario = Scenario(
             root=path if path.is_dir() else path.parent,
+            config_path=yaml_path.resolve(),
             scene_spec=scene_spec,
             data_mode=str(data_spec["mode"]),
             data_spec=data_spec,

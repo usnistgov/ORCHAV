@@ -1,0 +1,16 @@
+<scene version="3.0.0">
+  <bsdf type="itu-radio-material" id="reflector-metal">
+    <string name="type" value="metal"/>
+    <float name="thickness" value="0.01"/>
+  </bsdf>
+  <shape type="ply" id="mesh-near_wall">
+    <string name="filename" value="meshes/near_wall.ply"/>
+    <boolean name="face_normals" value="true"/>
+    <ref id="reflector-metal" name="bsdf"/>
+  </shape>
+  <shape type="ply" id="mesh-far_wall">
+    <string name="filename" value="meshes/far_wall.ply"/>
+    <boolean name="face_normals" value="true"/>
+    <ref id="reflector-metal" name="bsdf"/>
+  </shape>
+</scene>

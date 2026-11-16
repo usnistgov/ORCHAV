@@ -1,0 +1,68 @@
+{
+  "license_spdx": "GPL-3.0-only",
+  "tutorial_scenario": "scenarios/sensing/applications/drone_tracking/munich/scenario.yaml",
+  "tutorial_scenario_sha256": "95a96043b510b36e772f08d1f155c0948c72b51b1a9cdf5da98510d5bb11aad7",
+  "authored_scenarios": {
+    "scenarios/sensing/applications/drone_tracking/munich/scenario.yaml": "95a96043b510b36e772f08d1f155c0948c72b51b1a9cdf5da98510d5bb11aad7",
+    "scenarios/sensing/applications/drone_tracking/munich/south/scenario.yaml": "dadedd9a715b332c4ee4880bcf142bf9d4b6da1614c430209bd8afbefa5a5511"
+  },
+  "authored_experiment": "scenarios/sensing/applications/drone_tracking/munich/experiment.json",
+  "authored_experiment_sha256": "e62baecc5f848d0d476984989e06d3b88baf9763f35e4fb477caa96915628032",
+  "acquisition_configuration_equal_to_authored": true,
+  "execution_scenarios_sha256": {
+    "west": "6ea4a6e9e2a6367ee61b4e97cc842b2780dfc9375b1a97f261c4139d6beab636",
+    "south": "159c72c4ce1c509a785de7e56139b62a149d33628cfd4f4236852c0572040520"
+  },
+  "fusion_results_sha256": "dfc2b752138e5d3e1b0bd23a74cba568e07b762fb09d20e58cc169e3ba06df77",
+  "run_id": "ffc77f7a-0763-416e-affd-71f62ae58839",
+  "source_unchanged": true,
+  "native_sources": {
+    "West": {
+      "generation_id": "60063bdf-7c40-4bea-9749-28940e4ac278",
+      "frame_set_id": "c07d74b0aec1f55aa341db8014e5ff2d4409e9886bf82143d35d7d192007b824",
+      "pair_id": "c8e28d3556435e74585d94db08ce740735d64712a36930d032ae6c4dcc44c5da"
+    },
+    "South": {
+      "generation_id": "f7a5ae38-8b3e-433d-a70b-f011094b6ff7",
+      "frame_set_id": "611df7f6cde053744a7ee0233dfbb4691632c654c19a1ed228ef00684c397669",
+      "pair_id": "c8002465105fa76604d827c5ce19a098ee6b25e7eff29877a79db3d49c96af47"
+    }
+  },
+  "image": "drone_tracking_munich_layout.png",
+  "sha256": "fcbbe4ec27dff6bb6cd73967bcc6c27cab4531c0ce59bd92f041c867e605f9f9",
+  "mode": "all",
+  "coordinate_frame": "world",
+  "kind": "visualizer_gui_capture",
+  "image_sha256": "fcbbe4ec27dff6bb6cd73967bcc6c27cab4531c0ce59bd92f041c867e605f9f9",
+  "source_sha256": "dfc2b752138e5d3e1b0bd23a74cba568e07b762fb09d20e58cc169e3ba06df77",
+  "renderer": "pygfx",
+  "pygfx_version": "0.17.0",
+  "wgpu_version": "0.31.1",
+  "capture_script_sha256": "f52d0d23884c577c03425bc87cfb219e3425088b369a7ab3acc9df362add66ac",
+  "implementation_files_sha256": {
+    "visualizer/src/sensing/fusion_window.py": "9fbccbea8f317b4064b15aeacf7e8c7ffa4b7b8274d7cc8dda23a62d7cff52d0",
+    "visualizer/src/sensing/fusion_inspection.py": "3dfd881af3adc15a8078dd35137485483a1f982ad218dcf6a0c442bd8c18127d",
+    "visualizer/capture_sensing.py": "f52d0d23884c577c03425bc87cfb219e3425088b369a7ab3acc9df362add66ac"
+  },
+  "camera": {
+    "eye": [
+      143.0,
+      200.0,
+      95.0
+    ],
+    "lookat": [
+      109.0,
+      173.0,
+      8.0
+    ],
+    "up": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "fov": 45.0
+  },
+  "capture_command": "python -m visualizer.capture_sensing --fusion analysis/drone-tracking/munich-fusion --output-dir analysis/drone-tracking/munich-fusion/3d --include-layout --camera-eye 143 200 95 --camera-lookat 109 173 8",
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "be1a2e77d287f6478013a0ac43dd6d683c06e8273366224778d26073d709dd41"
+}

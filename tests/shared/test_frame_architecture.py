@@ -21,6 +21,8 @@ _LOW_LEVEL_WRITER_ALLOWLIST = {
     Path("shared/frames/frame_set_writer.py"),
     Path("benchmarks/bench_hdf5_v2.py"),
     Path("benchmarks/bench_hdf5_extensions.py"),
+    # Instruments existing writer methods; does not bypass FrameSetWriter.
+    Path("benchmarks/bench_sensing_generator_e2e.py"),
 }
 
 _RETIRED_VISUAL_FRAME_FIELDS = {
@@ -55,6 +57,26 @@ def test_low_level_mpc_writer_has_an_explicit_usage_allowlist() -> None:
     }
     expected = {path for path in _LOW_LEVEL_WRITER_ALLOWLIST if (REPOSITORY_ROOT / path).is_file()}
     assert users == expected
+    instrumentation = Path("benchmarks/bench_sensing_generator_e2e.py")
+    if instrumentation in users:
+        tree = ast.parse((REPOSITORY_ROOT / instrumentation).read_text(encoding="utf-8"))
+        names = {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+            if alias.name == "PackedMPCChunkWriter"
+        }
+        assert not any(
+            isinstance(node, ast.Call)
+            and (
+                isinstance(node.func, ast.Name)
+                and node.func.id in names
+                or isinstance(node.func, ast.Attribute)
+                and node.func.attr == "PackedMPCChunkWriter"
+            )
+            for node in ast.walk(tree)
+        ), "Benchmark instrumentation must not construct the low-level writer"
 
 
 def test_complete_frame_set_writer_has_one_definition() -> None:

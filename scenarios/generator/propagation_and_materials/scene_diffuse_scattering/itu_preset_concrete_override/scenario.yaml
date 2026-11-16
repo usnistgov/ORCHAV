@@ -10,7 +10,6 @@ scene:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
   scene_materials:
     scattering_coefficient_preset: itu
   quality:

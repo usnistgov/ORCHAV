@@ -3,15 +3,15 @@
 [Scenarios](../../../../README.md) > [Visualizer](../../../README.md) >
 [Data Modes](../../README.md) > [Remote HDF5 Playback](../README.md) > Frame Generation
 
-This child scenario generates the fixed HDF5 frame set served by the parent
-remote-HDF5 example. It writes reusable chunks to `frames/`. It does not start
+Generate the saved recording used by the
+[Remote HDF5 Playback example](../README.md). It writes reusable chunks to `frames/`. It does not start
 the frame-file server.
 
-Install the [`grpc` optional
-extra](../../../../../docs/getting_started/installation.md#optional-extras) on
-the machine that will run the frame-file server.
-
 To run it, see [Running](#running).
+
+## Scene Layout
+
+![Scenario topology](../../../../../docs/assets/scenarios/scenarios_visualizer_data_modes_remote_hdf5_generation_topology.png)
 
 ## Generated Frame Set
 
@@ -23,34 +23,29 @@ To run it, see [Running](#running).
 | Timeline | 50 frames over 5 seconds |
 | Output | Reusable HDF5 chunks and `frames_manifest.json` under `generation/frames/` |
 
-The parent workflow serves this ordinary
+Remote playback serves this ordinary
 [HDF5 frame set](../../../../../docs/shared/frame_reference.md#hdf5-frame-layout) without
 regenerating it.
 
-The child YAML omits `data` because local HDF5 generation under `frames/` is
+The [scenario.yaml](scenario.yaml) omits `data` because local HDF5 generation under `frames/` is
 the default file-output workflow.
 
 ## Running
 
-From the repository root:
+Run commands from the repository root.
+
+Generate the frames:
 
 ```bash
 orchav-generator scenarios/visualizer/data_modes/remote_hdf5/generation
-python -m generator.io.grpc.file_server \
-    --frames-dir scenarios/visualizer/data_modes/remote_hdf5/generation --port 50052
 ```
 
-Then open the parent remote client from the Visualizer machine:
-
-```bash
-orchav-visualizer --scenario scenarios/visualizer/data_modes/remote_hdf5
-```
-
-The Generator owns `generation/frames/`. The parent scenario remains a
-read-only network client and does not replace those files.
+The recording is now ready in `frames/`. Follow the
+[remote playback steps](../README.md#running) to start the server and connect
+the Visualizer.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../../README.md) |
-> [Visualizer](../../../README.md) | [Data Modes](../../README.md) |
-> [Remote HDF5 Playback](../README.md) | Current: **Frame Generation**
+Up: [Visualizer](../../../README.md) ·
+[Data Modes](../../README.md) ·
+[Remote HDF5 Playback](../README.md)

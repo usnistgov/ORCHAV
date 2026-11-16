@@ -1,0 +1,357 @@
+{
+  "schema": "orchav.metric-default-authoring-bindings.v1",
+  "source_revision": "e37043beeb97d9635f26e5e6ca82a168bfa3ba1a",
+  "scope": "Equivalent metric-default spellings with exact authored-byte reconstruction. Acquisition, image, execution, and scientific-result receipts remain unchanged.",
+  "scenarios": {
+    "examples/native_rcs/scenario.yaml": {
+      "previous_authored_sha256": "5fc907920c7d9799322cb00f42160062b12936853189c516bb136a31d6d4a172",
+      "current_authored_sha256": "d8284fb341256c9d55920464287df11be77251a1f200162d84ddc5ea35e4dde6",
+      "current_block": "  carrier_frequency_hz: 3500000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 3500000000.0\n",
+      "resolved_document_sha256": "dd5c31813287237fe02c5e88b411b58e1597421e56fe0c1d1637ea95a5bdc726"
+    },
+    "examples/visualizer/pygfx_pbr_reference/scenario.yaml": {
+      "previous_authored_sha256": "3752f574ba2c5d3fd36cff5176b057b0d77fcc824eadfc575de2a68a1ecde6dc",
+      "current_authored_sha256": "6dd0125e5402b044246fb110fe0dbf2544657f03b1a1b4ef0fbed9c3efac0609",
+      "current_block": "  export_path_metrics: false\ntimeline:\n",
+      "previous_block": "timeline:\n",
+      "resolved_document_sha256": "c628354aa99e8fd1de552cc3578670cffa4894da2197e776b0f3932dec989e31"
+    },
+    "examples/visualizer_experiments/angular_corridor/scenario.yaml": {
+      "previous_authored_sha256": "8ccea48b72365a91d70d51dc5fcdf1e093645d23412c7586302210be4aa4bf3f",
+      "current_authored_sha256": "e1f3cacab5148c22481569d22fe829ff338ea5e720c186e18d635c5ac8ab0a41",
+      "current_block": "  carrier_frequency_hz: 3500000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 3500000000.0\n",
+      "resolved_document_sha256": "c78835c6f008f054227453fabdd0a12107a8d78b83d9934f283f25356a942d36"
+    },
+    "examples/visualizer_experiments/arrival_courtyard/scenario.yaml": {
+      "previous_authored_sha256": "40c941ebca53b8610029ef9e6c574ae288b2e9e5d5b6110ce82d3f49bfbae2f6",
+      "current_authored_sha256": "7f02b4aa38274e1725cbc8b70b042aacea1c649f5be2b0f938ffb3d4685d5224",
+      "current_block": "  carrier_frequency_hz: 3500000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 3500000000.0\n",
+      "resolved_document_sha256": "aba2dba4bebd33fb502082388775652f09e8e7ae4100295ff524853db1db8f0c"
+    },
+    "examples/visualizer_experiments/bistatic_range_locus/scenario.yaml": {
+      "previous_authored_sha256": "c639f30e93aa1fb7d408e366f71527e826a266396d98540015069853cec82e18",
+      "current_authored_sha256": "1ecba9d14b77598d5d56d7c122dd41f66b51f56a1b70827969175d750d487991",
+      "current_block": "  carrier_frequency_hz: 3500000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 3500000000.0\n",
+      "resolved_document_sha256": "ce68224cccfc274d64848a6ea4ffabe68ff9c72423f88e01ed3ea92d70d86e4b"
+    },
+    "examples/visualizer_experiments/monostatic_range_locus/scenario.yaml": {
+      "previous_authored_sha256": "1e94bb02537595d9b2af6aeb45ee5d6a1e0ab52a87f766c68d58fb725d2ba6ed",
+      "current_authored_sha256": "3c609d16b26d19144604f184551909db7c558badeac0d24e20655afc4dc043d8",
+      "current_block": "  carrier_frequency_hz: 3500000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 3500000000.0\n",
+      "resolved_document_sha256": "44956e3b8b537945591223658a317cc770ee168768ad6ae16a7d9adf926028c7"
+    },
+    "scenarios/generator/building_appearance/scenario.yaml": {
+      "previous_authored_sha256": "13b539bc79b91e691338f4884f0770049d7f646042c4db32d2c8e8a9b8f0f0b8",
+      "current_authored_sha256": "60c027a77f0022e879008c708b31eec5a48f6fcc991af5d71fda5f86c0197647",
+      "current_block": "  export_path_metrics: false\n  quality:\n",
+      "previous_block": "  quality:\n",
+      "resolved_document_sha256": "8e87ed887b744f7d30decefeac01cad7fb8bcef722d41a43b571570d2f796044"
+    },
+    "scenarios/generator/building_appearance/surfaces/scenario.yaml": {
+      "previous_authored_sha256": "5a66114cbc274896d7ae130bac409c9f6859246750b58cb822ae8e80daf60abc",
+      "current_authored_sha256": "b48117c6c2f2f7fecb2154caa05f6478c82bebf2267bcef1be6d412674b26f16",
+      "current_block": "  export_path_metrics: false\n  quality:\n",
+      "previous_block": "  quality:\n",
+      "resolved_document_sha256": "772610e07a0aa1bb8681a457dde44327805d201f9f42ef63a3cbc4378b77630c"
+    },
+    "scenarios/generator/coverage/multi_tx/scenario.yaml": {
+      "previous_authored_sha256": "113aff22b403bd5efdce8bb46c5fa95193aa6ba9bfa128aefa3f42e29ec82371",
+      "current_authored_sha256": "63a8f96c00555bbf74b6d9167368af8eb279fdbdb989e92e3a0fed2d46121377",
+      "current_block": "raytracing:\n  export_path_metrics: false\n\ntimeline:\n",
+      "previous_block": "timeline:\n",
+      "resolved_document_sha256": "d26fee451461d39651c0a07a35c25e5496e9e96b06eb8f6d20f33ef5eca2e412"
+    },
+    "scenarios/generator/coverage/paris_volume/scenario.yaml": {
+      "previous_authored_sha256": "be25c7d6bab9fb65ad11a1aa2989d668bb163e6803e41cc8b279b9c03ff6bba2",
+      "current_authored_sha256": "db5d9b7b2b6c36e217eaf3a07151db6bc38712ac0a2ee1ee819632e3ad22fb31",
+      "current_block": "  export_path_metrics: false\n  carrier_frequency_hz: 4.9e9\n",
+      "previous_block": "  carrier_frequency_hz: 4.9e9\n",
+      "resolved_document_sha256": "b49267ff41d96f860da36a60d117692b04b8dfcf769afab26f0cfce103c42714"
+    },
+    "scenarios/generator/coverage/single_tx/scenario.yaml": {
+      "previous_authored_sha256": "673f937732d3dc192d820cdef79be1a92e60162bf61f02f20f764fcd0f8130fe",
+      "current_authored_sha256": "684a584b625dfe0c6559eddc42f041a159e9575abe935e871b6396a05b185ed7",
+      "current_block": "raytracing:\n  export_path_metrics: false\n\ntimeline:\n",
+      "previous_block": "timeline:\n",
+      "resolved_document_sha256": "6e61ae4dc5e26684806f0d535bd928648433210805d9c3621ec54930447ba46d"
+    },
+    "scenarios/generator/mobility_and_orientation/actor_mobility/scenario.yaml": {
+      "previous_authored_sha256": "0edf861d4d9755935b2c73b10fcba7d75a4351323f58d197305e27c0b9a5d50a",
+      "current_authored_sha256": "7e8f8b67c2b9e2aacf77cdd01a41d2a8ce50d13a62ad21092670ecc1a2092900",
+      "current_block": "  export_path_metrics: false\n  quality:\n",
+      "previous_block": "  quality:\n",
+      "resolved_document_sha256": "c928ea0c8e4d262f4a4e341a33d03ab7e76aa8db59b1ea14100e4030b567f730"
+    },
+    "scenarios/generator/mobility_and_orientation/actor_orientation/scenario.yaml": {
+      "previous_authored_sha256": "decc84a074071fabd046e96dad61b24ac73ddc3addea23ed6df455c27c7c4124",
+      "current_authored_sha256": "be687926cbac397a4bc77681aea50a4cdd059823fbcc2c90a2f59023dc29c820",
+      "current_block": "  export_path_metrics: false\n  quality:\n",
+      "previous_block": "  quality:\n",
+      "resolved_document_sha256": "e4cd5184b30464a7611acc5e7babb84513f610211d40992efd137ff127c009cb"
+    },
+    "scenarios/generator/paris_opera_osm/scenario.yaml": {
+      "previous_authored_sha256": "96c804686285355a4120428ef83e07753210c0fde0272d4c512bd0e58a9b38ca",
+      "current_authored_sha256": "bbed8fce34bcb56f931cfbc3ef5e14c79f58449e073751da6c650877f140c3f6",
+      "current_block": "  carrier_frequency_hz: 3.5e9\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 3.5e9\n",
+      "resolved_document_sha256": "60c979c2b434932a83cbac336aaecefcb88bf8cecd0ca9668754ca106eed5dd4"
+    },
+    "scenarios/generator/propagation_and_materials/refraction_and_diffraction/scenario.yaml": {
+      "previous_authored_sha256": "924aa93bc6b10737390b17c285569bcea5a12b2f7f1e0910f151063821eda4f2",
+      "current_authored_sha256": "aadb60462580cee72360cbad5b77970e375663dda7ff6f35ac74e128930310c8",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "1e48eddc51683dd5b608b0d65c7fc4db0df754d79dda47cdc2c9d451b1daf05a"
+    },
+    "scenarios/generator/propagation_and_materials/scene_diffuse_scattering/explicit_concrete/scenario.yaml": {
+      "previous_authored_sha256": "324a96bc80f1292eb5cfd703ac1dd686d4c2c8a79676229522f1e5ba7096f362",
+      "current_authored_sha256": "064a18618ac38685b6690bbf490087745018d0ddbd46afbe8149ab43befc92a8",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "7737f645f0141ee224d96937adc81f9eb071035fc2e725ac54cebe70b8f2d011"
+    },
+    "scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset/scenario.yaml": {
+      "previous_authored_sha256": "c4f013e704d50abe9d4649f8b49403cdafce72bff88dfddef4cbf7efe8b20be3",
+      "current_authored_sha256": "1c1db9659c5e6c5dc7d2fa2e58fbd8e4d08e34d5869c4d48c0c738b7b60f695d",
+      "current_block": "  scene_materials:\n",
+      "previous_block": "  export_path_metrics: true\n  scene_materials:\n",
+      "resolved_document_sha256": "a29f856ad59eebeaa7862001dc92aea6fff86d93326897a0a184efed5866f13b"
+    },
+    "scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset_concrete_override/scenario.yaml": {
+      "previous_authored_sha256": "fdcdfea47905069d5c40631658dde45f064df49f470cd3538cde0a7b7f4bb02c",
+      "current_authored_sha256": "de738568aa8f7682e4c95dce00e7ca61c9acad14babcd8c8177b787d2d1206a3",
+      "current_block": "  scene_materials:\n",
+      "previous_block": "  export_path_metrics: true\n  scene_materials:\n",
+      "resolved_document_sha256": "b718ba08935f0f67908c75c012fdaf30990c6c5538982c2bf4fa8e87affc2ba8"
+    },
+    "scenarios/generator/propagation_and_materials/scene_diffuse_scattering/scenario.yaml": {
+      "previous_authored_sha256": "cc3b43fca33e1dc64576f71aa150c726c21dd5e33677e59292bbeb44c73578af",
+      "current_authored_sha256": "7fba29d9f6eace880de5d8813014da4f4b937d92e7bf59067d2ff08193cf2e48",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "61835364df0462d316f9c0cfeb7d411276870c9a3a61127a2dbd1a4f5692ca12"
+    },
+    "scenarios/generator/propagation_and_materials/specular_reflection/scenario.yaml": {
+      "previous_authored_sha256": "d9bf0c97892e555c53f5f0036ac739635a012f27a3472625e6e9a442709e56f4",
+      "current_authored_sha256": "9a79a7a24fea981e67f23777a691df16911467aac933939b9361da7f39e3c56f",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "f6a9f48e80554970a070f7cad3362ee83072d3d082748056176c1daf09016355"
+    },
+    "scenarios/generator/targets/mesh_targets/scenario.yaml": {
+      "previous_authored_sha256": "b8c7112490b5e68fdc26a1e8ecc082f0a43d7920ec3a6211aa1a0dd30eaf94b1",
+      "current_authored_sha256": "178d4dc259c0f60597922f3a09a5bd9707d31d30d9dd3af77386f3bb02d15bfb",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "4cc9668ad5b12746e9ffbc8f6e0b88604af9be72d150b568eb763d849964bc76"
+    },
+    "scenarios/generator/targets/target_diffuse_scattering/scenario.yaml": {
+      "previous_authored_sha256": "ef2e5111dcc52d1e8f9434d1d03c1461d2df56d7f3325439bc80b2e1e65657d0",
+      "current_authored_sha256": "6e02ceba9db2f4cd41c7aaee3585ae7ba435bcafbbb91a45cd21b9fde1aa7367",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "2fc4a8d3462372334e9105d95adb4acec39752fdda7eb55f208ef48429f7c391"
+    },
+    "scenarios/getting_started/hello_world/scenario.yaml": {
+      "previous_authored_sha256": "ed3e6f3cbe1db3e4acd6075513dabf73c1f1bba330570d3dfc05b14cae9e7df3",
+      "current_authored_sha256": "c8d561a762dbddeb1dac1ae48b94140fe55a5ce3bc39a456875214cf27e963fd",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "900cca1d3df84d185242f68420e5c0bc515fe00fb9726d986eda81c1b80d6f02"
+    },
+    "scenarios/getting_started/hello_world_scripted/scenario.yaml": {
+      "previous_authored_sha256": "c56170733448c536cea4f2b394b1215240dd142c5de5b1ce2d7c3336054d9480",
+      "current_authored_sha256": "85a6f2a7d7aca9f2b5d4c9d503d0dcb594b4ec9fdd497b8f1112d154ece361da",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "806e956d8ac426da638b1b5e681b312dd780df172e6872cb95e01b5130009075"
+    },
+    "scenarios/sensing/applications/drone_tracking/munich/scenario.yaml": {
+      "previous_authored_sha256": "95a96043b510b36e772f08d1f155c0948c72b51b1a9cdf5da98510d5bb11aad7",
+      "current_authored_sha256": "fbbf7aa5caa1b4935d08aeecd22940c37f66c37c82ab01705f95dc7ca2f8b965",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "874c1c85a38c1a6d40123e4ef0e0fc281e20cbce06e6e4416196246b83e32b88"
+    },
+    "scenarios/sensing/applications/drone_tracking/munich/south/scenario.yaml": {
+      "previous_authored_sha256": "dadedd9a715b332c4ee4880bcf142bf9d4b6da1614c430209bd8afbefa5a5511",
+      "current_authored_sha256": "182414744996e8c43a1284d10eeaa6976b3db35516310a79150fbadd17aafb59",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "649251075756baae0ef345e9c93fafe16066ef8a9e626694400d51668e367a0b"
+    },
+    "scenarios/sensing/applications/drone_tracking/munich/two_drones/scenario.yaml": {
+      "previous_authored_sha256": "90121345704591a627ad2e7461cfef73cc4349064f3fdac3a06cb75737705583",
+      "current_authored_sha256": "0c6d63dd11167151d2f7d611c1eae4182bfd3bc1493dbef9f51ead6973eb126c",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "13e4c21dbf0a1699b85655a640ee2aa5ea70c0e3050d9d762f7de35e104f74bc"
+    },
+    "scenarios/sensing/applications/drone_tracking/munich/two_drones/south/scenario.yaml": {
+      "previous_authored_sha256": "b2bb01eb53b28ac47f8f4bddfe75cc231f026ec5e8f1213f878b023a073f9bbc",
+      "current_authored_sha256": "6b904992fe68d2740dd37529f3085413158b8c4079460300ceba1d819b68b8b1",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "33170428160e186154f1d6b2e336729d03726774db479fcf19ce1e2e8fd5f7e6"
+    },
+    "scenarios/sensing/applications/wall_detection_volume/scenario.yaml": {
+      "previous_authored_sha256": "411e60b2dddde255dece9c2af196127bf88adc69dac5d18c6e4c0013cc5f5c39",
+      "current_authored_sha256": "9e9bc4538db338fb84c057cad83afb92d23efa21306fbc908e66810b5153342a",
+      "current_block": "  carrier_frequency_hz: 28.0e9\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28.0e9\n",
+      "resolved_document_sha256": "630748683de53eaa6bcacd3b998278bc83af6d20e02a9b717cc50e962f13c5a5"
+    },
+    "scenarios/sensing/cube_radar/moving/scenario.yaml": {
+      "previous_authored_sha256": "523463b867f5c9ae245dc4dcd00b46eebce161a5812677e17ccfbd0f7dc5f763",
+      "current_authored_sha256": "815f716e3b62b9d6ba10d8b4e0bd2fd21d18ea65c5c10fedfc87f15ae0f1f7bf",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "1d6eb2ad57ccd7284c8de7b3e2eedf2bb431814cf565ad1377c19cdaf23ee6cf"
+    },
+    "scenarios/sensing/cube_radar/moving_tracking_3d/scenario.yaml": {
+      "previous_authored_sha256": "60ac490536360cdb7d73c5c0686313b514e97274ca1fa76a9ada622a609b6604",
+      "current_authored_sha256": "9cbbbd1523daab6b2a32d162995d268e54598f3b3e0ddf1187b1f92977fd2ccc",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "64c5a67a620076e0637e3e1fe23c165aa10977c0e5ec6a9ad95fd674b23fa891"
+    },
+    "scenarios/sensing/cube_radar/oscillating_coherent/scenario.yaml": {
+      "previous_authored_sha256": "b1483fd773de7f0fe959ed152b5ff0f9da82d30af496abbb408a3fbff222ada7",
+      "current_authored_sha256": "186fad0f7aab7a7687429bf3162ecc09b5fa3639b1cc94277c7e9eba5540d9b6",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "07ddad807e41b377234e0b19405a8b9450a996a8f5e193c620121e1c33eeff79"
+    },
+    "scenarios/sensing/cube_radar/oscillating_sequential/scenario.yaml": {
+      "previous_authored_sha256": "1d30a03be6df7682b18c2696c5b4220d1080daf931dbd8d9ddbe188c17b6ed28",
+      "current_authored_sha256": "59f3ad733a7fef336ab4c843b8474f65272ba8eefecb6ff6fbd3ef6470c9a761",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "de6643bbf4d3697337ab0dd5302b5cb61f04ba63cd723badd9a82e9862b774f3"
+    },
+    "scenarios/sensing/cube_radar/stationary/scenario.yaml": {
+      "previous_authored_sha256": "9d693f6d7774fa7e28ac044a7d8c394aca0a9ea76e1a6c01996df860867940b6",
+      "current_authored_sha256": "560a30769a74d3a730ab9d3fdadaa40199587d20beb919669a5281468685cea4",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "db680944e5b32510e07a46cbd225362e4b18fd8ee5c02e7583184fa4aac1b848"
+    },
+    "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml": {
+      "previous_authored_sha256": "a4e7d3d00040db952820f84179f4f296b9d6ca840ff65e9d8a4b388a0bd9e134",
+      "current_authored_sha256": "bca8ab8e3693c6f513b95e4541d1996fca43185d7229ae6a4dc2d86867425d8d",
+      "current_block": "  carrier_frequency_hz: 3500000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 3500000000.0\n",
+      "resolved_document_sha256": "3c009933014143ee46f285dbba454350e400a6bfd34c4032c46e483924bde17c"
+    },
+    "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml": {
+      "previous_authored_sha256": "1d4f83672e3e8d645eff6babf14767facb17fdba1e05b13491af51c6d3e23c61",
+      "current_authored_sha256": "1adbd9a5d349228604a705a9634ea78927d9d4ba481a2197c6461fb1c562568e",
+      "current_block": "  carrier_frequency_hz: 3500000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 3500000000.0\n",
+      "resolved_document_sha256": "e08570c5047a05eafdc6c4b60f235f3e0864a957d6f3c10acdd0097cbc3aeb0f"
+    },
+    "scenarios/sensing/foundations/static_and_moving_cubes/scenario.yaml": {
+      "previous_authored_sha256": "e30eafa3159b20e4a4290fa03f7cd1e7a209d41b444ba366f025867330fa4b2a",
+      "current_authored_sha256": "155b4fdd2aa2544ede478c163aaaafcf66eb1ca3e9313f309744282586d081fc",
+      "current_block": "  carrier_frequency_hz: 28.0e9\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28.0e9\n",
+      "resolved_document_sha256": "b42124e4e2347fabc54f33c722081ab555fd33ff3d6b1696de5cd1ea78e6fbb2"
+    },
+    "scenarios/sensing/targets_motion/marching_person/coherent/scenario.yaml": {
+      "previous_authored_sha256": "2be79e92ef6c9da5e2dd8e5bb81f9daae416811358ab9b622a3cea1a53edd5b8",
+      "current_authored_sha256": "00f717794c5f63b28f62a88bfeec4900d7d4678017a96bb5b428b921d871a188",
+      "current_block": "  carrier_frequency_hz: 28000000000.0\n",
+      "previous_block": "  export_path_metrics: true\n  carrier_frequency_hz: 28000000000.0\n",
+      "resolved_document_sha256": "e819d32ffc6b62540a332b847f65c5fd685b33175d8c17262e360d7b4672b89d"
+    },
+    "scenarios/visualizer/beamforming/circular_rx/scenario.yaml": {
+      "previous_authored_sha256": "f220c9dbbf74d5c87e3b49358f038f67cf228b70286177c60bcd359512dddf78",
+      "current_authored_sha256": "e09e5045e7119734786cb542526ec20b7b760640ce0046c350e1b88bbf1ad7b7",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "a5a0576b3f8ccdb1423cd3460e903f5b05b4fe9f2aff160bd6938c40006c4e52"
+    },
+    "scenarios/visualizer/beamforming/multi_device/scenario.yaml": {
+      "previous_authored_sha256": "603e5caa81946685ff8234ed278623f389f19a83f353505144302f8edabaad0c",
+      "current_authored_sha256": "8f405e7c63db29ed02f6d3f80f664ab07aef79caba79fe01234ef01b903fa9e7",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "6ef0834e4f5886bd81ccea5456320c202997dbc34883c377ef38230b73d11536"
+    },
+    "scenarios/visualizer/data_modes/hdf5_files/scenario.yaml": {
+      "previous_authored_sha256": "2ed50b255c0bde6c4a2ac5868170541cf67f97c9bbd56d2b6a70d5399f4c88e8",
+      "current_authored_sha256": "05e280663cb3be19d98cc07c049d8ee93ce0faa6332ee20537bed70766acb588",
+      "current_block": "  enabled: true\n\n",
+      "previous_block": "  enabled: true\n  export_path_metrics: true\n\n",
+      "resolved_document_sha256": "9d388a7fb9cf18afcac935c1d89fecc7872187a13dbae8e87665b33c3d33f3a1"
+    },
+    "scenarios/visualizer/data_modes/live_grpc/scenario.yaml": {
+      "previous_authored_sha256": "1fdab4002f09e4581787fe02f7501861faa9b08ff5087b6ce9f7dc5f4703cdde",
+      "current_authored_sha256": "1231ce20f9aaa8df7f66226d377610556b3d07549736832f6b2bfd8861789a82",
+      "current_block": "  enabled: true\n\n",
+      "previous_block": "  enabled: true\n  export_path_metrics: true\n\n",
+      "resolved_document_sha256": "26d3b9bd51046b33b823274b3c2ab7c1b1a3df4af3e0d1152e457f7a957f0866"
+    },
+    "scenarios/visualizer/data_modes/remote_hdf5/generation/scenario.yaml": {
+      "previous_authored_sha256": "cac7a6a5940301764038a5d1cb0d4a3d55e681f0a0485cdfd500397e5b29b35e",
+      "current_authored_sha256": "7c9d619872b31faa92b76e5c7dff5ba7f02dd055766a783cbe60c11cfa63ac08",
+      "current_block": "  enabled: true\n\n",
+      "previous_block": "  enabled: true\n  export_path_metrics: true\n\n",
+      "resolved_document_sha256": "9d388a7fb9cf18afcac935c1d89fecc7872187a13dbae8e87665b33c3d33f3a1"
+    },
+    "scenarios/visualizer/data_modes/remote_hdf5/scenario.yaml": {
+      "previous_authored_sha256": "c13b1c05f064f559c02aae46c8dccd4824271d09197d65838700372cd0003340",
+      "current_authored_sha256": "70fd97a8076b641d5ef990854990d8890ceea368a89869b88c7764b877128952",
+      "current_block": "  enabled: true\n\n",
+      "previous_block": "  enabled: true\n  export_path_metrics: true\n\n",
+      "resolved_document_sha256": "0dd36a350f208496691601818e517c112bf8753d1924b8d84a6bc719d29ad5dc"
+    },
+    "scenarios/visualizer/metrics_evolution/scenario.yaml": {
+      "previous_authored_sha256": "7bba2760a13a39fcf30167568e592987bc02a016426e1ce22de081f6e0531f13",
+      "current_authored_sha256": "32a31fe911b209908619c3979f229494aad784473171514e032671c59ff1eeae",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "f10f7b15fe9e74b614445edb7468b130fc767263691a89d31f549c13528a8d8b"
+    },
+    "scenarios/visualizer/mpc_inspection/scenario.yaml": {
+      "previous_authored_sha256": "5d058281af7ad9d88b6a018a1db32ba3900afb8987173e68710d816fb01bab07",
+      "current_authored_sha256": "968f88f35c84d0290052e2831ab09008046f740b22325eaf1a11cae477c007a4",
+      "current_block": "  scene_materials:\n",
+      "previous_block": "  export_path_metrics: true\n  scene_materials:\n",
+      "resolved_document_sha256": "51c760194314a523bb425d31aadbd5a65b1968d37580d7608097dff891ebb8f1"
+    },
+    "scenarios/visualizer/multi_device_trajectory/scenario.yaml": {
+      "previous_authored_sha256": "e2f831d90eb1377e0c369c55cbeef079d6ff24725c2f462f825f5426e4031d3c",
+      "current_authored_sha256": "26ee229c4af0a3554f85fab53d25bbaa1590707c68d9534a3640a12408794ed6",
+      "current_block": "  enabled: true\n\n",
+      "previous_block": "  enabled: true\n  export_path_metrics: true\n\n",
+      "resolved_document_sha256": "c91078b25f2dffe777797c82692080dac58febc44d3218ef280e1018036c203b"
+    },
+    "scenarios/visualizer/notebook_mode/scenario.yaml": {
+      "previous_authored_sha256": "e9a47ce5010b805621c7a00c70e84d11046491f0aa12d3254b2d59e97c462f5d",
+      "current_authored_sha256": "78866dc75034d4759567cf2a9db4082543818f474e93603507c2dc1215f42e0f",
+      "current_block": "  enabled: true\n\n",
+      "previous_block": "  enabled: true\n  export_path_metrics: true\n\n",
+      "resolved_document_sha256": "765a21bab50ad7fcb2931248a4e748bcfc8ec433e5262f76ebcc6e44ea3f4599"
+    },
+    "scenarios/visualizer/statistics/scenario.yaml": {
+      "previous_authored_sha256": "9e37b6157fa97b256ebfdc5b416cb409e7d957e939d64fb2322f29d545c226b2",
+      "current_authored_sha256": "3a87911dd49df7aa0c0314f35baee6bb9fc8ffea5a1589ac9cb8adf3224a1ae3",
+      "current_block": "  quality:\n",
+      "previous_block": "  export_path_metrics: true\n  quality:\n",
+      "resolved_document_sha256": "f2bffac096aa0f6da19b68ff89965fbcee674ab74072f000807aa553b9d5aac2"
+    },
+    "scenarios/visualizer/synthetic_mpc_benchmark/scenario.yaml": {
+      "previous_authored_sha256": "b02d5c1ec810bb7762d9d080ebd0a074d808a53854593eaae8296e20cf6fbaf4",
+      "current_authored_sha256": "b36262b868a09e2e53dfcde0aa451484a3942b995cca45c40e884408463a3fd4",
+      "current_block": "raytracing:\n  export_path_metrics: false\n\ntimeline:\n",
+      "previous_block": "timeline:\n",
+      "resolved_document_sha256": "6c564a7ae8bf866c98c4576198a6b8c000fba7be6f0eeca34c10beca0c5d2510"
+    }
+  }
+}

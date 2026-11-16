@@ -8,6 +8,7 @@ fallback and are projected in memory.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +20,7 @@ from shared.frames import (
     FrameProjection,
     FrameReadRequest,
     PathMetric,
+    ProjectedMPCFrame,
     StandardMPCFrame,
     project_standard_mpc_frame,
 )
@@ -115,6 +117,8 @@ def visual_frame_read_request(
 def _sensing_dashboard_visible(viz: Any) -> bool:
     """Return whether the optional sensing analysis window is visible."""
     panel_manager = getattr(viz, "panel_manager", None)
+    if panel_manager is None:
+        panel_manager = getattr(viz, "ui_manager", None)
     panels = getattr(panel_manager, "panels", None)
     panel = panels.get("sensing") if isinstance(panels, dict) else None
     if panel is None:
@@ -143,9 +147,11 @@ def visualizer_needs_sensing(viz: Any) -> bool:
 def visual_frame_read_request_for_visualizer(viz: Any) -> FrameReadRequest:
     """Build the current request, keeping large sensing arrays demand-driven."""
     if _sensing_dashboard_visible(viz):
-        # The dashboard supports RP/RD, CFAR, angle cubes, CIR, micro-Doppler,
-        # and history views, so correctness requires all stored products.
-        return visual_frame_read_request(include_sensing=True)
+        # The dashboard's background reader owns plot-specific products. Scene
+        # playback needs only compact detection metadata, even while it is open.
+        return visual_frame_read_request(
+            include_sensing=True, sensing_products=frozenset({"detections"})
+        )
     if visualizer_needs_sensing(viz):
         # 3D overlays consume JSON detection/track metadata. Naming this
         # product keeps numeric RP/RD/CIR datasets cold; metadata is always
@@ -183,6 +189,7 @@ def projection_to_visual_frame(
     projection: FrameProjection,
     *,
     points_dtype: np.dtype = np.float32,
+    provider: DataProvider | None = None,
 ) -> dict[str, Any]:
     """Build the compact dictionary seam consumed by the existing pipeline."""
     frame = projection.frame
@@ -194,6 +201,17 @@ def projection_to_visual_frame(
         if frame.target_positions_m is not None
         else np.empty((0, 3), dtype=np.float64)
     )
+    targets_metadata = [dict(item) for item in frame.targets_metadata or ()]
+    solve_targets = _native_target_solve_poses(frame, provider)
+    if solve_targets:
+        target_positions = target_positions.copy()
+        for index, metadata in enumerate(targets_metadata):
+            solved = solve_targets.get(metadata.get("name"))
+            if solved is None or solved.get("representation") != metadata.get("representation"):
+                continue
+            targets_metadata[index] = {**metadata, **solved}
+            if index < len(target_positions):
+                target_positions[index] = solved["current_position"]
 
     source = dict(frame.provenance or {})
     source.setdefault("provider", "frame_projection")
@@ -203,6 +221,7 @@ def projection_to_visual_frame(
 
     payload: dict[str, Any] = {
         "canonical_data": canonical,
+        "timestamp_s": frame.timestamp_s,
         "tx_rx_pairs": np.asarray(frame.tx_rx_pairs),
         "tx_positions": tx_positions,
         "rx_positions": rx_positions,
@@ -213,7 +232,7 @@ def projection_to_visual_frame(
         "num_tx": len(tx_positions),
         "num_rx": len(rx_positions),
         "target_pos": target_positions,
-        "targets_metadata": [dict(item) for item in frame.targets_metadata or ()],
+        "targets_metadata": targets_metadata,
         "num_targets": len(target_positions),
         "_source": source,
         # Canonicalization above copied every heavy geometry/metric array needed
@@ -228,6 +247,57 @@ def projection_to_visual_frame(
     if frame.recomputed_from_stored_positions:
         payload["recomputed_from_stored_positions"] = True
     return payload
+
+
+def _native_target_solve_poses(
+    frame: ProjectedMPCFrame,
+    provider: DataProvider | None,
+) -> dict[str, Mapping[str, Any]]:
+    """Keep native proxies and points at the pose used for a reused RT solve.
+
+    Older recordings retain output-time motion even inside an analytical CPI.
+    Completed results embed the solve pose; lightweight intermediate frames
+    reference the source frame instead. Read only its small target/provenance
+    columns, without loading paths or sensing products. This is a display
+    projection: recorded trajectory and scientific observations stay intact.
+    """
+    source = frame.provenance or {}
+    source_step = source.get("source_rt_frame_idx")
+    if (
+        isinstance(source_step, bool)
+        or not isinstance(source_step, int)
+        or not 0 <= source_step < frame.frame_index
+    ):
+        return {}
+    names = {
+        item["name"]
+        for item in frame.targets_metadata or ()
+        if item.get("representation") in {"constant_rcs", "tr38901"}
+    }
+    if not names:
+        return {}
+    native = source.get("sionna_sensing") or {}
+    solved = {
+        item["name"]: item
+        for item in native.get("target_state_at_solve", ())
+        if isinstance(item, Mapping) and item.get("name") in names
+    }
+    if names - solved.keys() and provider is not None:
+        request = FrameReadRequest(
+            components=frozenset({FrameComponent.TARGETS, FrameComponent.PROVENANCE})
+        )
+        try:
+            reference = provider.load_frame_projection(source_step, request).frame
+        except (KeyError, FileNotFoundError, NotImplementedError):
+            # Partial recordings may omit the source. Keep the explicitly
+            # recorded pose rather than inventing a trajectory or CPI cadence.
+            return solved
+        if reference.frame_index != source_step:
+            raise ValueError("Native target pose source returned a different frame")
+        for item in reference.targets_metadata or ():
+            if item.get("name") in names:
+                solved.setdefault(item["name"], item)
+    return solved
 
 
 def standard_frame_to_visual_frame(
@@ -264,7 +334,7 @@ def try_load_packed_visual_frame(
         projection = provider.load_frame_projection(step, request)
     except NotImplementedError:
         return None
-    return projection_to_visual_frame(projection, points_dtype=points_dtype)
+    return projection_to_visual_frame(projection, points_dtype=points_dtype, provider=provider)
 
 
 def packed_payload_satisfies(

@@ -1,4 +1,4 @@
-"""Metrics-window service for per-frame ViewModel statistics."""
+"""Visibility-gated per-frame statistics for embedded and floating metrics."""
 
 from __future__ import annotations
 
@@ -7,16 +7,19 @@ from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any, Optional
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QStyle
+from PySide6.QtWidgets import QStyle, QWidget
 
 from shared.statistics import FrameStats
 
 from ..services.base import BaseService
 from ..state import DEFAULT_MPC_ALLOWED_ORDERS, DEFAULT_MPC_ALLOWED_TYPES
+from ..widgets.dashboard_host import dashboard_is_visible
 
 if TYPE_CHECKING:
     from ...visualizer import OrchavVisualizer
+    from ..metrics.viz_metrics import MetricsDashboard
     from ..metrics.viz_metrics import MetricsWindow as MetricsWindowType
+    from ..widgets.dashboard_host import DashboardHost
 
 logger = logging.getLogger("orchav.metrics")
 
@@ -42,13 +45,14 @@ def _load_metrics_window_class() -> Any:
 
 
 class MetricsService(BaseService):
-    """Service responsible for managing the metrics window and statistics updates."""
+    """Manage lazy metrics content and offer only frames that need calculation."""
 
     def __init__(self, visualizer: OrchavVisualizer):
         """Bind the service to the visualizer and defer metrics-window creation."""
         super().__init__()
         self.visualizer = visualizer
-        self.window: Optional["MetricsWindowType"] = None
+        self.window: MetricsWindowType | MetricsDashboard | None = None
+        self.host: DashboardHost | None = None
 
     @property
     def available(self) -> bool:
@@ -56,7 +60,12 @@ class MetricsService(BaseService):
         return bool(METRICS_WINDOW_AVAILABLE)
 
     def toggle_window(self) -> None:
-        """Open or close the metrics window."""
+        """Reveal embedded metrics, with a standalone fallback for other callers."""
+        manager = getattr(self.visualizer, "ui_manager", None)
+        panel = getattr(manager, "panels", {}).get("statistics")
+        if panel is not None:
+            panel.toggle_metrics()
+            return
         window_class = _load_metrics_window_class()
         if window_class is None:
             logger.warning("Metrics window not available - pyqtgraph may not be installed")
@@ -65,7 +74,7 @@ class MetricsService(BaseService):
         if self.window is None:
             self.window = window_class(
                 self.visualizer,
-                update_hz=8,
+                update_hz=0,
                 frame_stats_provider=self._compute_frame_stats,
             )
             self.window.destroyed.connect(self._on_window_closed)
@@ -85,6 +94,48 @@ class MetricsService(BaseService):
             self.window.close()
             self._on_window_closed()
             logger.info("Metrics window closed")
+
+    def attach_host(self, host: DashboardHost) -> None:
+        """Create metrics on the first expansion and retain them across placements."""
+        if not self.available:
+            return
+        self.host = host
+        self.ensure_live_figure_dashboard()
+        host.activated.connect(self.refresh_current)
+        host.set_dashboard(self.window)
+        self.refresh_current()
+
+    def ensure_live_figure_dashboard(self) -> MetricsDashboard | MetricsWindowType | None:
+        """Create one hidden metrics owner on demand for embedded live figures."""
+        if not self.available:
+            return None
+        if self.window is None:
+            from ..metrics.viz_metrics import MetricsDashboard
+
+            parent = self.visualizer if isinstance(self.visualizer, QWidget) else None
+            self.window = MetricsDashboard(parent, frame_stats_provider=self._compute_frame_stats)
+            self.window._hosted = True
+            self.window.hide()
+            self.visualizer.metrics_window = self.window
+            self.window.destroyed.connect(self._on_window_closed)
+            self.window.input_requested.connect(lambda: self.refresh_current(force=True))
+            self.window.refresh_live_figure_visibility()
+        return self.window
+
+    def refresh_current(self, *, force: bool = False) -> None:
+        """Use the already loaded frame; opening metrics never reruns the renderer."""
+        view_model = getattr(self.visualizer, "current_view_model", None)
+        if view_model is not None:
+            self.update_metrics(view_model, force=force)
+
+    def close(self) -> None:
+        """Release the panel's metrics and any floating shell on application shutdown."""
+        if self.host is not None:
+            self.host.dispose()
+            self.host = None
+        if self.window is not None:
+            self.window.close()
+        self._on_window_closed()
 
     def _force_pipeline_rerender(self) -> None:
         """Set force flag and run the pipeline in a single event-loop tick.
@@ -126,11 +177,16 @@ class MetricsService(BaseService):
         )
         self.window.setGeometry(geometry)
 
-    def update_metrics(self, view_model: Any) -> None:
+    def update_metrics(self, view_model: Any, *, force: bool = False) -> None:
         """Offer the latest ViewModel to the metrics window without blocking playback."""
         if self.window is None:
             return
-        if bool(getattr(self.window, "updates_paused", False)):
+        has_live_figures = getattr(self.window, "has_visible_live_figures", None)
+        if not dashboard_is_visible(self.window) and not (
+            callable(has_live_figures) and has_live_figures()
+        ):
+            return
+        if not force and bool(getattr(self.window, "updates_paused", False)):
             return
 
         try:

@@ -58,6 +58,7 @@ from .coverage_service import (
     DEFAULT_COVERAGE_ISOLINE_COUNT,
     DEFAULT_COVERAGE_OPACITY,
 )
+from .label_callout_service import active_callout_style
 from .object_identity import (
     ensure_node_entry_identity,
     ensure_scene_entry_identity,
@@ -146,6 +147,7 @@ class WorkspaceSnapshotSummary:
     created_at: datetime
     frame: int
     is_autosave: bool
+    scenario_config_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +166,21 @@ class WorkspaceSnapshot:
     def scenario_root(self) -> Path:
         """Return the canonical scenario root referenced by the snapshot."""
         return self.summary.scenario_root
+
+    @property
+    def scenario_config_path(self) -> Path:
+        """Return the exact YAML, including variants in the same directory."""
+        return self.summary.scenario_config_path or self.scenario_root / "scenario.yaml"
+
+    @property
+    def scenario_reference(self) -> Path:
+        """Keep legacy directory references usable while preserving new variants."""
+        return (
+            _normalize_path(
+                self.payload.get("scenario_config_path") or self.payload.get("scenario_path")
+            )
+            or self.scenario_root
+        )
 
     @property
     def scenario_name(self) -> str:
@@ -234,6 +251,22 @@ def normalize_scenario_root(value: object) -> Optional[Path]:
     return path
 
 
+def normalize_scenario_config(value: object) -> Optional[Path]:
+    """Canonicalize either spelling of a scenario to its exact YAML identity."""
+    path = _normalize_path(value)
+    if path is None:
+        return None
+    return path if path.suffix.lower() in {".yaml", ".yml"} else path / "scenario.yaml"
+
+
+def current_scenario_reference(viz: Any) -> Optional[Path]:
+    """Read the active YAML, with compatibility for directory-only callers."""
+    return _normalize_path(
+        getattr(viz, "current_scenario_config_path", None)
+        or getattr(viz, "current_scenario_path", None)
+    )
+
+
 def _snapshot_autosave_kind(path: Path, payload: dict[str, Any]) -> Optional[bool]:
     """Classify known snapshot kinds without guessing about unknown metadata."""
     kind = payload.get("snapshot_kind")
@@ -288,6 +321,11 @@ def read_workspace_snapshot(path: Path) -> Optional[WorkspaceSnapshot]:
     scenario_root = normalize_scenario_root(payload.get("scenario_path"))
     if scenario_root is None or not scenario_root.name:
         return None
+    scenario_config = normalize_scenario_config(
+        payload.get("scenario_config_path") or payload.get("scenario_path")
+    )
+    if scenario_config is None or scenario_config.parent != scenario_root:
+        return None
     raw_created_at = payload.get("created_at")
     try:
         created_at = datetime.fromisoformat(str(raw_created_at))
@@ -306,6 +344,7 @@ def read_workspace_snapshot(path: Path) -> Optional[WorkspaceSnapshot]:
             path=normalized_path,
             scenario_root=scenario_root,
             scenario_name=scenario_root.name,
+            scenario_config_path=scenario_config,
             created_at=created_at,
             frame=frame,
             is_autosave=is_autosave,
@@ -385,10 +424,12 @@ class SessionService:
         if scenario_root is None:
             raise ValueError("Load a scenario before saving a workspace snapshot")
 
+        scenario_reference = current_scenario_reference(self.viz)
+        scenario_config = normalize_scenario_config(scenario_reference)
         is_autosave = path is None and name is None
         if path is None:
             if is_autosave:
-                path = self._autosave_path(scenario_root)
+                path = self._autosave_path(scenario_config)
             else:
                 assert name is not None
                 if not name.endswith(".json"):
@@ -402,12 +443,17 @@ class SessionService:
             "created_at": datetime.now().isoformat(),
             "snapshot_kind": "autosave" if is_autosave else "manual",
             "scenario_path": str(scenario_root),
+            "scenario_config_path": str(scenario_config),
             "camera": self._get_camera_state(),
             "app_state": self._get_app_state(),
             "animation": self._get_animation_state(),
             "rendering": self._get_rendering_state(),
             "entry_state": self._get_entry_state_snapshot(),
         }
+
+        fusion = getattr(self.viz, "fusion_window", None)
+        if fusion is not None and not fusion.closed:
+            session_data["fusion_inspection"] = fusion.snapshot()
 
         # Write atomically so an interrupted application exit cannot leave a
         # truncated snapshot that looks loadable on the next launch.
@@ -436,7 +482,7 @@ class SessionService:
                     logger.debug("Could not remove temporary snapshot %s", temporary_path)
 
         if is_autosave:
-            self._prune_older_autosaves(scenario_root, keep_path=path)
+            self._prune_older_autosaves(scenario_config, keep_path=path)
 
         logger.info(f"Session saved to {path}")
         return path
@@ -516,17 +562,19 @@ class SessionService:
         # Validate the referenced domain before changing live-preview, scene,
         # application, or renderer state. A missing scenario is actionable to
         # callers and must not silently apply a snapshot to the wrong scene.
-        saved_scenario = normalize_scenario_root(session_data.get("scenario_path"))
+        saved_scenario = _normalize_path(
+            session_data.get("scenario_config_path") or session_data.get("scenario_path")
+        )
         if saved_scenario is None:
             logger.error("Workspace snapshot has no valid scenario path: %s", path)
             return False
-        scenario_yaml = saved_scenario / "scenario.yaml"
+        scenario_yaml = normalize_scenario_config(saved_scenario)
         if not scenario_yaml.is_file():
             raise FileNotFoundError(
                 f"Workspace snapshot references missing scenario: {scenario_yaml}"
             )
 
-        current_scenario = normalize_scenario_root(getattr(self.viz, "current_scenario_path", None))
+        current_scenario = current_scenario_reference(self.viz)
         scenario_differs = current_scenario is None or not self._paths_match(
             saved_scenario,
             current_scenario,
@@ -646,6 +694,13 @@ class SessionService:
             self._rollback_failed_restore(checkpoint, reapply_if_active=True)
             return False
 
+        fusion = session_data.get("fusion_inspection")
+        if isinstance(fusion, dict) and isinstance(fusion.get("path"), str):
+            self.viz._fusion_inspection_state = fusion
+            from ..sensing.fusion_window import open_fusion_window
+
+            open_fusion_window(self.viz, fusion["path"])
+
         logger.info("Workspace snapshot loaded successfully from %s", path)
         return True
 
@@ -747,7 +802,7 @@ class SessionService:
                 getattr(outcome, "message", None) or scenario_root,
             )
             return False, False
-        current_scenario = normalize_scenario_root(getattr(self.viz, "current_scenario_path", None))
+        current_scenario = current_scenario_reference(self.viz)
         if current_scenario is None or not self._paths_match(current_scenario, scenario_root):
             logger.error(
                 "Scenario open did not activate the workspace scenario: expected=%s actual=%s",
@@ -855,7 +910,7 @@ class SessionService:
             logger.warning("Workspace rollback skipped during application shutdown")
             return False
 
-        current_scenario = normalize_scenario_root(getattr(self.viz, "current_scenario_path", None))
+        current_scenario = current_scenario_reference(self.viz)
         prior_is_active = current_scenario is not None and self._paths_match(
             current_scenario,
             checkpoint.scenario_root,
@@ -946,6 +1001,9 @@ class SessionService:
 
     def _reset_transient_appearance_state(self) -> None:
         """Drop inspection-only selection, overlays, highlight, and PBR overrides."""
+        plan = getattr(getattr(self.viz, "scene_service", None), "plan_view", None)
+        if plan is not None:
+            plan.set_enabled(False)
         selected = getattr(self.viz, "selected_objects", None)
         if hasattr(selected, "clear"):
             selected.clear()
@@ -982,6 +1040,9 @@ class SessionService:
         panels = self.viz.ui_manager.panels
 
         self._sync_context_panel(panels, app_state)
+        camera = panels.get("camera")
+        if camera is not None:
+            camera.sync_from_state(app_state)
         self._sync_mpc_panel(panels, app_state)
         self._sync_nodes_panel(panels, app_state)
         self._sync_coverage_panel(panels, app_state)
@@ -1035,9 +1096,12 @@ class SessionService:
         # Paths-local visibility details. The MPC master lives in Context.
         visibility = state.mpc_visibility
         if "mpc_paths_cb" in w:
-            self._set_widget(w["mpc_paths_cb"], visibility.paths)
+            self._set_widget(w["mpc_paths_cb"], visibility.effective_paths)
         if "mpc_bounce_points_cb" in w:
-            self._set_widget(w["mpc_bounce_points_cb"], visibility.bounce_points)
+            self._set_widget(w["mpc_bounce_points_cb"], visibility.effective_bounce_points)
+        sync_visibility = getattr(mpc, "sync_visibility_from_state", None)
+        if callable(sync_visibility):
+            sync_visibility(state)
 
         # Top-K
         if "topk_render_cb" in w:
@@ -1046,22 +1110,9 @@ class SessionService:
             self._set_widget(w["topk_render_max_spin"], int(state.topk_render_max_paths))
             w["topk_render_max_spin"].setEnabled(bool(state.topk_render_enabled))
 
-        # Color mode radio buttons
-        color_map = {
-            "reflection_order": "reflection_order_rb",
-            "delay": "delay_rb",
-            "path_loss": "path_loss_rb",
-            "material": "material_rb",
-            "mpc_type": "mpc_type_rb",
-            "reconstruction_type": "reconstruction_type_rb",
-        }
-        rb_name = color_map.get(state.color_mode)
-        if rb_name and rb_name in w:
-            self._set_widget(w[rb_name], True)
-
-        # Distinct material colors
-        if "distinct_material_colors_cb" in w:
-            self._set_widget(w["distinct_material_colors_cb"], state.use_distinct_material_colors)
+        sync_coloring = getattr(mpc, "sync_coloring_from_state", None)
+        if callable(sync_coloring):
+            sync_coloring(state)
 
         # Empty allow-lists intentionally mean that no MPCs are visible.
         for order in MPC_ORDER_VALUES:
@@ -1105,16 +1156,6 @@ class SessionService:
             self._set_widget(w["show_aod_aperture_cb"], state.show_aod_aperture)
         if "aperture_radius_spin" in w:
             self._set_widget(w["aperture_radius_spin"], state.aperture_radius_m)
-        if "show_global_angular_reference_cb" in w:
-            self._set_widget(
-                w["show_global_angular_reference_cb"],
-                getattr(state, "show_global_angular_reference", False),
-            )
-        if "show_local_angular_reference_cb" in w:
-            self._set_widget(
-                w["show_local_angular_reference_cb"],
-                getattr(state, "show_local_angular_reference", False),
-            )
         if "mpc_interaction_markers_cb" in w:
             self._set_widget(
                 w["mpc_interaction_markers_cb"],
@@ -1141,6 +1182,10 @@ class SessionService:
                 self._set_widget(w["individual_nodes_rb"], True)
             else:
                 self._set_widget(w["per_node_type_rb"], True)
+
+        controls = w.get("label_style_controls")
+        if controls is not None:
+            controls.sync_from_state()
 
         # Labels
         if "labels_cb" in w:
@@ -1234,6 +1279,9 @@ class SessionService:
         rb_name = traj_color_map.get(state.trajectory_color_mode)
         if rb_name and rb_name in w:
             self._set_widget(w[rb_name], True)
+        refresh = getattr(nodes, "refresh_display_controls", None)
+        if callable(refresh):
+            refresh()
 
     def _sync_coverage_panel(self, panels: dict, state: object) -> None:
         """Sync Coverage panel widgets."""
@@ -1364,10 +1412,13 @@ class SessionService:
             sync_fn()
 
     def _sync_materials_panel(self, panels: dict, _state: object) -> None:
-        """Sync Materials panel RF X-Ray controls after workspace restore."""
+        """Mirror material display controls after all workspace appearance is restored."""
         materials_panel = panels.get("materials")
         if materials_panel is None:
             return
+        sync_appearance = getattr(materials_panel, "sync_procedural_controls", None)
+        if callable(sync_appearance):
+            sync_appearance()
         sync_fn = getattr(materials_panel, "_sync_rf_xray_controls", None)
         if callable(sync_fn):
             sync_fn()
@@ -1404,9 +1455,9 @@ class SessionService:
         return summaries
 
     def _paths_match(self, left: object, right: object) -> bool:
-        """Compare two scenario references by their canonical root."""
-        left_path = normalize_scenario_root(left)
-        right_path = normalize_scenario_root(right)
+        """Compare references by YAML identity, keeping variants distinct."""
+        left_path = normalize_scenario_config(left)
+        right_path = normalize_scenario_config(right)
         if left_path is None or right_path is None:
             return False
         return os.path.normcase(str(left_path)) == os.path.normcase(str(right_path))
@@ -1429,22 +1480,23 @@ class SessionService:
     # --- State Extraction Methods ---
 
     def _autosave_path(self, scenario_root: Path) -> Path:
-        """Return the stable rolling autosave path for one scenario root."""
-        slug = re.sub(r"[^a-z0-9]+", "-", scenario_root.name.lower()).strip("-")
+        """Return the stable rolling autosave path for one exact scenario YAML."""
+        root = normalize_scenario_root(scenario_root)
+        slug = re.sub(r"[^a-z0-9]+", "-", root.name.lower()).strip("-")
         slug = (slug or "scenario")[:48]
-        identity = os.path.normcase(str(scenario_root))
+        identity = os.path.normcase(str(normalize_scenario_config(scenario_root)))
         path_hash = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:10]
         return self.session_dir / f"{slug}_autosave_{path_hash}.json"
 
     def _prune_older_autosaves(self, scenario_root: Path, *, keep_path: Path) -> None:
         """Keep the autosave just written and prune older recognized copies."""
-        identity = os.path.normcase(str(scenario_root))
+        identity = os.path.normcase(str(normalize_scenario_config(scenario_root)))
         keep_path = keep_path.resolve(strict=False)
         for path in self._list_snapshot_paths():
             summary = read_workspace_summary(path)
             if summary is None or not summary.is_autosave:
                 continue
-            if os.path.normcase(str(summary.scenario_root)) != identity:
+            if os.path.normcase(str(summary.scenario_config_path)) != identity:
                 continue
             if summary.path == keep_path:
                 continue
@@ -1486,6 +1538,11 @@ class SessionService:
                 state["up"] = list(cam_state.up)
                 state["fov"] = float(cam_state.fov_deg)
                 logger.debug("Camera state saved via renderer CameraState")
+
+        controller = getattr(self.viz, "camera_controller", None)
+        tools = getattr(controller, "_presentation", None)
+        if tools is not None:
+            state["presentation"] = tools.payload()
 
         return state
 
@@ -1533,10 +1590,29 @@ class SessionService:
         state: dict = {}
 
         # Transparency values from visualizer instance
+        geographic = getattr(getattr(self.viz, "scene_service", None), "geographic_layers", None)
+        if geographic is not None:
+            state["geographic_layers"] = geographic.snapshot()
+        map_layer = getattr(getattr(self.viz, "scene_service", None), "map_layer", None)
+        if map_layer is not None:
+            state["osm_map"] = map_layer.snapshot()
+        plan = getattr(getattr(self.viz, "scene_service", None), "plan_view", None)
+        if plan is not None:
+            state["plan_trajectories"] = plan.capture_trajectory_state()
+        state["building_appearance"] = getattr(self.viz, "building_appearance", "original")
+        state["road_appearance"] = getattr(self.viz, "road_appearance", "original")
+        state["facade_theme"] = getattr(self.viz, "facade_theme", "mixed")
+        state["authored_surface_textures"] = getattr(self.viz, "authored_surface_textures", True)
         state["building_alpha"] = getattr(self.viz, "current_building_alpha", 1.0)
         state["target_alpha"] = getattr(self.viz, "current_target_alpha", 1.0)
         state["coverage"] = self._get_coverage_rendering_state()
         state["node_appearance"] = self._get_node_appearance_state()
+        appearance = getattr(self.viz, "appearance_preset_service", None)
+        if appearance is not None:
+            state["appearance"] = appearance.capture()
+        mpc_appearance = getattr(self.viz, "mpc_appearance_service", None)
+        if mpc_appearance is not None:
+            state["mpc_appearance"] = mpc_appearance.capture()
 
         # MPC appearance remains under its established top-level session keys,
         # but the Paths panel is now the sole UI owner.
@@ -1572,10 +1648,23 @@ class SessionService:
             if target_outline_cb is not None:
                 state["show_target_edges"] = target_outline_cb.isChecked()
 
-            # Show axes (Open3D renderer)
+            # Optional renderer guides.
             axes_cb = widgets.get("show_axes_cb")
             if axes_cb is not None:
                 state["show_axes"] = axes_cb.isChecked()
+            for key, widget_key in (
+                ("show_environment_dimensions", "environment_dimensions_cb"),
+                ("show_compass", "compass_cb"),
+            ):
+                widget = widgets.get(widget_key)
+                if widget is not None:
+                    state[key] = widget.isChecked()
+            density = widgets.get("ground_grid_divisions")
+            if density is not None:
+                state["ground_grid_divisions"] = density.value()
+            dimension_style = widgets.get("environment_dimensions_style")
+            if dimension_style is not None:
+                state["environment_dimensions_style"] = dimension_style.currentData()
 
         # Active tab index
         ui_mgr = getattr(self.viz, "ui_manager", None)
@@ -1596,11 +1685,15 @@ class SessionService:
         widgets = getattr(panel, "widgets", {}) if panel is not None else {}
         renderer = getattr(self.viz, "renderer", None)
         state: dict[str, float] = {}
+        pixel_markers = active_callout_style(self.viz) is not None
 
         for key, (attribute, default, bounds) in _NODE_APPEARANCE_ATTRIBUTE_SPECS.items():
             value = getattr(self.viz, attribute, default)
             widget = widgets.get(_NODE_APPEARANCE_WIDGET_KEYS[key])
-            if widget is not None:
+            # Adaptive TX/RX controls may show pixels; the appearance block
+            # always stores world metres. Pixel overrides live in AppState.
+            is_pixel_marker = key in ("tx_marker_size_m", "rx_marker_size_m") and pixel_markers
+            if widget is not None and not is_pixel_marker:
                 value = widget.value()
             validated = self._validated_bounded_float(value, bounds)
             state[key] = default if validated is None else validated
@@ -1730,6 +1823,15 @@ class SessionService:
         if not isinstance(entry_state, dict):
             return {}
         semantic_entries = self._semantic_entries()
+        # Older workspaces stored one intent for a material mesh that now has
+        # several display-only geographic pieces. Explicit child intents win.
+        entry_state = dict(entry_state)
+        for entry_id, entry, _default in semantic_entries:
+            source_id = entry.get("_geographic_source_mesh_id")
+            if source_id and entry_id not in entry_state:
+                source_intent = entry_state.get(f"scene:{source_id}")
+                if isinstance(source_intent, dict):
+                    entry_state[entry_id] = source_intent
         entries_by_id = {
             entry_id: (entry, default_show_label)
             for entry_id, entry, default_show_label in semantic_entries
@@ -1888,6 +1990,19 @@ class SessionService:
             )
             return
 
+        controller = getattr(self.viz, "camera_controller", None)
+        if (
+            "presentation" in camera_data
+            and controller is not None
+            and hasattr(controller, "presentation")
+        ):
+            tools = controller.presentation()
+            if tools is not None:
+                try:
+                    tools.restore(camera_data["presentation"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    logger.warning("Skipping invalid saved camera tools: %s", exc)
+
         # Restore camera mode
         mode = camera_data.get("mode", "overview")
         if mode in {"follow", "pov"}:
@@ -1976,6 +2091,9 @@ class SessionService:
         )
         restored = prepared_state.state
         changes = {field.name: getattr(restored, field.name) for field in fields(AppState)}
+        # Preflight may precede opening the workspace's source. Resolve runtime
+        # beam defaults here, after that source has actually been committed.
+        changes.update(get_beamforming_state_defaults(getattr(self.viz, "scenario_config", None)))
         set_state(**changes)
         node_coloring_mode = prepared_state.node_coloring_mode
         if node_coloring_mode in {"per_type", "individual"}:
@@ -2168,6 +2286,12 @@ class SessionService:
     def _restore_rendering_state(self, render_data: dict):
         """Restore rendering state (transparency, line widths, axes, etc)."""
         render_data = dict(render_data)
+        geographic = getattr(getattr(self.viz, "scene_service", None), "geographic_layers", None)
+        if geographic is not None:
+            geographic.restore(render_data.get("geographic_layers", {}))
+        map_layer = getattr(getattr(self.viz, "scene_service", None), "map_layer", None)
+        if map_layer is not None:
+            map_layer.restore(render_data.get("osm_map", {}))
         for alpha_key in ("building_alpha", "target_alpha"):
             if alpha_key not in render_data:
                 continue
@@ -2191,6 +2315,23 @@ class SessionService:
 
         # Transparency is durable render-panel state, applied by its owner.
         scene_appearance = getattr(self.viz, "scene_appearance_service", None)
+        restore_buildings = getattr(scene_appearance, "set_building_appearance", None)
+        if callable(restore_buildings):
+            mode = render_data.get("building_appearance", "original")
+            restore_buildings(mode if mode in {"original", "procedural", "varied"} else "original")
+        restore_authored = getattr(scene_appearance, "set_authored_surface_textures", None)
+        if callable(restore_authored):
+            restore_authored(bool(render_data.get("authored_surface_textures", True)))
+        restore_theme = getattr(scene_appearance, "set_facade_theme", None)
+        if callable(restore_theme):
+            from ..materials.scene_variation import THEMES
+
+            theme = render_data.get("facade_theme", "mixed")
+            restore_theme(theme if theme in THEMES else "mixed")
+        restore_roads = getattr(scene_appearance, "set_road_appearance", None)
+        if callable(restore_roads):
+            mode = render_data.get("road_appearance", "original")
+            restore_roads(mode if mode in {"original", "marked"} else "original")
         if "building_alpha" in render_data and scene_appearance is not None:
             scene_appearance.set_building_transparency(render_data["building_alpha"])
 
@@ -2231,4 +2372,30 @@ class SessionService:
                     index=render_data.get("active_tab"),
                 )
 
+        appearance = getattr(self.viz, "appearance_preset_service", None)
+        if appearance is not None and isinstance(render_data.get("appearance"), dict):
+            try:
+                appearance.restore(render_data["appearance"])
+            except (ValueError, RuntimeError, OSError) as exc:
+                logger.warning("Could not restore saved appearance: %s", exc)
+        plan = getattr(getattr(self.viz, "scene_service", None), "plan_view", None)
+        if plan is not None:
+            plan.restore_trajectory_state(render_data.get("plan_trajectories"))
+        mpc_appearance = getattr(self.viz, "mpc_appearance_service", None)
+        if mpc_appearance is not None:
+            mpc_data = render_data.get("mpc_appearance")
+            # Earlier workspaces saved the scalar palette inside the scene look.
+            legacy_appearance = render_data.get("appearance")
+            old_palette = (
+                legacy_appearance.get("continuous_colormap")
+                if isinstance(legacy_appearance, dict)
+                else None
+            )
+            if mpc_data is None and old_palette is not None:
+                mpc_data = {**mpc_appearance.capture(), "continuous_colormap": old_palette}
+            if mpc_data is not None:
+                try:
+                    mpc_appearance.restore(mpc_data)
+                except (ValueError, RuntimeError) as exc:
+                    logger.warning("Could not restore saved MPC appearance: %s", exc)
         logger.debug("Restored rendering state: %d keys", len(render_data))

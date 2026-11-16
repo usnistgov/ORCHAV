@@ -3,6 +3,7 @@
 import os
 import sys
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -11,14 +12,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QLabel,
     QMainWindow,
     QTabWidget,
-    QVBoxLayout,
     QWidget,
 )
 
+from visualizer.src.renderers.effect_settings import DEFAULT_BLOOM
 from visualizer.src.renderers.protocol import RendererCapabilities
 from visualizer.src.services.session_service import SessionService
 from visualizer.src.services.trajectory_load_service import TrajectoryLoadCoordinator
@@ -27,6 +27,19 @@ from visualizer.src.utils.antenna_utils import spacing_wavelengths_to_m
 
 # Keep the Qt class available while panel-module bindings are adjusted.
 _REAL_QLABEL = QLabel
+
+
+@pytest.fixture(autouse=True)
+def panel_settings(monkeypatch, tmp_path):
+    """Keep panel preferences local to each test, including manager cleanup."""
+    from PySide6.QtCore import QSettings
+
+    from visualizer.src.app import panel_manager
+
+    settings = QSettings(str(tmp_path / "panel-layout.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr(panel_manager, "QSettings", lambda: settings)
+    yield settings
+    settings.sync()
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +67,8 @@ class _FakeVisualizer(QMainWindow):
         is_pygfx = renderer_type == "pygfx"
         self.renderer = SimpleNamespace(
             renderer_type=renderer_type,
+            renderer_id=renderer_type,
+            get_camera_state=lambda: None,
             capabilities=RendererCapabilities(
                 picking=is_pygfx,
                 transform_gizmo=is_pygfx,
@@ -61,6 +76,7 @@ class _FakeVisualizer(QMainWindow):
                 viewport_hud=is_pygfx,
             ),
         )
+        self.camera_controller = SimpleNamespace(presentation=lambda: None)
         self.trajectory_load_coordinator = TrajectoryLoadCoordinator()
         self.scenario_config = None
         self.app_state = create_initial_state()
@@ -114,7 +130,7 @@ def _dispose_manager(mgr, qapp) -> None:
 
 
 @pytest.fixture(autouse=True)
-def dispose_test_managers(qtbot, qapp):
+def dispose_test_managers(qtbot, qapp, panel_settings):
     """Clear managers before pytest-qt schedules native window deletion."""
     global _MGR
     start = len(_FUNCTION_MANAGERS)
@@ -165,6 +181,22 @@ def _build_mgr(renderer_type: str = "pygfx", layout_profile: str = "auto"):
     return mgr
 
 
+def test_all_workflow_tabs_share_scene_inspector_style(qapp):
+    mgr = _build_mgr()
+    for index in range(mgr._tab_widget.count()):
+        page = mgr._tab_widget.widget(index).widget()
+        assert page.property("workflowWorkspace") is True
+        assert page.layout().spacing() == 10
+    for section in mgr.sections.values():
+        assert isinstance(section._toggle, QtWidgets.QPushButton)
+        assert section.property("sceneSection") is True
+        if section._lazy_content_created:
+            assert section.content_layout().itemAt(0).widget().property("scenePanel") is True
+    section = mgr.sections["performance"]
+    mgr._realize_lazy_section("performance", section)
+    assert section.content_layout().itemAt(0).widget().property("scenePanel") is True
+
+
 class _FakeSignal:
     def __init__(self) -> None:
         self._callbacks = []
@@ -192,8 +224,9 @@ def test_has_tab_widget():
 
 
 def test_core_tabs_present():
-    tabs = _get_mgr()._tab_widget
-    tab_names = [tabs.tabText(i) for i in range(tabs.count())]
+    mgr = _get_mgr()
+    tabs = mgr._tab_widget
+    tab_names = [mgr._normalize_tab_label(tabs.tabText(i)) for i in range(tabs.count())]
     expected_order = [
         "Scene",
         "Paths",
@@ -202,6 +235,7 @@ def test_core_tabs_present():
         "Edit",
         "Rendering",
         "Capture & Export",
+        "Demo",
         "Antennas",
         "System",
     ]
@@ -210,35 +244,136 @@ def test_core_tabs_present():
     assert tab_names == expected_order
 
 
+def test_demo_panel_is_available_only_for_pygfx():
+    pygfx = _get_mgr()
+    assert pygfx.panels["demo"].service is pygfx.parent.demo_service
+    assert pygfx.sections["demo"].is_expanded()
+    open3d = _build_mgr(renderer_type="open3d")
+    assert "Demo" not in [
+        open3d._tab_widget.tabText(index) for index in range(open3d._tab_widget.count())
+    ]
+
+
 def test_persistent_panels_not_in_tabs():
     """Animation, camera, and Context stay outside workflow tabs."""
     mgr = _get_mgr()
     assert "animation" not in mgr._tab_map
     assert "camera" not in mgr._tab_map
     assert "context" not in mgr._tab_map
-    assert "context" not in mgr.sections
+    assert {"animation", "camera", "context"}.issubset(mgr.sections)
     tx_dropdown = mgr.panels["context"].widgets["tx_dropdown"]
     assert not mgr._tab_widget.isAncestorOf(tx_dropdown)
 
 
-@pytest.mark.parametrize(
-    ("layout_profile", "context_layout_type"),
-    (("auto", QHBoxLayout), ("capture-workspace", QVBoxLayout)),
-)
-def test_persistent_controls_stay_compact_without_fixed_camera_width(
-    layout_profile,
-    context_layout_type,
-):
-    """Animation and camera share one row without forcing a 460 px camera."""
+@pytest.mark.parametrize("layout_profile", ("auto", "capture-workspace"))
+def test_persistent_controls_wrap_when_narrow_and_share_a_row_when_wide(layout_profile, qapp):
+    from PySide6.QtWidgets import QBoxLayout
+
+    from visualizer.src.widgets.responsive import ResponsiveRow
+
     mgr = _build_mgr(layout_profile=layout_profile)
     top_bar = mgr.ctrl_layout.itemAt(0).widget()
-    context_group = mgr.ctrl_layout.itemAt(1).widget()
-    camera_widget = top_bar.layout().itemAt(1).widget()
-
-    assert isinstance(top_bar.layout(), QHBoxLayout)
+    assert isinstance(top_bar, ResponsiveRow)
+    camera_widget = top_bar.row.itemAt(1).widget()
     assert camera_widget.minimumWidth() != 460
     assert camera_widget.maximumWidth() != 460
-    assert isinstance(context_group.layout(), context_layout_type)
+    mgr.ctrl_panel.resize(1000, 900)
+    mgr.ctrl_panel.show()
+    qapp.processEvents()
+    assert top_bar.row.direction() == QBoxLayout.LeftToRight
+    mgr.ctrl_panel.resize(500, 900)
+    qapp.processEvents()
+    assert top_bar.row.direction() == QBoxLayout.TopToBottom
+    mgr.ctrl_panel.close()
+
+
+def test_collapsed_camera_keeps_playback_visible_at_narrow_width(qapp, panel_settings):
+    mgr = _build_mgr()
+    top_bar = mgr.ctrl_layout.itemAt(0).widget()
+    playback = top_bar.row.itemAt(0).widget()
+    camera = mgr.sections["camera"]
+    mgr.ctrl_panel.resize(500, 900)
+    mgr.ctrl_panel.show()
+    qapp.processEvents()
+    expanded_height = top_bar.height()
+    assert camera.is_expanded()
+    camera.collapse()
+    qapp.processEvents()
+    assert playback.isVisible()
+    assert camera.isVisible()
+    assert not mgr.panels["camera"].widgets["view_top_btn"].isVisible()
+    assert top_bar.height() < expanded_height
+    assert top_bar.minimumSizeHint().width() <= top_bar.width()
+    assert not panel_settings.value("layout/sections/camera", True, type=bool)
+    camera.expand()
+    qapp.processEvents()
+    assert playback.isVisible()
+    assert mgr.panels["camera"].widgets["view_top_btn"].isVisible()
+
+
+@pytest.mark.parametrize("key", ("animation", "camera", "context"))
+def test_persistent_collapse_preference_restores_and_layout_reset_reopens(
+    key, qapp, panel_settings
+):
+    first = _build_mgr()
+    first.sections[key]._toggle.click()
+    second = _build_mgr()
+    assert not second.sections[key].is_expanded()
+    second.reset_layout()
+    assert second.sections[key].is_expanded()
+    assert not panel_settings.contains(f"layout/sections/{key}")
+
+
+def test_shared_controls_collapse_manually_and_give_height_to_the_active_workflow(qapp, qtbot):
+    mgr = _build_mgr()
+    mgr.ctrl_panel.resize(500, 720)
+    mgr.ctrl_panel.show()
+    qapp.processEvents()
+    top_bar = mgr.ctrl_layout.itemAt(0).widget()
+    qtbot.waitUntil(lambda: top_bar.height() == top_bar.sizeHint().height())
+    sections = [mgr.sections[key] for key in ("animation", "camera", "context")]
+    state = mgr.parent.app_state
+    expanded_height = mgr._tab_widget.height()
+    for section in sections:
+        assert section.is_expanded()
+        section._toggle.click()
+        qapp.processEvents()
+
+    qtbot.waitUntil(lambda: mgr._tab_widget.height() > expanded_height + 100)
+    assert mgr._tab_widget.height() > 0.7 * mgr.ctrl_panel.height()
+    assert mgr.parent.app_state == state
+    for key, control in (
+        ("animation", "play_btn"),
+        ("camera", "view_top_btn"),
+        ("context", "tx_dropdown"),
+    ):
+        assert not mgr.panels[key].widgets[control].isVisible()
+        assert mgr.sections[key]._toggle.isVisible()
+
+    for tab in ("Paths", "Rendering", "Scene"):
+        mgr.restore_active_tab(label=tab)
+        qapp.processEvents()
+        assert all(not section.is_expanded() for section in sections)
+
+    for section in sections:
+        section._toggle.click()
+    qapp.processEvents()
+    assert all(section.is_expanded() for section in sections)
+    qtbot.waitUntil(lambda: abs(mgr._tab_widget.height() - expanded_height) < 5)
+    assert mgr.parent.app_state == state
+    mgr.ctrl_panel.close()
+
+
+@pytest.mark.parametrize("key,control", (("animation", "play_btn"), ("context", "tx_dropdown")))
+def test_control_search_reveals_collapsed_persistent_controls(key, control, qapp):
+    mgr = _build_mgr()
+    mgr.sections[key].collapse()
+    mgr.restore_active_tab(label="Rendering")
+    target = mgr.panels[key].widgets[control]
+    mgr.reveal_control(key, target)
+    assert mgr.sections[key].is_expanded()
+    assert target.isVisibleTo(mgr.ctrl_panel)
+    assert mgr.get_active_tab_label() == "Rendering"
 
 
 def test_context_widgets_are_parent_compatibility_controls():
@@ -265,9 +400,27 @@ def test_paths_panel_exposes_compact_mpc_explorer_entry_point():
     mgr = _build_mgr()
     button = mgr.panels["mpc"].widgets["mpc_explorer_btn"]
 
-    assert button.text() == "Open MPC Explorer..."
+    assert button.text() == "Path Explorer…"
     assert button.objectName() == "openMpcExplorerButton"
     assert not hasattr(mgr._test_parent_ref, "_mpc_explorer_session")
+    assert mgr.sections["mpc"]._title == "Appearance"
+    assert mgr.sections["range_filters"]._title == "Filtering"
+    analysis = mgr.panels["mpc"].widgets["path_analysis_btn"]
+    assert analysis.parentWidget() is button.parentWidget()
+    assert analysis.parentWidget().title() == "Path tools"
+    assert "experiments" not in mgr.sections
+    opened = []
+    mgr._test_parent_ref.extension_services = {
+        "experiments": SimpleNamespace(open=lambda: opened.append(True))
+    }
+    analysis.click()
+    assert opened == [True]
+
+
+def test_path_analysis_launcher_is_disabled_for_unsupported_renderer():
+    mgr = _build_mgr(renderer_type="open3d")
+    assert not mgr.panels["mpc"].widgets["path_analysis_btn"].isEnabled()
+    assert mgr.panels["mpc"].widgets["mpc_explorer_btn"].isEnabled()
 
 
 def test_context_hud_toggle_is_visible_but_disabled_without_renderer_support():
@@ -295,7 +448,7 @@ def test_panels_exist_in_sections():
         "scene_style",
         "scene_view",
         "lighting",
-        "figure_capture",
+        "image_quality",
         "export",
         "data_source",
     ):
@@ -495,10 +648,17 @@ def test_rendering_and_capture_tabs_use_task_focused_sections():
         if widget is not None and hasattr(widget, "_title"):
             titles.append(widget._title)
 
-    assert titles == ["Scene Style", "Scene View", "Lighting", "Viewport HUD"]
+    assert titles == [
+        "Lighting and environment",
+        "Surfaces",
+        "Image quality",
+        "Guides and inspection",
+        "Viewport HUD",
+        "Advanced Camera",
+    ]
     assert mgr.sections["scene_style"].is_expanded() is True
     assert mgr.sections["scene_view"].is_expanded() is False
-    assert mgr.sections["lighting"].is_expanded() is False
+    assert mgr.sections["lighting"].is_expanded() is True
     assert mgr.sections["viewport_hud"].is_expanded() is False
 
     capture_idx = mgr.find_tab_index_by_label("Capture & Export")
@@ -508,9 +668,9 @@ def test_rendering_and_capture_tabs_use_task_focused_sections():
         for item in (capture_page.layout().itemAt(i) for i in range(capture_page.layout().count()))
         if item.widget() is not None and hasattr(item.widget(), "_title")
     ]
-    assert capture_titles == ["Figure Capture", "Export"]
-    assert mgr.sections["figure_capture"].is_expanded() is True
-    assert mgr.sections["export"].is_expanded() is False
+    assert capture_titles == ["Export"]
+    assert mgr.sections["image_quality"].is_expanded() is False
+    assert mgr.sections["export"].is_expanded() is True
 
 
 def test_viewport_hud_rendering_section_follows_renderer_capability():
@@ -531,7 +691,12 @@ def test_viewport_hud_rendering_section_follows_renderer_capability():
         )
         if item.widget() is not None and hasattr(item.widget(), "_title")
     ]
-    assert titles == ["Scene Style", "Scene View", "Lighting"]
+    assert titles == [
+        "Lighting and environment",
+        "Surfaces",
+        "Image quality",
+        "Guides and inspection",
+    ]
 
 
 def test_preview_and_rf_xray_sections_are_relocated_without_duplication():
@@ -540,7 +705,7 @@ def test_preview_and_rf_xray_sections_are_relocated_without_duplication():
 
     assert mgr.get_panel_tab_label("interactive_preview") == "Edit"
     assert mgr.get_panel_tab_label("rf_xray") == "Analysis"
-    assert mgr.get_panel_tab_label("figure_capture") == "Capture & Export"
+    assert mgr.get_panel_tab_label("image_quality") == "Rendering"
     assert mgr.get_panel_tab_label("export") == "Capture & Export"
     assert mgr.sections["trajectory"]._title == "Trajectory Analysis"
 
@@ -554,6 +719,92 @@ def test_preview_and_rf_xray_sections_are_relocated_without_duplication():
     analysis_tab = tabs.widget(mgr.find_tab_index_by_label("Analysis"))
     assert analysis_tab.isAncestorOf(rf_widget)
     assert not scene_tab.isAncestorOf(rf_widget)
+
+
+def test_rendering_quality_and_guides_are_grouped_by_live_view_function():
+    mgr = _build_mgr()
+    render = mgr.panels["render"]
+    quality = mgr.sections["image_quality"]
+    surfaces = mgr.sections["scene_style"]
+    guides = mgr.sections["scene_view"]
+    lighting = mgr.sections["lighting"]
+    export_tab = mgr._tab_widget.widget(mgr.find_tab_index_by_label("Capture & Export"))
+
+    for key in ("aa_combo", "depth_precision_cb", "culling_cb"):
+        assert quality.isAncestorOf(render.widgets[key])
+        assert not export_tab.isAncestorOf(render.widgets[key])
+    assert surfaces.isAncestorOf(render.widgets["texture_mipmaps_cb"])
+    for key in ("show_axes_cb", "ground_grid_cb", "hover_info_combo", "clip_x_cb"):
+        assert guides.isAncestorOf(render.widgets[key])
+    for key in ("bg_combo", "skybox_cb", "ibl_combo"):
+        assert lighting.isAncestorOf(render.widgets[key])
+    aa = render.widgets["aa_combo"]
+    assert [aa.itemText(i) for i in range(aa.count())] == ["Off", "FXAA"]
+
+
+def test_appearance_defaults_and_search_keep_lighting_accessible(qapp):
+    from visualizer.src.app.panel_manager import UIPanelManager
+    from visualizer.src.widgets.control_search import control_matches
+
+    parent = _FakeVisualizer()
+    parent.renderer.capabilities = RendererCapabilities(ibl=True, skybox=True, wireframe=True)
+    parent.renderer.get_wireframe = lambda: False
+    parent.renderer.get_ibl_name = lambda: "default"
+    parent.renderer.get_ibl_intensity = lambda: 2000
+    parent.renderer.get_skybox_visible = lambda: False
+    parent.renderer.get_bloom_settings = lambda: dict(DEFAULT_BLOOM)
+    parent.appearance_preset_service = SimpleNamespace(
+        active_name="Technical",
+        names=lambda: [],
+        previous=None,
+        notice="",
+        surface="original",
+        unlit=False,
+        applying=False,
+        changed=Mock(),
+        mark_if_custom=Mock(),
+    )
+    mgr = UIPanelManager(parent, total_steps=10)
+    mgr.create_all_panels()
+    parent.ui_manager = mgr
+    mgr._test_parent_ref = parent
+    _FUNCTION_MANAGERS.append(mgr)
+    appearance = mgr.panels["appearance"]
+    render = mgr.panels["render"]
+    materials = mgr.panels["materials"]
+
+    assert appearance.customize.isChecked()
+    assert mgr.sections["lighting"].is_expanded()
+    assert not mgr.sections["lighting"].isHidden()
+    assert not render.widgets["ibl_combo"].isHidden()
+
+    parent.renderer.get_wireframe = lambda: True
+    parent.renderer.set_wireframe = Mock()
+    appearance.refresh()
+    assert render.widgets["wireframe_cb"].isChecked()
+    parent.renderer.set_wireframe.assert_not_called()
+    assert mgr.sections["scene_style"].isAncestorOf(materials.widgets["texture_maps"])
+    assert mgr.sections["scene_style"].isAncestorOf(render.widgets["texture_mipmaps_cb"])
+    assert render.widgets["texture_mipmaps_cb"].parentWidget() is materials.surface_controls
+    assert not mgr.sections["appearance"].isAncestorOf(materials.surface_controls)
+
+    appearance.customize.setChecked(False)
+    assert mgr.sections["lighting"].isHidden()
+    match = next(
+        item for item in control_matches(mgr) if item.widget is render.widgets["ibl_combo"]
+    )
+    assert match.panel == "lighting"
+    mgr.reveal_control(match.panel, match.widget)
+    assert appearance.customize.isChecked()
+    assert not mgr.sections["lighting"].isHidden()
+    assert mgr.sections["lighting"].is_expanded()
+
+    appearance.customize.setChecked(False)
+    mgr.reset_layout()
+    appearance.refresh()
+    assert appearance.customize.isChecked()
+    assert mgr.sections["lighting"].is_expanded()
+    assert not mgr.sections["lighting"].isHidden()
 
 
 def test_edit_tab_stays_available_while_renderer_features_are_gated_inside_it():
@@ -786,10 +1037,10 @@ def test_rendering_scene_style_groups_edge_width_with_edges():
 
     panel = mgr.panels["render"]
     edges_group = next(group for group in subgroups if group.title() == "Edges")
-    edges_row = edges_group.layout().itemAt(0).layout()
     edge_width = panel.widgets["edge_line_width_container"]
 
-    assert edges_row.indexOf(edge_width) > edges_row.indexOf(panel.widgets["outline_cb"])
+    assert edges_group.isAncestorOf(edge_width)
+    assert edges_group.layout().indexOf(edge_width) == 1
 
 
 def test_rendering_edge_thickness_is_pygfx_only():
@@ -1239,3 +1490,99 @@ def test_session_service_syncs_beam_spacing_widgets_as_wavelengths():
     assert widgets["standalone_h_spacing"].value() == pytest.approx(0.75)
     assert widgets["standalone_v_spacing"].value() == pytest.approx(0.25)
     assert selector_sync_calls == [True]
+
+
+def test_texture_and_depth_controls_apply_and_restore_explicit_choices(monkeypatch):
+    monkeypatch.setenv("ORCHAV_ENABLE_TEXTURES", "1")
+    monkeypatch.delenv("ORCHAV_DISABLE_TEXTURES", raising=False)
+    mgr = _build_mgr()
+    panel = mgr.panels["render"]
+    viz = mgr._test_parent_ref
+    renderer = viz.renderer
+    renderer.capabilities = RendererCapabilities(texture_mipmaps=True, depth_precision=True)
+    active = {"mipmaps": True, "depth": False}
+    renderer.get_texture_mipmaps_enabled = lambda: active["mipmaps"]
+    renderer.get_depth_precision_enabled = lambda: active["depth"]
+    renderer.set_texture_mipmaps_enabled = lambda value: active.update(mipmaps=value)
+    renderer.set_depth_precision_enabled = lambda value: active.update(depth=value)
+    panel._sync_from_visualizer()
+    mipmaps = panel.widgets["texture_mipmaps_cb"]
+    depth = panel.widgets["depth_precision_cb"]
+    assert mipmaps.isChecked() and not depth.isChecked()
+    mipmaps.setChecked(False)
+    depth.setChecked(True)
+    assert active == {"mipmaps": False, "depth": True}
+    restored = AppState.from_dict(viz.app_state.to_dict())
+    assert restored.texture_mipmaps is False and restored.depth_precision is True
+    active.update(mipmaps=True, depth=False)
+    viz.app_state = restored
+    panel.apply_runtime_controls_from_state()
+    panel._sync_from_visualizer()
+    assert not mipmaps.isChecked() and depth.isChecked()
+    assert active == {"mipmaps": False, "depth": True}
+    monkeypatch.setenv("ORCHAV_ENABLE_TEXTURES", "0")
+    panel._sync_from_visualizer()
+    assert not mipmaps.isEnabled() and depth.isEnabled()
+    renderer.capabilities = RendererCapabilities()
+    panel._sync_from_visualizer()
+    assert mipmaps.isHidden() and depth.isHidden()
+
+
+def test_section_preference_restores_and_layout_reset_preserves_scene_state(qapp, panel_settings):
+    settings = panel_settings
+    settings.remove("layout/sections")
+    try:
+        first = _build_mgr()
+        first.sections["materials"].expand()
+        second = _build_mgr()
+        assert second.sections["materials"].is_expanded()
+        previous = second.parent.app_state
+        second.reset_layout()
+        assert not second.sections["materials"].is_expanded()
+        assert second.get_active_tab_label() == "Scene"
+        assert second.parent.app_state == previous
+    finally:
+        settings.remove("layout/sections")
+
+
+def test_control_search_does_not_build_lazy_graphs_and_reveals_matching_section(
+    qapp, panel_settings
+):
+    from visualizer.src.widgets.control_search import ControlSearchDialog
+
+    mgr = _build_mgr()
+    graphs = mgr.sections["statistics_graphs"]
+    dialog = ControlSearchDialog(mgr)
+    try:
+        dialog.query.setText("trajectory")
+        assert dialog.results.count() > 0
+        assert not graphs._lazy_content_created
+        dialog.query.setText("materials")
+        dialog._activate()
+        assert mgr.sections["materials"].is_expanded()
+        assert mgr.get_active_tab_label() == "Scene"
+    finally:
+        dialog.close()
+        panel_settings.remove("layout/sections")
+
+
+def test_reveal_control_opens_nested_scene_style_sections(qapp, panel_settings):
+    from visualizer.src.panels.collapsible_section import CollapsibleSection
+
+    mgr = _build_mgr()
+    target = mgr.panels["nodes"].widgets["x_offset_spinbox"]
+    nested = []
+    ancestor = target.parentWidget()
+    while ancestor is not None:
+        if isinstance(ancestor, CollapsibleSection):
+            nested.append(ancestor)
+            ancestor.collapse()
+        ancestor = ancestor.parentWidget()
+    try:
+        mgr.reveal_control("nodes", target)
+        assert len(nested) >= 2
+        assert all(section.is_expanded() for section in nested)
+        assert mgr.get_active_tab_label() == "Scene"
+        assert target.isVisibleTo(mgr.ctrl_panel)
+    finally:
+        panel_settings.remove("layout/sections")

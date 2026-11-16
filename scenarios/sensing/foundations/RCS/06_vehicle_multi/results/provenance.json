@@ -1,0 +1,125 @@
+{
+  "generated_at_utc": "2026-10-02T01:55:58.336441+00:00",
+  "scenario_yaml_sha256": "52e2861db841fcfad555fd5cf658d43ede0fd5acb9f679a378d4af2144dd8c3b",
+  "scene_xml_sha256": "e1632b3f855b07178d3329f59fdc000b2637fc76eb97abe1f44385311bba83f4",
+  "frames_manifest_sha256": "f6e06b544a210fc04bf6c38c1fe8dd1e739332861e50fdaa5475f839b3b45852",
+  "hdf5_chunks_sha256": {
+    "mpc_frames_00000-00062.h5": "ea3fea036ad169534b6053ee1c8dd2b4b456140a9cd1bdc2c14bbe4985d52336",
+    "mpc_frames_00063-00063.h5": "2e52a1db7aa43d66f2c1f2b6cf62b8c65e517767f35f1673d45bede0123faa77",
+    "mpc_frames_00064-00126.h5": "75e7d169f7f04ef50cb8ed2aeb83d34ff5d3d36a72369f5d09a09261d43569c3",
+    "mpc_frames_00127-00127.h5": "5ce3b61ac644353e6e7e4c101583ddb9a4f7c2770c54d13cff86687c75908b59",
+    "mpc_frames_00128-00190.h5": "b6787880147d1e9069f06d212bd8662e2375e25609332b9fa07c4cc98e546b2c",
+    "mpc_frames_00191-00191.h5": "cf2429b8a112351b9ea3704a43e5593862d8f868ff89c998de3896f0f96abf60",
+    "mpc_frames_00192-00254.h5": "5ecdf80bba3d2f0f8cc1e6e856f5eb1e14f8970fb90e4d599e2927248ec0d047",
+    "mpc_frames_00255-00255.h5": "58a28a91b80147917dea3d395e247a29e6296c8af1d3fe174aed0a6ca724ceef",
+    "mpc_frames_00256-00318.h5": "f637720e8249d67498031d9d051a577c1af6330e2224d834aaedd0dc89a98546",
+    "mpc_frames_00319-00319.h5": "df6faf1d4c2020b998d0dd1d8fc57fc94486503a5abe65586f2cea816d2495a1",
+    "mpc_frames_00320-00382.h5": "696de8e246361a37df0517c78a29acf64b0700e8702fbeac02b1b7a6710f4732",
+    "mpc_frames_00383-00383.h5": "8c276328e7754f30e0b67eab70497d20bff1515aded16edf48e1e869c0cbff2e",
+    "mpc_frames_00384-00446.h5": "ae225949105b3de690a3bbd74010b43c5fe41ba6e654da3961e46425f52ecec6",
+    "mpc_frames_00447-00447.h5": "a9adbd255f91d78594dbe856d7af1ffe7cb6c59a5005404807b6327cb62b47d8",
+    "mpc_frames_00448-00510.h5": "130d1c3f560ab10c536ccbf8a919fba86764348beae7c72928135e76594a60fc",
+    "mpc_frames_00511-00511.h5": "ff3df53e4472842af153c4be5588be42516cee1a5fb446aaaab95b93e2230966"
+  },
+  "generation_id": "d3de1f9c-c226-4bb9-b636-008ec72e790e",
+  "frame_set_id": "70af89d216e21a815a71af5bd198accabd247644c741a9b5e021ecacb5970974",
+  "result_frame_ids": [
+    63,
+    127,
+    191,
+    255,
+    319,
+    383,
+    447,
+    511
+  ],
+  "result_times_s": [
+    0.0,
+    0.128,
+    0.256,
+    0.384,
+    0.512,
+    0.64,
+    0.768,
+    0.896
+  ],
+  "native_engine": {
+    "drjit": "1.5.0",
+    "mitsuba": "3.9.1",
+    "sionna-rt": "2.2.0"
+  },
+  "python_packages": {
+    "numpy": "2.5.3",
+    "matplotlib": "3.11.2",
+    "h5py": "3.16.0"
+  },
+  "rendering": "Standard ORCHAV plot functions on unchanged retained data. The recorded plot-export revision rasterizes only dense QuadMesh heatmap artists; labels, axes, lines and overlays remain vector. No acquisition, FFT, detector or tracker was rerun.",
+  "power_display": "Stored linear power converted by the standard plot to 10*log10(power); per-panel 60 dB display span. No amplitude normalization. Color limits are not common across scenarios.",
+  "code_sha256": {
+    "scenarios/sensing/RCS/summarize.py": "a4564cedb1df5c70018861f25d5c6e1d20331d767726ee0411dada56c2710e64",
+    "shared/sensing_viz.py": "80708c6f1754337f1b0ba5520015dea5793c2a5b71a1fc645fec240575c1a746",
+    "shared/sensing_inspection_figures.py": "8dc7a14ed6e66114b49a9d28fa9630dbf1262e04f49f0015de8282a4dd1cd4f7",
+    "shared/sensing_diagram.py": "3790e933037544047bb5c286bdb0307f42c3f9aa5bec84e95bea5cbbeaa0f7ca",
+    "generator/figures/summary/sensing.py": "f5c28278149bbeccc70edb4e82f1053d6fdc3b52f38620dfdad47276117e361b",
+    "generator/core/target/rcs.py": "8f8851b31a043587b58fe60d5cf2f2028c7e387030459af2a567497e1cca8426",
+    "generator/core/propagation/native_rcs.py": "2c8e9983aff7e2507dc5df058f7102933e54be12b22d7d6d447461082765765a",
+    "generator/core/sensing/strategies/coherent_cpi_fft.py": "e381736079acb0e85b04ca5e5553372995e0d262ca110a416cfb98cedb5a5621",
+    "shared/frames/sensing_identity.py": "b8aef398add8f2530dc9713f3eb9ee5e0d050928d57dcdba172dbf3db699396b",
+    "shared/cfar.py": "016841790aeb2098fd3240373b768dde0a7c97b91f479cf00e3949f1ca527791",
+    "shared/detection_pipeline.py": "4253e810d26b71a265c7b04df8aec5770c71a50c988a0c6562d4b25c2774fbcb",
+    "shared/sensing_tracker.py": "79b929d9d06340e4bb27fe9c8e5e9d535a5460006529eb795be34b2f1c2b5d9f",
+    "shared/sensing_postprocessor.py": "263f4c64602c3cc450058885c05deae6cced183a7a0949988c31dcb096c7381b"
+  },
+  "artifacts_sha256": {
+    "detection_metrics.json": "aad7cd66920e55c594cf28a80bc38f1f26f9e8de1f08f5c7f2f4158a9869b658",
+    "detection_stages.svg": "c8a467d4209caa124eb6c056434fae9715e50353d6a17fd347a0b0f1355c1e40",
+    "detections_tracking.json": "6ab2b399299ce799c55e627702dc505b8f89b33a67ca920674afaab914b5f72d",
+    "range_doppler.svg": "1c61f5d8eca7236cfcc6bec6e8a928428aab05ec891f310a0115d87015443bb3",
+    "range_profile.svg": "05da4f85ecebf9e196404a03d9b1c357c18667e3499214df18ae6b4017dcf9d2",
+    "tracking.svg": "714998d7a3bc967b8cca6ae64d715ac7283694ba934cd7503d0f75d363efbc36",
+    "tracking_decisions.svg": "afc8d036aa59935c980b774b5ee3d9d7b9af12c67ea4aaacf621a95af8b9463e"
+  },
+  "plot_export_revision": {
+    "generated_at_utc": "2026-10-02T02:53:03.177681+00:00",
+    "scope": "Dense heatmap SVG serialization only",
+    "source_modules_before": {
+      "shared/sensing_viz.py": "e5584e29df0c2b248708231099d5151561eee1f07e3c9a9fe415d68f43f01027",
+      "shared/sensing_inspection_figures.py": "c7af0293aaa46801133ae3530caadd2e4b1d9cd5934079aeff344c6ad7753dbe"
+    },
+    "source_modules_after": {
+      "shared/sensing_viz.py": "80708c6f1754337f1b0ba5520015dea5793c2a5b71a1fc645fec240575c1a746",
+      "shared/sensing_inspection_figures.py": "8dc7a14ed6e66114b49a9d28fa9630dbf1262e04f49f0015de8282a4dd1cd4f7"
+    },
+    "range_doppler_dpi": 120,
+    "detection_stages_dpi": 150,
+    "changed_artifacts": {
+      "range_doppler.svg": {
+        "before_sha256": "ce18a7b3827f8cb1673a56ce86bb7bfd965fb238abd2bcd701ec67a2938de95b",
+        "after_sha256": "1c61f5d8eca7236cfcc6bec6e8a928428aab05ec891f310a0115d87015443bb3",
+        "before_bytes": 1603793,
+        "after_bytes": 50467,
+        "viewbox_unchanged": true,
+        "vector_axes_retained": true,
+        "heatmap_encoding": "lossless PNG",
+        "trailing_line_whitespace_normalized": true
+      },
+      "detection_stages.svg": {
+        "before_sha256": "efcd86a3bc5b3064a7c0af10bdb78d18757c37d4e210e2f2f01cbc93d7bddd02",
+        "after_sha256": "c8a467d4209caa124eb6c056434fae9715e50353d6a17fd347a0b0f1355c1e40",
+        "before_bytes": 1698674,
+        "after_bytes": 115299,
+        "viewbox_unchanged": true,
+        "vector_axes_retained": true,
+        "heatmap_encoding": "lossless PNG",
+        "trailing_line_whitespace_normalized": true
+      }
+    },
+    "other_artifacts_byte_identical": true,
+    "recordings_and_numerical_json_unchanged": true
+  },
+  "configuration_declaration": {
+    "current_scenario_yaml_sha256": "a6e3427f7b6f68a7f1e0a522ac29c17d9d50abf9ee08722e57d71ca2e5a057b2",
+    "added_line": "  coherent_clutter_mode: legacy\n",
+    "runtime_config_identical": true
+  }
+}

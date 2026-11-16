@@ -42,6 +42,7 @@ from visualizer.src.renderers.pygfx.rf_xray import (
     RF_XRAY_BOUNCES_NAME,
     RF_XRAY_COLORBAR_OVERLAY_ID,
     RF_XRAY_LEGEND_OVERLAY_ID,
+    RF_XRAY_TOP_PATHS_NAME,
     PygfxRFXRayMixin,
 )
 from visualizer.src.renderers.pygfx.scene_controls import PygfxSceneControlsMixin
@@ -920,12 +921,13 @@ def test_interaction_marker_semantics_cover_canonical_and_unknown_types():
         2: ("Diffuse", "triangle_up"),
         4: ("Refraction", "diamond"),
         8: ("Diffraction", "plus"),
+        16: ("Sensing", "asterisk6"),
         99: ("Virtual", "square"),
     }
     assert interaction_marker_spec(1234) is UNKNOWN_INTERACTION_MARKER_SPEC
 
 
-def test_interaction_marker_codes_hide_los_and_preserve_virtual_and_unknown():
+def test_interaction_marker_codes_hide_los_and_distinguish_sensing_virtual_and_unknown():
     marker_int = {
         "custom": 10,
         "circle": 11,
@@ -934,12 +936,13 @@ def test_interaction_marker_codes_hide_los_and_preserve_virtual_and_unknown():
         "plus": 14,
         "square": 15,
         "cross": 16,
+        "asterisk6": 17,
     }
-    itypes = np.array([0, 1, 2, 4, 8, 99, 255], dtype=np.uint8)
+    itypes = np.array([0, 1, 2, 4, 8, 16, 99, 255], dtype=np.uint8)
 
     codes = PygfxMpcMixin._interaction_marker_codes(itypes, marker_int)
 
-    assert codes.tolist() == [10, 11, 12, 13, 14, 15, 16]
+    assert codes.tolist() == [10, 11, 12, 13, 14, 17, 15, 16]
 
 
 def test_mpc_marker_apply_reuses_buffer_and_skips_unchanged_revisions():
@@ -1234,7 +1237,7 @@ def test_viewport_hud_refresh_reconciles_feature_owned_legends_across_policy_cha
     )
     renderer = PygfxOverlayMixin()
     renderer.visualizer = SimpleNamespace(app_state=state)
-    renderer.last_frame_packet = SimpleNamespace()
+    renderer.last_frame_packet = SimpleNamespace(mpc_bounce_points=np.ones((1, 3)))
     renderer._hud_suppressed = False
     renderer._mpc_marker_legend_requested = True
     events = []
@@ -1461,6 +1464,38 @@ def test_rf_xray_overlay_removes_stale_bounce_geometry_without_recreating():
     assert renderer._apply_rf_xray_overlay(SimpleNamespace()) is True
     assert RF_XRAY_BOUNCES_NAME in renderer.removed
     assert RF_XRAY_BOUNCES_NAME not in renderer.ensured
+
+
+def test_rf_xray_disable_releases_overlays_and_has_no_repeated_material_work():
+    renderer = _FakeRFXRayRenderer()
+    base = renderer._materials["scene:wall::mesh"]
+    snapshot = RFXRayAnalysisSnapshot(
+        enabled=True,
+        mode="material_map",
+        signature=("on",),
+        geometry_colors={"scene:wall::mesh": (1.0, 0.1, 0.0, 0.8)},
+    )
+    renderer.visualizer.rf_xray_analysis_service = SimpleNamespace(
+        build_snapshot=lambda _packet: snapshot
+    )
+    renderer._apply_rf_xray_overlay(SimpleNamespace())
+    renderer.ensured[RF_XRAY_TOP_PATHS_NAME] = (object(), object(), True)
+    snapshot = RFXRayAnalysisSnapshot(enabled=False, mode="material_map", signature=("off",))
+    assert renderer._apply_rf_xray_overlay(SimpleNamespace())
+    assert renderer._materials["scene:wall::mesh"] is base
+    assert renderer._geometry_color_sources["scene:wall::mesh"] is SurfaceColorSource.VERTEX
+    assert not renderer._rf_xray_base_materials
+    assert not renderer._rf_xray_overlaid_names
+    assert not renderer._rf_xray_vertex_color_names
+    assert not renderer.ensured
+    assert not renderer.hud
+
+    def unexpected(*args):
+        raise AssertionError("Disabled RF X-Ray must not touch materials again")
+
+    renderer.set_named_material = unexpected
+    renderer.remove_named_geometry = unexpected
+    assert not renderer._apply_rf_xray_overlay(SimpleNamespace())
 
 
 def test_rf_xray_material_map_publishes_material_legend_overlay():
@@ -2360,7 +2395,8 @@ def test_renderer_session_reset_clears_controller_ibl_and_timing_state():
     renderer = PygfxRenderer(SimpleNamespace())
     cached_texture = object()
     renderer._ibl_manager._texture_cache["cached"] = cached_texture
-    renderer._ibl_manager._tracked_materials.append(object())
+    retained_material = type("Material", (), {})()
+    renderer._ibl_manager._tracked_materials.add(retained_material)
     renderer._ibl_manager._background = object()
     renderer._active_controller_type = "fly"
     renderer._ibl_loaded = True
@@ -2378,7 +2414,7 @@ def test_renderer_session_reset_clears_controller_ibl_and_timing_state():
     assert renderer._active_controller_type == "orbit"
     assert renderer._ibl_loaded is False
     assert renderer._skybox_visible is False
-    assert renderer._ibl_manager._tracked_materials == []
+    assert not renderer._ibl_manager._tracked_materials
     assert renderer._ibl_manager._background is None
     assert renderer._ibl_manager._texture_cache["cached"] is cached_texture
     assert renderer._qt_window_closed is False
@@ -2966,8 +3002,61 @@ def test_export_renderer_kwargs_respects_offscreen_env(monkeypatch):
     assert kwargs == {
         "pixel_scale": 1.5,
         "pixel_filter": "linear",
-        "ppaa": "default",
+        "ppaa": "fxaa",
     }
+
+
+@pytest.mark.parametrize("mode", ["fxaa", "ddaa", "ppaa"])
+@pytest.mark.parametrize("from_environment", [False, True])
+def test_antialiasing_uses_concrete_fxaa_pass_for_enabled_modes(
+    monkeypatch, mode, from_environment
+):
+    from pygfx.renderers.wgpu.engine.effectpasses import FXAAPass, PPAAPass
+
+    # Pass construction allocates native GPU buffers. Keep this routing test
+    # independent of the host adapter; actual shader execution has GPU coverage.
+    monkeypatch.setattr(FXAAPass, "__init__", lambda self: None)
+    monkeypatch.delenv("ORCHAV_PYGFX_ENABLE_BLOOM", raising=False)
+    monkeypatch.delenv("ORCHAV_PYGFX_ENABLE_EDL", raising=False)
+    monkeypatch.setenv("ORCHAV_PYGFX_AA_MODE", mode)
+
+    passes = build_pygfx_effect_passes(
+        _FakeGfx,
+        clear_color=(0.8, 0.8, 0.8, 1.0),
+        aa_mode=None if from_environment else mode,
+        depth_pass_enabled=False,
+    )
+
+    assert len(passes) == 1
+    assert type(passes[0]) is FXAAPass
+    # Instantiating the PPAA base class leaves an invalid placeholder shader.
+    assert passes[0].wgsl != PPAAPass.wgsl
+
+
+def test_antialiasing_legacy_selection_and_off_update_renderer_once():
+    renderer = SimpleNamespace(
+        _aa_mode="off",
+        _rebuild_effect_passes=Mock(),
+        _update_status_chip_overlay=Mock(),
+    )
+
+    PygfxSceneControlsMixin.set_antialiasing_mode(renderer, "ppaa")
+    assert PygfxSceneControlsMixin.get_antialiasing_mode(renderer) == "fxaa"
+    renderer._rebuild_effect_passes.assert_called_once_with()
+
+    PygfxSceneControlsMixin.set_antialiasing_mode(renderer, "ddaa")
+    renderer._rebuild_effect_passes.assert_called_once_with()
+    PygfxSceneControlsMixin.set_antialiasing_mode(renderer, "off")
+    assert renderer._aa_mode == "off"
+    assert renderer._rebuild_effect_passes.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"), [("off", "none"), ("0", "none"), ("ddaa", "fxaa"), ("ppaa", "fxaa")]
+)
+def test_export_antialiasing_uses_renderer_tokens(monkeypatch, mode, expected):
+    monkeypatch.setenv("ORCHAV_PYGFX_EXPORT_PPAA", mode)
+    assert export_renderer_kwargs()["ppaa"] == expected
 
 
 def test_display_renderer_kwargs_default_to_native_resolution(monkeypatch):
@@ -3027,7 +3116,7 @@ def test_create_wgpu_renderer_applies_offscreen_kwargs(monkeypatch):
     )
 
     assert isinstance(renderer, _FakeRenderer)
-    assert renderer.kwargs == {"pixel_scale": 2.0, "ppaa": False}
+    assert renderer.kwargs == {"pixel_scale": 2.0, "ppaa": "none"}
     assert renderer.effect_passes == ()
 
 
@@ -3075,7 +3164,11 @@ def test_coverage_transparency_preserves_vertex_color_material():
     }
     renderer._kinds = {coverage_name: "mesh"}
     renderer._clipping_planes = ()
-    renderer._ibl_manager = SimpleNamespace(_tracked_materials=[])
+    tracked = []
+    renderer._ibl_manager = SimpleNamespace(
+        _tracked_materials=tracked,
+        cleanup_material=lambda material: tracked.remove(material) if material in tracked else None,
+    )
     renderer.request_redraw = lambda: redraws.append(True)
 
     assert renderer.set_coverage_transparency(0.9) is True
@@ -3102,11 +3195,13 @@ def test_coverage_transparency_preserves_vertex_color_material():
     assert mat.depth_write is True
     assert mat.env_map is None
     assert mat.env_map_intensity == 0.0
-    assert renderer._ibl_manager._tracked_materials == []
+    assert not renderer._ibl_manager._tracked_materials
     assert redraws == [True, True]
 
 
-def test_pygfx_coverage_upload_preserves_vertex_colors():
+def test_pygfx_coverage_upload_converts_srgb_without_mutating_source():
+    import pygfx
+
     class _CoverageRenderer(PygfxSurfaceOverlayMixin):
         COVERAGE_MESH_NAME = "coverage_mesh"
         COVERAGE_ISOLINES_NAME = "coverage_isolines"
@@ -3147,13 +3242,14 @@ def test_pygfx_coverage_upload_preserves_vertex_colors():
         ),
         coverage_triangles=np.asarray([[0, 1, 2]], dtype=np.int32),
         coverage_colors=np.asarray(
-            [[0.1, 0.2, 0.9], [0.2, 0.7, 0.3], [0.9, 0.1, 0.1]],
+            [[0.01, 0.04045, 0.9], [0.2, 0.7, 0.3], [0.9, 0.1, 0.1]],
             dtype=np.float32,
         ),
         coverage_signature="coverage-color-regression",
         coverage_opacity=0.65,
     )
 
+    original = view_model.coverage_colors.copy()
     renderer._apply_coverage_data(view_model)
 
     assert len(renderer.calls) == 1
@@ -3163,10 +3259,14 @@ def test_pygfx_coverage_upload_preserves_vertex_colors():
     assert "preserve_vertex_colors" not in kwargs
     assert args[1].color_source is SurfaceColorSource.VERTEX
     assert args[1].vertex_colors is not None
-    np.testing.assert_allclose(args[1].vertex_colors, view_model.coverage_colors)
+    expected = [pygfx.Color(color).to_physical() for color in original]
+    np.testing.assert_allclose(args[1].vertex_colors, expected, rtol=1e-6)
+    np.testing.assert_array_equal(view_model.coverage_colors, original)
     assert renderer.material_alphas == [(pytest.approx(0.65), False)]
     assert renderer.isoline_payloads == [None]
     assert renderer._last_coverage_signature == "coverage-color-regression"
+    renderer._apply_coverage_data(view_model)
+    assert len(renderer.calls) == 1  # A steady frame does not re-convert or re-upload.
 
 
 def test_payload_to_pygfx_lines_uses_line_material_for_line_strips():
@@ -4257,8 +4357,8 @@ def test_textured_multiplier_reuses_pygfx_texture_cache(monkeypatch, tmp_path):
     native_object = SimpleNamespace(material=material, geometry=geometry)
     texture_allocations = []
 
-    def _make_texture(data, *, dim):
-        texture = SimpleNamespace(data=data, dim=dim)
+    def _make_texture(data, *, dim, generate_mipmaps=False):
+        texture = SimpleNamespace(data=data, dim=dim, generate_mipmaps=generate_mipmaps)
         texture_allocations.append(texture)
         return texture
 
@@ -4310,6 +4410,7 @@ def test_textured_multiplier_reuses_pygfx_texture_cache(monkeypatch, tmp_path):
     assert renderer.ensure_object(initial) is True
     cached_texture = material.map
     assert cached_texture is not None
+    assert cached_texture.generate_mipmaps is True
     assert texture_allocations == [cached_texture]
     assert geometry_uploads == [payload]
 
@@ -4441,7 +4542,8 @@ def test_set_named_material_drops_textures_without_uvs(monkeypatch, tmp_path):
 
     assert material.map is None
     assert material.color_mode == "uniform"
-    assert material.color == pytest.approx((0.22, 0.22, 0.254, 0.75))
+    assert material.color == pytest.approx((0.22, 0.22, 0.254, 1.0))
+    assert material.opacity == pytest.approx(0.75)
 
 
 def test_pygfx_texture_policy_keeps_maps_by_default(monkeypatch, tmp_path):
@@ -5014,7 +5116,7 @@ def test_ibl_manager_scene_environment_mode(monkeypatch):
     assert scene.environment.texture is texture
     assert len(scene.children) == 1
 
-    material = SimpleNamespace(env_map="sentinel", env_map_intensity=0.0)
+    material = type("Material", (), {"env_map": "sentinel", "env_map_intensity": 0.0})()
     mgr.apply_to_material(material)
     assert material.env_map is None
     assert material.env_map_intensity == 1.0
@@ -5032,7 +5134,59 @@ def test_ibl_manager_material_env_map_fallback(monkeypatch):
     assert scene.environment is None
     assert len(scene.children) == 1
 
-    material = SimpleNamespace(env_map=None, env_map_intensity=0.0)
+    material = type("Material", (), {"env_map": None, "env_map_intensity": 0.0})()
     mgr.apply_to_material(material)
     assert material.env_map is texture
     assert material.env_map_intensity == 1.0
+
+
+def test_renderer_close_retires_pending_bitmap_before_destroying_qt_window():
+    from visualizer.src.renderers.pygfx.renderer import PygfxRenderer
+
+    events = []
+    renderer = PygfxRenderer(SimpleNamespace())
+    renderer._container = SimpleNamespace(
+        isVisible=lambda: True,
+        close=lambda: events.append("window close"),
+        deleteLater=lambda: events.append("window delete"),
+    )
+    renderer._canvas = SimpleNamespace(
+        _canvas_context=SimpleNamespace(
+            _downloader=SimpleNamespace(
+                _clear_pending_download=lambda: events.append("retire bitmap")
+            )
+        ),
+        close=lambda: events.append("canvas close"),
+    )
+    renderer.close()
+    renderer.close()
+    assert events == ["retire bitmap", "canvas close", "window close", "window delete"]
+
+
+@pytest.mark.parametrize("colormap", ["viridis", "RdYlGn", "RdYlGn_r"])
+def test_analysis_colorbar_uses_volume_colormap_and_clears_on_close(colormap):
+    from matplotlib import colormaps
+
+    from visualizer.src.services.viewport_hud_service import AnalysisLegend
+
+    renderer = PygfxOverlayMixin()
+    overlays = {}
+    renderer._set_hud_overlay = lambda key, **kwargs: overlays.__setitem__(key, kwargs)
+    renderer._clear_hud_overlay = lambda key: overlays.pop(key, None)
+    renderer.set_analysis_legend(
+        AnalysisLegend(
+            title="Report error",
+            lines=("No matching gate",),
+            swatches=(("No reports", "#f2731a"),),
+            colorbar_label="Nearest error (m)",
+            colorbar_range=(0, 2),
+            colorbar_colormap=colormap,
+        )
+    )
+    html = overlays["analysis_legend"]["html"]
+    lut = colormaps[colormap](np.linspace(0, 1, 256))[:, :3]
+    assert renderer._rgb_to_hex(lut[0]) in html and renderer._rgb_to_hex(lut[-1]) in html
+    assert "No reports" in html and "Nearest error (m)" in html
+    renderer.set_analysis_legend(None)
+    renderer._refresh_analysis_legend()
+    assert not overlays

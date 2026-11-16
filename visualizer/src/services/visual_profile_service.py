@@ -48,6 +48,7 @@ class _CompiledRule:
     preset: str
     color_override: list[float] | None
     source: str  # "builtin" or "scenario"
+    surface_path: str | None = None
 
 
 # Built-in defaults — always active, lowest priority.
@@ -115,6 +116,7 @@ def _compile_rule(rule: dict[str, Any], source: str) -> _CompiledRule | None:
         preset=preset,
         color_override=color,
         source=source,
+        surface_path=rule.get("surface") if isinstance(rule.get("surface"), str) else None,
     )
 
 
@@ -195,6 +197,11 @@ class VisualProfileService:
     def get_active_rules(self) -> list[dict[str, Any]]:
         """Return the current scenario rules (for session persistence)."""
         return list(self._scenario_rules)
+
+    def resolve_surface_path(self, name: str, material_type: str, entry_type: str) -> str | None:
+        """Return the first matching profile's optional animated-target skin."""
+        matched = self._first_matching_profile(name, material_type, entry_type)
+        return matched[0].surface_path if matched is not None else None
 
     def clear_scenario_rules(self) -> None:
         """Remove all scenario rules, keeping only builtins."""

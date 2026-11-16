@@ -1,0 +1,126 @@
+{
+  "license_spdx": "GPL-3.0-only",
+  "provenance": "ORCHAV project-generated plots of saved sensing products",
+  "kind": "plot_of_saved_native_products_no_reprocessing",
+  "image": "cube_radar_stationary.png",
+  "tutorial_scenario": "scenarios/sensing/cube_radar/stationary/scenario.yaml",
+  "tutorial_scenario_sha256": "9d693f6d7774fa7e28ac044a7d8c394aca0a9ea76e1a6c01996df860867940b6",
+  "sha256": "53d7b60784f7e20e01e4f1f3d650d3bbc8ba2bded95a40a3ed42af8c753bce29",
+  "source_files": {
+    "scenarios/sensing/cube_radar/stationary/scenario.yaml": "9d693f6d7774fa7e28ac044a7d8c394aca0a9ea76e1a6c01996df860867940b6",
+    "scenarios/sensing/cube_radar/figures.py": "bdf777f67f45fdb647459782f0f136afad403b549594ea2d7413944841ed1bff",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0",
+    "shared/sensing_loader.py": "f91a2cf0178d018804f29226fd90588f6db0404c7f8137b37788567c7198a341"
+  },
+  "recordings": {
+    "stationary": {
+      "source_hashes": {
+        "frames_manifest.json": "5f8325903c9b3bbfc71ec576ef57cf1b9174e60a8eabc0078eeff29ebd3cc3f7",
+        "mpc_frames_00000-00062.h5": "36499a4bf17567364764165b5caa1d2107716af20fa190659e529f80f33fb8f2",
+        "mpc_frames_00063-00063.h5": "7a4866888e086333823ad0522ab0e95c12841c42d96147020a6d854156ba9504"
+      },
+      "execution_scenario_sha256": "9d693f6d7774fa7e28ac044a7d8c394aca0a9ea76e1a6c01996df860867940b6"
+    }
+  },
+  "command": "python -m scenarios.sensing.cube_radar.figures stationary --source scenarios/sensing/cube_radar/stationary --output analysis/cube-radar-figures",
+  "limits": "One controlled specular acquisition; no claim of general detection or tracking performance.",
+  "result_count": 1,
+  "result_times_s": [
+    0.0
+  ],
+  "detection_counts": [
+    1
+  ],
+  "reports": [
+    [
+      {
+        "range_m": 4.49688687,
+        "velocity_m_s": 0.0
+      }
+    ]
+  ],
+  "frame_set_id": "8e9df402cc272d27cbfc521211bc4a447536f9c6c98f03bc31545cb3e17d22c3",
+  "generation_id": "cba25f1b-e4c7-4111-8c95-622a6dbf644c",
+  "processing_recipe": {
+    "aoa_az_max_deg": null,
+    "aoa_az_min_deg": null,
+    "aoa_el_max_deg": null,
+    "aoa_el_min_deg": null,
+    "aoa_filter_enabled": false,
+    "array_detection_mode": "rd",
+    "bandwidth": 500000000.0,
+    "beam_angle_oversampling": 1,
+    "carrier_frequency_hz": 28000000000.0,
+    "cfar_edge_policy": "full_window",
+    "cfar_guard_cells": 4,
+    "cfar_max_dynamic_range_db": 12.0,
+    "cfar_min_snr_db": 3.0,
+    "cfar_os_rank": 0.75,
+    "cfar_rd_guard_cells_doppler": 1,
+    "cfar_rd_guard_cells_range": 2,
+    "cfar_rd_ref_cells_doppler": 4,
+    "cfar_rd_ref_cells_range": 6,
+    "cfar_ref_cells": 16,
+    "cfar_threshold_scale": 2.0,
+    "cfar_type": "ca",
+    "cluster_range_gate_m": 0.5,
+    "cluster_velocity_gate_m_s": 0.3,
+    "clutter_removal_enabled": false,
+    "clutter_removal_window": 8,
+    "coherent_clutter_mode": "none",
+    "eval_association_range_gate_m": 10.0,
+    "eval_association_velocity_gate_m_s": 5.0,
+    "fft_size_doppler": 64,
+    "fft_size_range": 128,
+    "ghost_filter_azimuth_gate_deg": null,
+    "ghost_filter_velocity_gate_m_s": null,
+    "jpda_birth_confirmation_frames": 3,
+    "jpda_birth_separation_chi2": 1.0,
+    "jpda_max_joint_nodes": 100000,
+    "max_detection_range_m": null,
+    "min_detection_range_m": null,
+    "noise_enabled": false,
+    "noise_model": "frequency_observation_complex_awgn",
+    "noise_snr_db": null,
+    "output_detections": true,
+    "output_range_doppler": true,
+    "output_range_profile": true,
+    "persist_detection_stage_artifacts": true,
+    "persist_tracking_diagnostics": false,
+    "pre_cfar_doppler_dc_guard_bins": 0,
+    "pre_cfar_doppler_edge_guard_bins": 2,
+    "prf_hz": 1000.0,
+    "processing_mode": "coherent_cpi",
+    "processing_strategy": "coherent_cpi_fft",
+    "range_mode": "monostatic",
+    "range_response": {
+      "frequency_noise": {
+        "seed": null,
+        "variance": 0.0
+      },
+      "frequency_window": "hann",
+      "model": "cfr_ifft",
+      "num_frequency_bins": 128
+    },
+    "raw_payload_policy": "none",
+    "rd_model": "cfr_ifft_doppler_fft",
+    "rd_source": "fft_cpi",
+    "recording_display": null,
+    "recording_profile": "maps",
+    "rng_seed": 42,
+    "track_association_azimuth_gate_deg": null,
+    "track_association_range_gate_m": 0.6,
+    "track_association_velocity_gate_m_s": 0.3,
+    "track_confirmation_enabled": false,
+    "track_confirmation_m": 2,
+    "track_confirmation_mode": "latched",
+    "track_confirmation_n": 3,
+    "track_max_missed_frames": 1,
+    "track_output_tentative": false,
+    "tracker_type": "m_of_n",
+    "window_doppler": "hann",
+    "window_range": "boxcar"
+  },
+  "path_convention": "Repository-relative source paths and reproducible output-directory names.",
+  "execution_backend": "CPU LLVM"
+}

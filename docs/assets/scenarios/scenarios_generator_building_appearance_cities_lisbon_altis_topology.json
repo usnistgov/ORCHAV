@@ -1,0 +1,446 @@
+{
+  "scenario": "scenarios/generator/building_appearance/cities/lisbon_altis/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "generated_scene/scene.xml"
+  },
+  "source_files": {
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply": "4f09bd84384eb5abe0fa2d2518e503c0891bebcc2a5e5e3524785fcee2e50798",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00020.ply": "492adfc3e48a46c80e1729237958aacb97c313740e1fccb216a9941f4701819e",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00038.ply": "d542a73000e72827bfe678974e2d8dfc0fda7287d229fcd13e8b38e620ffce72",
+    "libraries/targets/digital_twin_update1/target_metadata.json": "cc20d833c61e7dad2b19198167f9ce7b0b6b443f34144bcd0e88e7bef4c95870",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/buildings_brick.ply": "1018bce1984eef2d78d5eb2209a44f6a5fd89ff407b9dcd1122b44b9e2a2b3b1",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/buildings_concrete.ply": "61a211331485d256a5f9b67fcad6a1a4fe07819e5587174e7e7a506046220818",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/buildings_glass.ply": "5b2603f49445dec4d1854030cadab76aa47d9222952d21a0b37688c249a71fc4",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/buildings_marble.ply": "254fa0c6e3b6f477d11c141fd2233fbc77e2c1e94861dd8240b15c69a5e6cf21",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/buildings_metal.ply": "1802cfaf57e599b40d15d017dd78c569bf001871a334b55998eab589b6091eae",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/buildings_wood.ply": "2381e0ce184a06b686523ce8b90f1cbbd9c421841bb04b92b39e35562218f729",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/ground.ply": "bd7bb8f25f74cebebeb5bddd6e509bf8e8be84692d3a56c8b8b8200f9a47bb6c",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/inferred/vegetation.ply": "196602ea659e4116f807036f44098467359cc3de098f028f1bd2284ff7096b97",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/inventory/vegetation.ply": "88fcd243bbd980ab27cba115709839caceaa800ca05ba20bc4689ac49c66a1ae",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/osm_tree/vegetation.ply": "6d9ef22fc979c87fd9510f29b2eac5f18b0c7d8a5d64d1a2412b731e3b4c8ac6",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/streets_concrete.ply": "209a105d3a6a0491e1809b006e99c25743065d756ee55dfffa1699e8908ee7d4",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/streets_medium_dry_ground.ply": "d94fb0fcd4015ea384bb0ba7c4628652cc00d4d4fd608bdd205fcbe68dde9bf4",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/mesh/water.ply": "d72cbbdc0d9372696372e19773c97bab1be2b3ccafcc5cb56ea699d59fa09c4a",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/generated_scene/scene.xml": "4fed2008b148b91c534f523433db81f7337885629b885ac3fe31b57a237fc3f8",
+    "scenarios/generator/building_appearance/cities/lisbon_altis/scenario.yaml": "697720376bcf39243ba54db6012eee3e08e81b0df902bf62fdc5022e1435e0b8"
+  },
+  "sample_indices": [
+    0,
+    37
+  ],
+  "sample_times_s": [
+    0.0,
+    5.285714285714286
+  ],
+  "steps": 38,
+  "actors": [
+    {
+      "name": "Altis_venue_TX",
+      "role": "tx",
+      "members": [
+        "Altis_venue_TX"
+      ],
+      "sample_positions_m": [
+        [
+          -54.59,
+          -62.407,
+          60.0
+        ],
+        [
+          -54.59,
+          -62.407,
+          60.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -54.59,
+            -62.407,
+            60.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Avenue_RX",
+      "role": "rx",
+      "members": [
+        "Avenue_RX"
+      ],
+      "sample_positions_m": [
+        [
+          139.178,
+          55.257,
+          50.0
+        ],
+        [
+          139.178,
+          55.257,
+          50.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            139.178,
+            55.257,
+            50.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Lisbon_walker",
+      "role": "target",
+      "members": [
+        "Lisbon_walker"
+      ],
+      "sample_positions_m": [
+        [
+          -72.471342,
+          -37.849867,
+          7.190379
+        ],
+        [
+          -70.92138,
+          -36.792918,
+          7.10004
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": true,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 19,
+          "mesh_index": 19,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00020.ply",
+          "time_s": 2.714285714285714,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 37,
+          "mesh_index": 37,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00038.ply",
+          "time_s": 5.285714285714286,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -72.471342,
+            -37.849867,
+            7.190379
+          ],
+          "rotation_matrix": [
+            [
+              -0.9952434664362704,
+              -0.09741890225165031,
+              0.0
+            ],
+            [
+              0.09741890225165031,
+              -0.9952434664362704,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            0.8261910396373348,
+            0.5633900656055093,
+            0.0
+          ]
+        },
+        {
+          "index": 19,
+          "time_s": 2.714285714285714,
+          "position_m": [
+            -71.675415,
+            -37.30711,
+            7.136811
+          ],
+          "rotation_matrix": [
+            [
+              -0.9952434664362704,
+              -0.09741890225165031,
+              0.0
+            ],
+            [
+              0.09741890225165031,
+              -0.9952434664362704,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            0.8261910396373348,
+            0.5633900656055093,
+            0.0
+          ]
+        },
+        {
+          "index": 37,
+          "time_s": 5.285714285714286,
+          "position_m": [
+            -70.92138,
+            -36.792918,
+            7.10004
+          ],
+          "rotation_matrix": [
+            [
+              -0.9952450536758677,
+              -0.09740268545435393,
+              0.0
+            ],
+            [
+              0.09740268545435393,
+              -0.9952450536758677,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            0.8261818594872795,
+            0.5634035277260353,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "6db0587fda25bfa5ec495201f2166530a4beef9dbd86ec9a18b086f9d7c43b9e",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (mat-itu medium dry ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Ground (mat-itu wet ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Mat-Itu Brick",
+      "display_rgb": [
+        0.5920000000000001,
+        0.39480000000000004,
+        0.3812
+      ]
+    },
+    {
+      "label": "Mat-Itu Concrete",
+      "display_rgb": [
+        0.6872,
+        0.6872,
+        0.6872
+      ]
+    },
+    {
+      "label": "Mat-Itu Glass",
+      "display_rgb": [
+        0.6784313725490196,
+        0.7764705882352941,
+        0.803921568627451
+      ]
+    },
+    {
+      "label": "Mat-Itu Marble",
+      "display_rgb": [
+        0.796,
+        0.7552000000000001,
+        0.6532
+      ]
+    },
+    {
+      "label": "Mat-Itu Metal",
+      "display_rgb": [
+        0.4696,
+        0.4696,
+        0.49
+      ]
+    },
+    {
+      "label": "Mat-Itu Wood",
+      "display_rgb": [
+        0.6940000000000001,
+        0.558,
+        0.43560000000000004
+      ]
+    },
+    {
+      "label": "Road (mat-itu concrete)",
+      "display_rgb": [
+        0.6235294117647059,
+        0.6627450980392157,
+        0.6784313725490196
+      ]
+    }
+  ],
+  "output_sha256": "4d3b31f06bdedc9642faed20e07cf4d704b756ae95a53cca2de9215944a14f24",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -680.7476220703124,
+        -616.8948754882813,
+        -44.90826446533203
+      ],
+      [
+        717.664248046875,
+        631.3370751953125,
+        88.01532775878906
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "8832ee6a74cf03bfac1434a265d6ca1d887e04f7f95394323e31955b255118e1",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/building_appearance/cities/lisbon_altis"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

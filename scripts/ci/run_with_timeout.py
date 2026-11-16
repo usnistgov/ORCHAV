@@ -8,9 +8,11 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 
 TIMEOUT_EXIT_CODE = 124
+TERMINATION_GRACE_S = 5.0
 
 
 def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
@@ -24,11 +26,21 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
         return
     try:
         os.killpg(process.pid, signal.SIGTERM)
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         return
+    deadline = time.monotonic() + TERMINATION_GRACE_S
+    while time.monotonic() < deadline:
+        process.poll()
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+    # Descendants can outlive the leader and still belong to the owned group.
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 def run_with_timeout(command: Sequence[str], timeout_s: float) -> int:

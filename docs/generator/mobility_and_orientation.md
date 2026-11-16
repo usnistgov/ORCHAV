@@ -14,10 +14,7 @@ is seconds, and authored angles are degrees.
 
 ## Mobility Models
 
-Each thumbnail shows one concrete configuration rather than the model's full
-parameter range. Path-based panels show the samples that generation and
-Scenario Builder preview receive. The `network_route` and `mesh_sequence`
-panels emphasize the local inputs loaded by those file-backed models.
+Use the thumbnails to choose a path shape. Each shows the samples used by the Generator and Scenario Builder.
 
 | Type | Example | Behavior |
 |---|---|---|
@@ -40,248 +37,18 @@ panels emphasize the local inputs loaded by those file-backed models.
 | `mesh_sequence` | <img src="../assets/generator/mobility_orientation/mobility_mesh_sequence.png" width="170" alt="A target path prepared from position samples loaded from a local file."> | Target-only positions loaded from a local data file. Target mesh geometry is configured separately. |
 | `group_member` | <img src="../assets/generator/mobility_orientation/mobility_group_member.png" width="170" alt="A group member following a curved reference path with a heading-relative offset."> | A named group trajectory plus a local heading-frame offset. |
 
-## Mobility Configurations
+## Configure a route
 
-These examples show a valid starting configuration for every mobility model.
-The [Scenario YAML Reference](../reference/scenario_yaml.md#mobility) lists the
-optional fields and exact constraints.
-
-### Fixed Positions And Authored Paths
-
-**`stationary`**
-
-```yaml
-mobility:
-  type: stationary
-  position_m: [0.0, 0.0, 1.5]
-```
-
-**`linear`**
-
-```yaml
-mobility:
-  type: linear
-  start_m: [0.0, 0.0, 1.5]
-  end_m: [12.0, 0.0, 1.5]
-```
-
-**`waypoint`**
+For a receiver walking along a curved path, set its mobility to `waypoint`. The points use scene coordinates in metres:
 
 ```yaml
 mobility:
   type: waypoint
-  points_m:
-    - [0.0, 0.0, 1.5]
-    - [10.0, 0.0, 1.5]
-    - [10.0, 8.0, 1.5]
   interpolation: catmull_rom
+  points_m: [[0.0, 0.0, 1.5], [4.0, 3.0, 1.5], [9.0, 1.0, 1.5]]
 ```
 
-**`sampled`**
-
-```yaml
-mobility:
-  type: sampled
-  positions_m:
-    - [0.0, 0.0, 1.5]
-    - [1.0, 0.5, 1.5]
-    - [2.0, 1.0, 1.5]
-```
-
-For `sampled`, provide one position for every timeline step. This example
-assumes a three-step timeline.
-
-### Geometric Paths
-
-**`circular`**
-
-```yaml
-mobility:
-  type: circular
-  center_m: [0.0, 0.0, 12.0]
-  radius_m: 8.0
-  start_angle_deg: 90.0
-  clockwise: true
-  turns: 1.5
-```
-
-**`survey`**
-
-```yaml
-mobility:
-  type: survey
-  origin_m: [-20.0, -10.0, 25.0]
-  width_m: 40.0
-  height_m: 20.0
-  row_spacing_m: 5.0
-  heading_deg: 30.0
-```
-
-**`grid_scan`**
-
-```yaml
-mobility:
-  type: grid_scan
-  x_bounds_m: [-10.0, 10.0]
-  y_bounds_m: [-5.0, 5.0]
-  z_bounds_m: [1.5, 4.5]
-  x_steps: 5
-  y_steps: 3
-  z_steps: 2
-  traversal_pattern: snake
-```
-
-**`figure8`**
-
-```yaml
-mobility:
-  type: figure8
-  center_m: [0.0, 0.0, 5.0]
-  size_m: 12.0
-  plane: xy
-  turns: 1.0
-```
-
-**`spiral`**
-
-```yaml
-mobility:
-  type: spiral
-  center_m: [0.0, 0.0, 0.0]
-  radius_m: 8.0
-  start_altitude_m: 2.0
-  end_altitude_m: 20.0
-  turns: 2.0
-```
-
-### Periodic Motion
-
-**`oscillating`**
-
-```yaml
-mobility:
-  type: oscillating
-  center_m: [0.0, 0.0, 5.0]
-  axis: [0.0, 0.0, 1.0]
-  amplitude_m: 2.0
-  frequency_hz: 0.5
-```
-
-**`pendulum`**
-
-```yaml
-mobility:
-  type: pendulum
-  pivot_m: [0.0, 0.0, 10.0]
-  length_m: 4.0
-  max_angle_deg: 30.0
-  frequency_hz: 0.5
-  plane: xz
-```
-
-### Seeded Motion
-
-**`random_sampling`**
-
-```yaml
-mobility:
-  type: random_sampling
-  x_bounds_m: [-20.0, 20.0]
-  y_bounds_m: [-10.0, 10.0]
-  z_bounds_m: [1.5, 1.5]
-  seed: 42
-```
-
-**`gauss_markov`**
-
-```yaml
-mobility:
-  type: gauss_markov
-  initial_position_m: [0.0, 0.0, 1.5]
-  x_bounds_m: [-20.0, 20.0]
-  y_bounds_m: [-10.0, 10.0]
-  z_bounds_m: [1.5, 1.5]
-  alpha: 0.8
-  mean_speed_mps: 1.2
-  seed: 42
-```
-
-**`random_waypoint`**
-
-```yaml
-mobility:
-  type: random_waypoint
-  initial_position_m: [0.0, 0.0, 1.5]
-  x_bounds_m: [-20.0, 20.0]
-  y_bounds_m: [-10.0, 10.0]
-  z_bounds_m: [1.5, 1.5]
-  speed_range_mps: [0.8, 1.6]
-  pause_range_s: [0.0, 1.0]
-  seed: 42
-```
-
-**`manhattan_grid`**
-
-```yaml
-mobility:
-  type: manhattan_grid
-  origin_xy_m: [-20.0, -20.0]
-  block_size_m: 10.0
-  grid_width: 4
-  grid_height: 4
-  altitude_m: 1.5
-  speed_range_mps: [0.8, 1.6]
-  seed: 42
-```
-
-Each stochastic model requires a seed so the same scenario produces the same
-positions when reopened, previewed, or generated.
-
-### Local Resources And Groups
-
-**`network_route`**
-
-```yaml
-mobility:
-  type: network_route
-  travel_mode: car
-  route: shortest_path
-  start_node: road_start
-  end_node: road_end
-```
-
-`network_route` reads a cached GraphML/XML or NetworkX node-link JSON graph. If
-`graph_path` is omitted, it reads `street_network.graphml` from the scenario
-directory. Graph coordinates must already use the same local-meter coordinate
-system as the scene.
-
-**`mesh_sequence`**
-
-```yaml
-mobility:
-  type: mesh_sequence
-  positions_path: motion/positions.npy
-  interpolation: linear
-```
-
-`mesh_sequence` is available for targets. It loads positions from a local
-`.npy`, `.npz`, YAML, JSON, CSV, text, or HDF5 file. The target mesh or animated
-mesh sequence is configured separately under `asset`.
-
-**`group_member`**
-
-```yaml
-mobility:
-  type: group_member
-  group: Convoy
-  offset_m:
-    right: 3.0
-    forward: -5.0
-    up: 0.0
-```
-
-The referenced group defines the shared path. The actor adds a local
-right/forward/up offset, as shown in [Optional Groups](#optional-groups).
+Use a seed for stochastic models so preview and generation reproduce the same positions. For externally sampled positions use `sampled`, one position per timeline step. Choose a `network_route` with a local graph for street-constrained travel. Field names and constraints for every model are in the [mobility reference](../reference/scenario_yaml.md#mobility).
 
 ## Timeline
 
@@ -358,59 +125,27 @@ members and cannot reference another group.
 ## Orientation Models
 
 Orientation is optional and defaults to fixed zero yaw, pitch, and roll.
-Angles follow Sionna's right-handed Z/Y/X convention. The actor's forward axis
+Angles follow [Sionna RT](https://nvlabs.github.io/sionna/rt/)'s right-handed
+Z/Y/X convention. The actor's forward axis
 is +X and world up is +Z, so positive pitch turns +X toward -Z while negative
 pitch turns it toward +Z.
 
-The examples below use the prepared quaternion orientations. They show either
-the actor's +X forward axis or the Euler-angle view exposed at UI and engine
-boundaries.
+The examples show the actor's +X forward direction or its yaw, pitch and roll
+angles over time.
 
 | Type | Example | Behavior |
 |---|---|---|
 | `fixed` | <img src="../assets/generator/mobility_orientation/orientation_fixed.png" width="170" alt="An actor with a constant 180-degree yaw heading."> | Constant yaw, pitch, and roll. |
-| `keyframes` | <img src="../assets/generator/mobility_orientation/orientation_keyframes.png" width="170" alt="Yaw, pitch, and roll prepared between three timed orientation keyframes."> | Time-stamped orientations interpolated with quaternion SLERP. |
+| `keyframes` | <img src="../assets/generator/mobility_orientation/orientation_keyframes.png" width="170" alt="Yaw, pitch, and roll prepared between three timed orientation keyframes."> | Time-stamped orientations joined by smooth rotation. |
 | `align_motion` | <img src="../assets/generator/mobility_orientation/orientation_align_motion.png" width="170" alt="Forward arrows following the direction of travel along a curved path."> | Points the actor's +X forward axis along physical velocity. |
 | `look_at` | <img src="../assets/generator/mobility_orientation/orientation_look_at.png" width="170" alt="A stationary actor turning to track another actor along a rising path."> | Points +X toward another actor or a fixed point. |
 | `spin` | <img src="../assets/generator/mobility_orientation/orientation_spin.png" width="170" alt="Yaw increasing at a constant 30 degrees per second while pitch and roll remain fixed."> | Rotates one selected yaw, pitch, or roll axis at a constant rate. |
 | `random` | <img src="../assets/generator/mobility_orientation/orientation_random.png" width="170" alt="Seeded random yaw and pitch values held for half-second intervals."> | Seeded bounded samples, optionally held for `update_interval_s`. |
 
-Orientation is prepared in quaternion space. Euler angles are exposed only at
-interfaces that require yaw, pitch, and roll.
+Keyframes use spherical linear interpolation (SLERP) to rotate smoothly
+between the authored orientations. Configure their yaw, pitch and roll in degrees.
 
-### Fixed And Keyframes
-
-```yaml
-orientation:
-  type: fixed
-  yaw_deg: 45.0
-  pitch_deg: -10.0
-  roll_deg: 0.0
-```
-
-```yaml
-orientation:
-  type: keyframes
-  keyframes:
-    - {time_s: 0.0, yaw_deg: 0.0, pitch_deg: 0.0, roll_deg: 0.0}
-    - {time_s: 3.0, yaw_deg: 90.0, pitch_deg: -15.0, roll_deg: 0.0}
-    - {time_s: 6.0, yaw_deg: 180.0, pitch_deg: 0.0, roll_deg: 0.0}
-```
-
-Keyframe times must be nonnegative and increase strictly.
-
-### Align With Motion
-
-```yaml
-orientation:
-  type: align_motion
-  allow_pitch: false
-  smoothing_time_s: 0.2
-  yaw_offset_deg: 0.0
-```
-
-`align_motion` requires meaningful movement. Optional smoothing and maximum
-yaw/pitch rates limit abrupt changes while preserving deterministic output.
+Choose `align_motion` when the actor should face its direction of travel. Set `allow_pitch: false` to keep it level. Use `fixed` to hold a heading, or `keyframes` to interpolate between orientations at named times.
 
 ### Look At
 
@@ -434,33 +169,48 @@ orientation:
 Exactly one of `actor` and `point_m` is required. Smoothing, rate limits,
 offsets, and yaw/pitch limits are optional.
 
-### Spin And Random
-
-```yaml
-orientation:
-  type: spin
-  axis: yaw
-  rate_deg_s: 30.0
-  pitch_deg: -5.0
-```
-
-```yaml
-orientation:
-  type: random
-  seed: 7
-  yaw_range_deg: [-45.0, 45.0]
-  pitch_range_deg: [-10.0, 10.0]
-  roll_range_deg: [0.0, 0.0]
-  update_interval_s: 0.5
-```
+For optional smoothing, angular-rate limits, spin rates and random-orientation seeds, see the [orientation reference](../reference/scenario_yaml.md#orientation).
 
 ## Target Asset Alignment
 
 A catalog target can declare its modeled front direction in
 `target_metadata.json`. ORCHAV combines that asset alignment with the actor's
-orientation before generation or preview. The
-[bundled walking target](../../libraries/targets/nist_human_walking/README.md)
-shows a mesh whose visual front needs a `180 deg` yaw offset.
+orientation before generation or preview. Keep asset-specific corrections with
+the mesh metadata, as in the
+[bundled walking target](../../libraries/targets/digital_twin_update1/README.md).
+For imported animated assets, use the
+[world and body conventions](motion/animated_targets.md#world-and-body-coordinates).
+
+## Road-network Trajectories
+
+Use `network_route` to follow a cached OpenStreetMap street graph instead of
+interpolating a straight line between arbitrary world coordinates. Obtain
+`street_network.graphml` through [OSM scene preparation](geography/osm_scene_generation.md)
+and select node IDs present in that graph:
+
+```yaml
+mobility:
+  type: network_route
+  graph_path: street_network.graphml
+  travel_mode: car
+  start_node: '1749655963'
+  end_node: '1749656095'
+  altitude_m: 1.0
+  traversal:
+    type: constant_speed
+    speed_mps: 10.0
+orientation:
+  type: align_motion
+  allow_pitch: false
+```
+
+The example node IDs illustrate the syntax. Use nodes from your own graph.
+`travel_mode` selects permitted edges, `altitude_m` sets the actor's height,
+and `constant_speed` samples the route at 10 m/s on the scenario timeline.
+`align_motion` follows the route tangent while `allow_pitch: false` keeps the
+actor level. The graph must use the scene's coordinate frame. Choose distinct
+routes for multiple actors, then configure sensing through the same scenario settings used for other
+mobility models.
 
 ## Runnable Examples
 

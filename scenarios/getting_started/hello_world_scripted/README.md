@@ -2,18 +2,17 @@
 
 [Scenarios](../../README.md) > [Getting Started](../README.md) > Hello World Scripted
 
-This companion to [Hello World](../hello_world/README.md) keeps the same
-`etoile` scene and one TX/RX pair, but uses `generate.py` to calculate a curved
-RX trajectory and build the standard [`waypoint` mobility
-specification](../../../docs/generator/mobility_and_orientation.md#mobility-models).
-RX1 looks at TX1 while it moves. Use the scenario to learn when a Python driver
-is useful beyond YAML-only authoring.
+After [Hello World](../hello_world/README.md), try the second authoring approach:
+[YAML with additional Python scripting](../../../docs/generator/scenario_authoring.md#python-scripted-actors).
+This example keeps the same `etoile` scene and one TX/RX pair. Python calculates
+a curved RX trajectory and supplies it to the built-in `waypoint` mobility
+model. RX1 looks at TX1 while it moves.
 
 To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scene layout](../../../docs/assets/scenarios/scenarios_getting_started_hello_world_scripted_summary2d.png)
+![Scenario topology](../../../docs/assets/scenarios/scenarios_getting_started_hello_world_scripted_topology.png)
 
 | Element | Configuration |
 |---|---|
@@ -28,12 +27,33 @@ outward. The script samples that equation once per timeline step.
 
 ## Configuration Walkthrough
 
-The scenario separates shared configuration from calculated actor input:
+Open [`scenario.yaml`](scenario.yaml) to compare its settings with Hello World.
+The scene and tracing preset are unchanged; the timeline now spans 16 frames
+over 4 s. Actor definitions move into Python:
 
 | File | Responsibility |
 |---|---|
-| `scenario.yaml` | Scene, timeline, and ray-tracing quality |
-| `generate.py` | TX/RX specifications, calculated RX waypoints, look-at orientation, and the Generator pipeline call |
+| [`scenario.yaml`](scenario.yaml) | Scene, timeline, and ray-tracing quality |
+| [`actors.py`](actors.py) | Defines the transmitter and receiver, calculates RX waypoints, and sets look-at orientation |
+| [`generate.py`](generate.py) | Loads the configuration and actors, then runs the Generator |
+
+This excerpt from `actors.py` defines the moving receiver:
+
+```python
+RxActorSpec(
+    name="RX1",
+    mobility=WaypointMobilitySpec(
+        points_m=_arc_sweep_points(scenario.timeline.steps),
+        interpolation="linear",
+    ),
+    orientation=LookAtOrientationSpec(actor="TX1"),
+)
+```
+
+The `_arc_sweep_points` function calculates one position per timeline step.
+The standard [waypoint model](../../../docs/generator/mobility_and_orientation.md#mobility-models)
+then interpolates between those positions. Python supplies the calculated
+points; generation and frame inspection follow the same workflow as Hello World.
 
 TX1 omits [orientation](../../../docs/generator/mobility_and_orientation.md#orientation-models)
 and therefore uses the default fixed zero orientation. RX1 uses the [look-at
@@ -65,11 +85,21 @@ Generate the scripted frames:
 python scenarios/getting_started/hello_world_scripted/generate.py
 ```
 
-Inspect several positions along the sweep:
+Inspect the initial pose:
 
 ```bash
 orchav-inspect scenarios/getting_started/hello_world_scripted --frame 0
+```
+
+Inspect the midpoint pose:
+
+```bash
 orchav-inspect scenarios/getting_started/hello_world_scripted --frame 8
+```
+
+Inspect the final pose:
+
+```bash
 orchav-inspect scenarios/getting_started/hello_world_scripted --frame 15
 ```
 
@@ -79,10 +109,16 @@ Open the sequence in the Visualizer:
 orchav-visualizer --scenario scenarios/getting_started/hello_world_scripted
 ```
 
+Enable **Edit → Actor Editing → Enable Local What-if Preview** to
+recompute the displayed frame after a temporary actor edit. Preview uses the
+same `actors.py` factory as generation, including the curved trajectory and
+look-at orientation. It leaves the saved frames unchanged. See
+[Interactive Recomputation](../../../docs/visualizer/interactive_recomputation.md).
+
 ## What To Notice
 
 - `scenario.yaml` still owns the shared scene, timeline, and tracing budget.
-- `generate.py` owns only the actor definitions and calculated path.
+- `actors.py` supplies the calculated actors to both `generate.py` and local preview.
 - RX1 changes position and orientation over time while TX1 remains fixed.
 - The same prepared actor specifications flow through the normal Generator and
   shared frame contract.

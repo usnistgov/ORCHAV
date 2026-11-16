@@ -1,52 +1,18 @@
 # Notebook Visualization
 
-Use notebook visualization to explore local HDF5 frames in Jupyter without
-opening the desktop Visualizer. `PygfxNotebookViz` is the supported notebook
-interface. It shows the scene, [actors](../reference/glossary.md#actor),
-[targets](../reference/glossary.md#target), and stored
-[propagation paths](../reference/glossary.md#propagation-path-mpc) through the
-same frame contract used by the desktop application.
+`PygfxNotebookViz` displays saved ORCHAV scenes and
+[multipath components (MPCs)](../reference/glossary.md#propagation-path-mpc)
+inside Jupyter. You can orbit the scene, play its recorded motion and render
+images from Python. It reads the same local HDF5 frames as the desktop
+[Visualizer](README.md).
 
-In its normal use, the notebook wrapper is a
-[consumer](../reference/glossary.md#consumer). It retrieves existing frames
-through the local HDF5 [frame provider](../reference/glossary.md#frame-provider).
-Calling `regenerate()` is a separate
-[producer](../reference/glossary.md#producer) action that runs the
-[Generator](../generator/README.md) before reloading those files.
-
-```mermaid
-flowchart TB
-    Generator["ORCHAV Generator (producer)"]
-    Frames["Local HDF5 frame set"]
-    Provider["HDF5 frame provider"]
-    Notebook["PygfxNotebookViz (consumer)"]
-    Output["Static image, interactive view, or animation"]
-    Request["Explicit regenerate request"]
-
-    Generator --> Frames
-    Frames --> Provider
-    Provider --> Notebook
-    Notebook --> Output
-    Request --> Generator
-```
-
-## Set Up The Example
-
-From the repository root, install the Jupyter extra, generate the three-frame
-notebook scenario, and start JupyterLab:
-
-```bash
-python -m pip install -e ".[jupyter]"
-orchav-generator scenarios/visualizer/notebook_mode/
-jupyter lab examples/notebook/notebook_mode.ipynb
-```
-
-The [example notebook](../../examples/notebook/notebook_mode.ipynb) is cleared
-of saved outputs. Run its cells after the frame set has been generated.
+Use the [Notebook Mode scenario](../../scenarios/visualizer/notebook_mode/README.md)
+for installation, generation and the runnable notebook. The examples below use
+that recording, with paths relative to the repository root.
 
 ## Open The Scenario
 
-Create one wrapper and reuse it across cells:
+Create one viewer and reuse it across cells:
 
 ```python
 from visualizer.src.notebook.pygfx import PygfxNotebookViz
@@ -55,143 +21,148 @@ viz = PygfxNotebookViz("scenarios/visualizer/notebook_mode")
 print(viz.frames)
 ```
 
-Notebook visualization reads the local HDF5 `files` data mode. Omitting `data`
-from a scenario selects this standard file-backed workflow. Use the desktop
-Visualizer for `live_grpc` or `remote_hdf5` sessions.
+Select frame indices from `viz.frames`. They can be nonconsecutive, and an
+unavailable index raises `ValueError`. Without recorded frames, the default
+`render(frame=0)` can preview scene geometry.
+
+The notebook reads the local `files` data mode. Use the desktop Visualizer for
+`live_grpc` or `remote_hdf5`, channel-analysis panels, coverage controls and the
+Path Explorer. See [data modes](../shared/README.md#choose-a-data-mode) for those
+connections.
 
 ## Render A Static Image
 
-`render()` returns an `(H, W, 3)` `uint8` NumPy array. By default, it also
-displays the image inline when IPython and Pillow are available:
+`render()` returns an `(H, W, 3)` `uint8` NumPy array and displays it inline when
+IPython and Pillow are available:
 
 ```python
-image = viz.render(
-    frame=2,
-    color_mode="path_loss",
-    azimuth=55,
-    elevation=35,
-    width=1024,
-    height=768,
-)
+image = viz.render(frame=2, color_mode="path_loss")
 print(image.shape)
 ```
 
-Pass `display=False` when a script needs only the array. This offscreen pygfx
-path does not require a Qt desktop window, which makes it useful for remote
-notebooks and reports. It requires a working wgpu backend.
+![Frame 2 of the Notebook Mode recording, colored by path loss](../assets/scenarios/scenarios_visualizer_notebook_mode_render_frame2_path_loss.png)
+
+The rendered image includes the scene, devices and their saved paths. Camera
+arguments such as `azimuth`, `elevation`, `distance` and `center` let you inspect
+a smaller region. Pass `display=False` when you only need the array. Rendering
+requires a working wgpu backend but does not open a Qt desktop window.
+
+For a PNG-writing Python function or command-line batch output, use
+[Render Images from Saved Frames](headless_rendering.md).
 
 ## Interact In A Cell
 
-With the `jupyter` extra installed, `show()` returns an in-cell view with orbit,
-pan, and zoom controls:
+`show()` opens an in-cell view with orbit, pan and zoom controls:
 
 ```python
-viz.show(frame=0, width=900, height=650)
+viz.show(frame=viz.frames[0], width=900, height=650)
 ```
 
-`widget()` returns the canvas when it needs to be placed in a larger notebook
-layout:
+The `jupyter` installation extra includes the required `jupyter_rfb` package.
+`widget()` returns the canvas instead when you want to place it in a larger
+notebook layout.
+
+Play the saved frames with the same interactive camera:
 
 ```python
-canvas = viz.widget(frame=0, width=800, height=600)
-canvas
-```
-
-`animate()` plays selected stored frames and keeps the same interactive camera:
-
-```python
-animation = viz.animate(frames=[0, 1, 2], fps=5, loop=True)
+animation = viz.animate(frames=viz.frames, fps=24, loop=True)
 animation
 ```
 
-The same calls accept TX/RX filters, camera settings, MPC visibility settings,
-and the `reflection_order`, `mpc_type`, `delay`, and `path_loss` color modes.
-See the runnable [Notebook Mode scenario](../../scenarios/visualizer/notebook_mode/README.md)
-for the scene and expected output.
+`fps` controls presentation speed independently of simulation time and must be
+positive. All requested frames must exist before playback starts. Set
+`loop=False` to stop at the last frame while keeping camera interaction.
+
+## Choose Appearance And Labels
+
+The notebook supports the desktop's `Detailed`, `Paper`, `Dark` and `Glow`
+[appearance presets](appearance.md). Set an appearance on the viewer
+constructor or on an individual `render()`, `show()`, `widget()` or `animate()`
+call. Existing views retain their own settings.
+
+Open a paper-style view with callout labels:
+
+```python
+canvas = viz.widget(
+    frame=viz.frames[0],
+    appearance="Paper",
+    label_style="callout",
+)
+canvas
+```
+
+| Setting | Choices and meaning |
+|---|---|
+| `color_mode` | `reflection_order`, `mpc_type`, `delay` or `path_loss` for MPC colors. |
+| `label_style` | `plain` uses sphere markers and text, `callout` adds leader lines, and `card` adds tinted labels with circular markers. |
+| `tx_color`, `rx_color` | RGB or RGBA values between zero and one. |
+| `width`, `height` | Canvas dimensions in pixels. |
+| `azimuth`, `elevation` | Camera angles in degrees. |
+| `distance`, `center` | Camera distance and look-at position in scene metres. |
+
+Explicit path-color, line-width, point-size and bounce-point arguments override
+the preset's corresponding choices. `Detailed` uses installed texture and sky
+assets without downloading them. A preset controls environment lighting. Omit
+`appearance` to use `ibl_name` and `ibl_intensity` directly. Plan view and saved
+desktop appearance files are desktop features.
+
+For the full argument list, see the
+[`PygfxNotebookViz` methods](../../visualizer/src/notebook/pygfx.py).
 
 ## Regenerate A Simple Position Study
 
-Ordinary `render()`, `show()`, `widget()`, and `animate()` calls only consume
-stored frames. Use `regenerate()` when changing TX or RX positions must produce
-new propagation paths:
+Rendering consumes saved frames. `regenerate()` explicitly runs the
+[Generator](../generator/README.md) with new stationary TX/RX positions and
+replaces this scenario's frame output:
 
 ```python
 viz.regenerate(
-    tx_positions=[[0.0, 0.0, 25.0]],
-    rx_positions=[[70.0, -25.0, 1.5]],
+    tx_positions=[[80.0, 100.0, 30.0]],
+    rx_positions=[[25.0, 80.0, 1.5]],
     quality="ultra-low",
     steps=1,
 )
-viz.render(frame=0)
+image = viz.render(frame=0)
 ```
 
-This action closes the current HDF5 source, runs the Generator, and reloads the
-notebook wrapper after the scenario's `frames/` output is replaced. If
-generation fails, it attempts to reopen the rolled-back frame set without
-replacing the original generation exception. It requires the Generator
-dependencies and a working
-[Sionna RT](https://nvlabs.github.io/sionna/) backend.
+Each position row creates one stationary device with zero fixed yaw, pitch and
+roll. Multiple steps repeat those poses. Targets from `scenario.yaml` are not
+reconstructed automatically. This action requires the Generator dependencies
+and a working [Sionna RT](https://nvlabs.github.io/sionna/rt/) backend.
 
-`regenerate()` is designed for simple stationary position studies:
-
-- Each row in `tx_positions` or `rx_positions` creates a separate device. The
-  rows are not trajectory samples.
-- Every generated TX and RX is stationary with zero fixed yaw, pitch, and
-  roll. A value of `steps` greater than one repeats those stationary poses.
-- Targets from `scenario.yaml` are not reconstructed automatically.
-
-For motion, nonzero orientation, targets, or other actor logic, edit the
-scenario and run the [Generator](../generator/README.md). Release the consumer
-first with `viz.close()`, then call `viz.reload()` after generation
-finishes. This is required on platforms where an open HDF5 handle prevents the
-producer from replacing the frame set.
-
-The standalone `generate_frames()` helper provides the same stationary
-producer step when generation and visualization belong in separate cells:
-
-```python
-from visualizer.src.notebook.generator import generate_frames
-
-viz.close()
-generate_frames(
-    "scenarios/visualizer/notebook_mode",
-    tx_positions=[[0.0, 0.0, 25.0]],
-    rx_positions=[[-30.0, 10.0, 1.5]],
-    quality="ultra-low",
-    steps=1,
-)
-viz.reload()
-```
-
-`close()` is idempotent. A scoped consumer can instead use
-`with PygfxNotebookViz(...) as viz:` so the frame source closes when the
-block exits. Integrated `viz.regenerate()` performs the close, generation,
-and reload sequence automatically.
+For motion, orientation or targets, edit the scenario and run the Generator.
+Call `viz.close()` first to release its frame files, then `viz.reload()` after
+generation. Integrated `regenerate()` handles that close/generate/reload
+sequence. The standalone
+[`generate_frames()` helper](../../visualizer/src/notebook/generator.py)
+provides the stationary producer step for separate notebook cells.
 
 ## Visual-Only Marker Overrides
 
-Passing `tx_positions` or `rx_positions` to a rendering call moves only the
-displayed markers. Stored MPC geometry does not move or recompute:
+Passing positions to a rendering call moves only the displayed device markers:
 
 ```python
-# Presentation change only. Stored paths remain unchanged.
-viz.render(rx_positions=[[80.0, 50.0, 1.5]])
+image = viz.render(rx_positions=[[80.0, 50.0, 1.5]])
 ```
 
-Use marker overrides for presentation experiments. Use `regenerate()` or the
-Generator when the physical channel must change.
+Stored MPC geometry remains unchanged. Use regeneration when the physical
+channel must change.
 
-## Choose Notebook Or Desktop Visualization
+## Close Or Reload The Viewer
 
-Use the notebook interface for scene and frame layers in a cell. Use the
-desktop Visualizer when you need analysis panels, coverage controls, the MPC
-Explorer, or interactive recomputation. Use the
-[Frame Data Reference](../shared/frame_reference.md#minimal-hdf5-frame-provider-example)
-to load local frames for custom Python work and the
-[Statistics Helpers](../shared/statistics.md) for calculations. Use
-[Headless Rendering](headless_rendering.md) for command-line image output or
-the `render_scenario()` Python API.
+Release canvases, playback and open frame files when finished:
+
+```python
+viz.close()
+```
+
+`reload()` also closes existing views before reopening the recording. Call
+`show()`, `widget()` or `animate()` again to view the refreshed frames. A
+`with PygfxNotebookViz(...) as viz:` block closes its resources automatically.
+
+For custom numerical analysis, use the [frame-provider example](../shared/frame_reference.md#minimal-hdf5-frame-provider-example)
+and [statistics helpers](../shared/statistics.md).
 
 ---
 
-Up: [Visualizer](README.md) | Related: [Notebook Examples](../../examples/notebook/README.md) | [Headless Rendering](headless_rendering.md) | [Renderers](renderers.md)
+Up: [Visualizer](README.md) | Example: [Notebook Mode](../../scenarios/visualizer/notebook_mode/README.md) | Related: [Image Output](headless_rendering.md)

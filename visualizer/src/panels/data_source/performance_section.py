@@ -10,7 +10,13 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Optional
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QEvent,
+    QModelIndex,
+    QSortFilterProxyModel,
+    Qt,
+)
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -30,8 +36,8 @@ from PySide6.QtWidgets import (
 
 from shared.logging import get_logger
 
-from ...app.plot_theme import apply_matplotlib_legend_theme, apply_matplotlib_theme
-from ...app.theme import current_theme, get_theme_manager
+from ...app.theme import current_theme
+from ...widgets.inline_plot import InlinePlot
 from ..collapsible_section import CollapsibleSection
 from ..ui_theme import compact_progress_bar_style, configure_label
 
@@ -39,6 +45,27 @@ logger = get_logger("orchav.performance_section")
 
 MAX_HISTORY_POINTS = 100
 MAX_CONNECTION_EVENTS = 100
+
+
+class _ReadableHeader(QHeaderView):
+    """Grow clipped headings after styling without resizing streamed data rows."""
+
+    def __init__(self, parent):
+        super().__init__(Qt.Orientation.Horizontal, parent)
+
+    def event(self, event):
+        result = super().event(event)
+        if event.type() == QEvent.Type.Show or (
+            self.isVisible() and event.type() in (QEvent.Type.StyleChange, QEvent.Type.FontChange)
+        ):
+            self._fit_headings()
+        return result
+
+    def _fit_headings(self):
+        for column in range(self.count()):
+            required = self.sectionSizeHint(column)
+            if self.sectionSize(column) < required:
+                self.resizeSection(column, required)
 
 
 def _request_latency_ms(request: Dict[str, Any]) -> Optional[float]:
@@ -338,7 +365,7 @@ class PerformanceSection:
         widgets: Dict[str, Any],
         button_style_fn: Any,
     ) -> None:
-        """Initialize bounded UI histories and optional matplotlib state."""
+        """Initialize bounded UI histories and lazy native plots."""
         self.parent = parent
         self.widgets = widgets
         self._get_button_style = button_style_fn
@@ -352,12 +379,10 @@ class PerformanceSection:
         self._last_perf_history_timestamp: float = 0.0
         self._last_perf_graph_render: float = 0.0
 
-        # Matplotlib availability
-        self._has_matplotlib: bool = False
-        self._FigureCanvas: Any = None
-        self._Figure: Any = None
+        # Lazy native plot creation
+        self._graphs_ready: bool = False
 
-        # Persistent Line2D objects for incremental graph updates
+        # Persistent curves for incremental graph updates
         self._frame_time_line: Any = None
         self._buffer_util_line: Any = None
         self._performance_graph_group: CollapsibleSection | None = None
@@ -374,18 +399,10 @@ class PerformanceSection:
         # Request history state for incremental table updates
         self._full_request_history: List[Dict[str, Any]] = []
         self._last_table_row_count: int = 0
-        self._theme_manager = None
-        self._theme_changed_callback = self._apply_graph_theme
 
     def cleanup(self) -> None:
-        """Release the process-wide theme subscription."""
-        if self._theme_manager is None:
-            return
-        try:
-            self._theme_manager.theme_changed.disconnect(self._theme_changed_callback)
-        except (RuntimeError, TypeError):
-            pass
-        self._theme_manager = None
+        """Stop incremental updates; the parent owns the plots' Qt lifetime."""
+        self._graphs_ready = False
 
     def create_content(self) -> QWidget:
         """Create performance section content widget.
@@ -502,6 +519,7 @@ class PerformanceSection:
         request_proxy.setSourceModel(request_model)
         request_proxy.setSortRole(Qt.ItemDataRole.UserRole)
         request_table = QTableView()
+        request_table.setHorizontalHeader(_ReadableHeader(request_table))
         request_table.setModel(request_proxy)
         request_table.horizontalHeader().setStretchLastSection(True)
         request_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -547,7 +565,7 @@ class PerformanceSection:
             self._ensure_performance_graphs()
 
     def _ensure_performance_graphs(self) -> None:
-        """Import Matplotlib and create live graph canvases at most once."""
+        """Create the native live plots at most once."""
         if self._performance_graphs_initialized:
             return
         self._performance_graphs_initialized = True
@@ -561,98 +579,24 @@ class PerformanceSection:
             layout.removeWidget(placeholder)
             placeholder.deleteLater()
 
-        try:
-            import matplotlib
-
-            matplotlib.use("QtAgg")
-            from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-            from matplotlib.figure import Figure
-
-            self._has_matplotlib = True
-            self._FigureCanvas = FigureCanvasQTAgg
-            self._Figure = Figure
-        except ImportError:
-            self._has_matplotlib = False
-            error_label = QLabel("Matplotlib not available. Install with: pip install matplotlib")
-            configure_label(error_label, role="error", font_size=10)
-            layout.addWidget(error_label)
-            return
-
-        self._theme_manager = get_theme_manager()
-        self._theme_manager.theme_changed.connect(self._theme_changed_callback)
-
+        self._graphs_ready = True
         tabs = QTabWidget()
-
-        # Frame time graph - create Line2D for incremental updates
-        self.widgets["perf_graph_frame_time"] = self._create_performance_graph(
-            "Frame Generation Time (ms)", "Time (ms)"
-        )
-        fig_ft = self.widgets["perf_graph_frame_time"].figure
-        ax_ft = fig_ft.axes[0]
-        theme = current_theme()
-        (self._frame_time_line,) = ax_ft.plot(
-            [], [], color=theme.accent, linewidth=1.5, label="Frame Time"
-        )
-        ax_ft.legend(fontsize=8)
-        apply_matplotlib_legend_theme(ax_ft)
-        tabs.addTab(self.widgets["perf_graph_frame_time"], "Frame Time")
-
-        # Buffer utilization graph
-        self.widgets["perf_graph_buffer"] = self._create_performance_graph(
-            "Buffer Utilization (%)", "Utilization (%)"
-        )
-        fig_bu = self.widgets["perf_graph_buffer"].figure
-        ax_bu = fig_bu.axes[0]
-        (self._buffer_util_line,) = ax_bu.plot(
-            [], [], color=theme.success, linewidth=1.5, label="Utilization"
-        )
-        ax_bu.set_ylim(0, 120)
-        ax_bu.legend(fontsize=8)
-        apply_matplotlib_legend_theme(ax_bu)
-        tabs.addTab(self.widgets["perf_graph_buffer"], "Buffer")
-
-        layout.addWidget(tabs)
-
-    def _create_performance_graph(self, title: str, ylabel: str) -> Any:
-        """Create a matplotlib graph widget with initial layout.
-
-        Args:
-            title: Graph title.
-            ylabel: Y-axis label.
-
-        Returns:
-            A ``FigureCanvasQTAgg`` instance.
-        """
-        fig = self._Figure(figsize=(8, 3))
-        ax = fig.add_subplot(111)
-        ax.set_title(title, fontsize=10)
-        ax.set_xlabel("Elapsed (s)", fontsize=9)
-        ax.set_ylabel(ylabel, fontsize=9)
-        apply_matplotlib_theme(fig, ax)
-        fig.tight_layout()
-
-        canvas = self._FigureCanvas(fig)
-        canvas.setMinimumHeight(200)
-        canvas.setMaximumHeight(200)
-        return canvas
-
-    def _apply_graph_theme(self, *_args: Any) -> None:
-        """Restyle existing performance graph canvases after a theme change."""
-        theme = current_theme()
-        for widget_key, line, line_color in (
-            ("perf_graph_frame_time", self._frame_time_line, theme.accent),
-            ("perf_graph_buffer", self._buffer_util_line, theme.success),
+        for key, title, ylabel, label, color in (
+            ("frame_time", "Frame Generation Time", "Time (ms)", "Frame time", "#2865b0"),
+            ("buffer", "Buffer Utilization", "Utilization (%)", "Utilization", "#00866b"),
         ):
-            canvas = self.widgets.get(widget_key)
-            if canvas is None:
-                continue
-            fig = canvas.figure
-            for ax in fig.axes:
-                apply_matplotlib_theme(fig, ax)
-                apply_matplotlib_legend_theme(ax)
-            if line is not None:
-                line.set_color(line_color)
-            canvas.draw_idle()
+            plot = InlinePlot(title, "Elapsed (s)", ylabel)
+            plot.setMinimumHeight(200)
+            plot.setMaximumHeight(250)
+            line = plot.curve([], [], name=label, color=color)
+            self.widgets["perf_graph_" + key] = plot
+            if key == "frame_time":
+                self._frame_time_line = line
+            else:
+                self._buffer_util_line = line
+                plot.setYRange(0, 120, padding=0)
+            tabs.addTab(plot, title)
+        layout.addWidget(tabs)
 
     # -- Connection Diagnostics -----------------------------------------------
 
@@ -672,6 +616,7 @@ class PerformanceSection:
         connection_proxy.setSourceModel(connection_model)
         connection_proxy.setSortRole(Qt.ItemDataRole.UserRole)
         connection_table = QTableView()
+        connection_table.setHorizontalHeader(_ReadableHeader(connection_table))
         connection_table.setModel(connection_proxy)
         connection_table.horizontalHeader().setStretchLastSection(True)
         connection_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -851,8 +796,8 @@ class PerformanceSection:
     # -- Performance graphs (incremental updates) -----------------------------
 
     def _update_performance_graphs(self) -> None:
-        """Update performance graphs using incremental line.set_data()."""
-        if not self._has_matplotlib:
+        """Update performance graphs using incremental curve.setData()."""
+        if not self._graphs_ready:
             return
         frame_canvas = self.widgets.get("perf_graph_frame_time")
         buffer_canvas = self.widgets.get("perf_graph_buffer")
@@ -872,13 +817,9 @@ class PerformanceSection:
                 times, values = zip(*self.performance_history["frame_times"])
                 base_time = times[0]
                 rel_times = [(t - base_time) for t in times]
-                self._frame_time_line.set_data(rel_times, values)
+                self._frame_time_line.setData(rel_times, values)
 
-                fig = frame_canvas.figure
-                ax = fig.axes[0]
-                ax.relim()
-                ax.autoscale_view()
-                frame_canvas.draw_idle()
+                frame_canvas.enableAutoRange()
 
             # Buffer utilization graph
             if (
@@ -890,14 +831,10 @@ class PerformanceSection:
                 times, values = zip(*self.performance_history["buffer_util"])
                 base_time = times[0]
                 rel_times = [(t - base_time) for t in times]
-                self._buffer_util_line.set_data(rel_times, values)
+                self._buffer_util_line.setData(rel_times, values)
 
-                fig = buffer_canvas.figure
-                ax = fig.axes[0]
-                ax.relim()
-                ax.autoscale_view()
-                ax.set_ylim(0, max(120, max(values) * 1.1) if values else 120)
-                buffer_canvas.draw_idle()
+                buffer_canvas.enableAutoRange(axis="x")
+                buffer_canvas.setYRange(0, max(120, max(values) * 1.1), padding=0)
 
         except (ValueError, TypeError, RuntimeError) as e:
             logger.debug("Error updating performance graphs: %s", e)

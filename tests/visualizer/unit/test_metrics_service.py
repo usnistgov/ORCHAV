@@ -20,6 +20,7 @@ class DummySignal:
 class DummyWindow:
     def __init__(self, parent, update_hz=0, frame_stats_provider=None):
         self.destroyed = DummySignal()
+        self.update_hz = update_hz
         self.enqueued: list = []
         self.frame_stats_provider = frame_stats_provider
         self._visible = True
@@ -99,6 +100,7 @@ def test_metrics_window_toggle(monkeypatch):
 
     service.toggle_window()
     assert isinstance(service.window, DummyWindow)
+    assert service.window.update_hz == 0
     assert viz.metrics_window is service.window
     assert service.window.frame_stats_provider == service._compute_frame_stats
     assert service.window.move_calls == []

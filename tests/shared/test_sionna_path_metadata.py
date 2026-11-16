@@ -9,6 +9,7 @@ from shared.frames.sionna_metadata import (
     SIONNA_INTERACTION_LABELS_LOWER,
     SIONNA_INTERACTION_LOS,
     SIONNA_INTERACTION_REFRACTION,
+    SIONNA_INTERACTION_SENSING,
     SIONNA_INTERACTION_SPECULAR,
     SIONNA_INVALID_OBJECT_ID,
     SIONNA_NON_LOS_INTERACTION_TYPES,
@@ -30,6 +31,7 @@ def test_sionna_interaction_labels_cover_known_types() -> None:
         SIONNA_INTERACTION_DIFFUSE: "Diffuse",
         SIONNA_INTERACTION_REFRACTION: "Refraction",
         SIONNA_INTERACTION_DIFFRACTION: "Diffraction",
+        SIONNA_INTERACTION_SENSING: "Sensing",
     }
     assert SIONNA_INTERACTION_LABELS_LOWER[SIONNA_INTERACTION_DIFFRACTION] == "diffraction"
     assert SIONNA_NON_LOS_INTERACTION_TYPES == (
@@ -37,6 +39,7 @@ def test_sionna_interaction_labels_cover_known_types() -> None:
         SIONNA_INTERACTION_DIFFUSE,
         SIONNA_INTERACTION_REFRACTION,
         SIONNA_INTERACTION_DIFFRACTION,
+        SIONNA_INTERACTION_SENSING,
     )
 
 

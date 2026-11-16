@@ -13,6 +13,7 @@ from shared.logging import get_logger
 from .base import Theme
 from .dark import DARK_THEME
 from .default import DEFAULT_THEME
+from .palettes import PRESENTATION_COLORMAPS, register_presentation_colormap
 
 logger = get_logger(__name__)
 
@@ -67,6 +68,8 @@ class ThemeManager:
         if name not in self._themes:
             raise ValueError(f"Unknown theme: {name}. Available: {list(self._themes.keys())}")
 
+        if self._themes[name].continuous_colormap in PRESENTATION_COLORMAPS:
+            register_presentation_colormap(self._themes[name].continuous_colormap)
         self._current_theme = self._themes[name]
         self._notify_listeners()
 
@@ -85,6 +88,8 @@ class ThemeManager:
             ValueError: If colormap_type is not recognized
         """
         if colormap_type == "continuous":
+            if name in PRESENTATION_COLORMAPS:
+                register_presentation_colormap(name)
             self._current_theme = replace(self._current_theme, continuous_colormap=name)
         elif colormap_type == "categorical":
             self._current_theme = replace(self._current_theme, categorical_colormap=name)

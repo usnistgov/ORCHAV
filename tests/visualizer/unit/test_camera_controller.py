@@ -52,6 +52,7 @@ class _FakeDropdown:
         self.items: list[tuple[str, object]] = []
         self.current_index = -1
         self.signal_blocks: list[bool] = []
+        self._signals_blocked = False
 
     def currentData(self):
         if 0 <= self.current_index < len(self.items):
@@ -63,8 +64,14 @@ class _FakeDropdown:
             return self.items[self.current_index][0]
         return ""
 
-    def blockSignals(self, blocked: bool) -> None:
+    def blockSignals(self, blocked: bool) -> bool:
+        previous = self._signals_blocked
+        self._signals_blocked = bool(blocked)
         self.signal_blocks.append(bool(blocked))
+        return previous
+
+    def currentIndex(self) -> int:
+        return self.current_index
 
     def clear(self) -> None:
         self.items.clear()
@@ -83,6 +90,9 @@ class _FakeDropdown:
 
     def itemData(self, index: int):
         return self.items[index][1]
+
+    def itemText(self, index: int) -> str:
+        return self.items[index][0]
 
     def findText(self, text: str) -> int:
         for index, item in enumerate(self.items):

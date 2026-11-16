@@ -29,6 +29,7 @@ from ..types.render_payloads import (
     MeshPayload,
     PointCloudPayload,
 )
+from .pygfx_pbr import apply_display_reflectance, needs_physical_material, pbr_material_classes
 
 logger = get_logger("orchav.pygfx_helpers")
 
@@ -555,11 +556,18 @@ def apply_texture_policy_to_material_payload(
             "roughness_map_path": material.roughness_map_path,
             "ao_map_path": material.ao_map_path,
             "metallic_map_path": material.metallic_map_path,
+            "clearcoat_roughness_map_path": material.clearcoat_roughness_map_path,
             "alpha": alpha,
         },
         color=material.base_color,
         alpha=alpha,
         context=context or "pygfx material",
+        # Reference imagery is an authoring aid, independent of optional surface PBR maps.
+        textures_enabled=(
+            True
+            if material.shader == "unlit" and material.shader_variant == "reference_image"
+            else None
+        ),
     )
     warn_for_texture_policy(policy, log=logger)
     return replace(
@@ -570,6 +578,7 @@ def apply_texture_policy_to_material_payload(
         roughness_map_path=policy.active_maps["roughness_map_path"],
         ao_map_path=policy.active_maps["ao_map_path"],
         metallic_map_path=policy.active_maps["metallic_map_path"],
+        clearcoat_roughness_map_path=policy.active_maps["clearcoat_roughness_map_path"],
     )
 
 
@@ -601,7 +610,7 @@ def make_mesh_material(
     """Create a pygfx mesh material from a ``MaterialPayload``.
 
     Returns a ``MeshPhysicalMaterial`` when the payload requests advanced PBR
-    (clearcoat / anisotropy / emissive); otherwise returns a
+    or nondefault dielectric reflectance; otherwise returns a
     ``MeshStandardMaterial`` for the fast path. Falls back to
     ``MeshPhongMaterial`` if neither is available.
 
@@ -614,11 +623,12 @@ def make_mesh_material(
     because pygfx 0.15.3 has no equivalent on ``MeshPhysicalMaterial``.
     """
     material = apply_texture_policy_to_material_payload(material, context="pygfx mesh material")
-    effective_color = (
-        (1.0, 1.0, 1.0, material.base_color[3]) if has_vertex_colors else material.base_color
-    )
+    # Uniform/map alpha must not multiply the same payload alpha twice.
+    # Vertex alpha remains in the geometry and is multiplied by opacity once.
+    effective_color = (1.0, 1.0, 1.0, 1.0) if has_vertex_colors else (*material.base_color[:3], 1.0)
+    standard_cls, physical_cls, _ = pbr_material_classes(gfx)
 
-    if _is_pygfx_unlit_mode_enabled():
+    if _is_pygfx_unlit_mode_enabled() or str(material.shader).strip().lower() == "unlit":
         basic_kwargs: dict[str, Any] = {"color": effective_color}
         if has_vertex_colors:
             basic_kwargs["color_mode"] = "vertex"
@@ -642,21 +652,20 @@ def make_mesh_material(
     if has_vertex_colors:
         kwargs["color_mode"] = "vertex"
 
-    use_physical = material.has_advanced_pbr and hasattr(gfx, "MeshPhysicalMaterial")
+    use_physical = needs_physical_material(material) and physical_cls is not None
     if use_physical:
         kwargs["clearcoat"] = material.clearcoat
         kwargs["clearcoat_roughness"] = material.clearcoat_roughness
-        # Anisotropy is intentionally NOT passed: pygfx 0.15.3 can compile
-        # an invalid WGSL shader for MeshPhysicalMaterial.anisotropy > 0
-        # when no normal map is bound. The
+        # Anisotropy remains disabled: pygfx 0.17 shader generation reads
+        # unassigned texcoords when anisotropy > 0 without a normal map.
         # Open3D renderer applies it via base_anisotropy as usual.
         if any(c > 0.0 for c in material.emissive_color):
             er, eg, eb = material.emissive_color
             kwargs["emissive"] = (er, eg, eb, 1.0)
         kwargs["emissive_intensity"] = max(0.0, float(material.emissive_intensity))
-        material_cls = gfx.MeshPhysicalMaterial
+        material_cls = physical_cls
     else:
-        material_cls = gfx.MeshStandardMaterial
+        material_cls = standard_cls
 
     try:
         mat = material_cls(**kwargs)
@@ -665,21 +674,15 @@ def make_mesh_material(
         try:
             mat = material_cls(**kwargs)
         except (TypeError, RuntimeError, AttributeError):
-            mat = gfx.MeshPhongMaterial(color=material.base_color, shininess=20)
+            mat = gfx.MeshPhongMaterial(color=effective_color, shininess=20)
             _apply_mesh_material_alpha_state(mat, material)
             return mat
     except (RuntimeError, AttributeError):
-        mat = gfx.MeshPhongMaterial(color=material.base_color, shininess=20)
+        mat = gfx.MeshPhongMaterial(color=effective_color, shininess=20)
         _apply_mesh_material_alpha_state(mat, material)
         return mat
 
-    reflectance = max(0.0, min(1.0, float(material.reflectance)))
-    for attr in ("reflectivity", "specular_intensity"):
-        if hasattr(mat, attr):
-            try:
-                setattr(mat, attr, reflectance)
-            except (AttributeError, RuntimeError, TypeError, ValueError):
-                pass
+    apply_display_reflectance(mat, material.reflectance)
 
     _apply_mesh_material_alpha_state(mat, material)
 
@@ -883,6 +886,7 @@ def _apply_pbr_maps_to_pygfx_material(gfx: Any, mat: Any, material: MaterialPayl
         (material.roughness_map_path, "roughness_map"),
         (material.ao_map_path, "ao_map"),
         (material.metallic_map_path, "metalness_map"),
+        (material.clearcoat_roughness_map_path, "clearcoat_roughness_map"),
     ]
     for path, attr in map_paths:
         if path is None or not hasattr(mat, attr):

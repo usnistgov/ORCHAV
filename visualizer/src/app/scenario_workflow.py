@@ -10,8 +10,9 @@ remains a composition root rather than a compatibility facade.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Callable, Optional, Protocol
 
@@ -184,6 +185,14 @@ def _set_viewport_terminal_state(
         host.set_state(state, message)
 
 
+def _discard_unclaimed_sensing_dashboard(frame_source) -> None:
+    provider = getattr(frame_source, "provider", None)
+    if getattr(provider, "_prepared_sensing_dashboard", None) is not None:
+        from ..sensing.startup_cache import discard_prepared_dashboard
+
+        discard_prepared_dashboard(provider)
+
+
 def cleanup_previous_scene(viz: Any) -> None:
     """Reset app-owned scene state before loading another scenario.
 
@@ -191,6 +200,13 @@ def cleanup_previous_scene(viz: Any) -> None:
     clears frame/trajectory state and hides frame-backed UI affordances. Keep
     this ordering aligned with ``tests/visualizer/unit/test_scenario_workflow.py``.
     """
+    _discard_unclaimed_sensing_dashboard(getattr(viz, "frame_source", None))
+    result_playback = getattr(viz, "result_playback", None)
+    if result_playback is not None:
+        result_playback.close()
+    demo = getattr(viz, "demo_service", None)
+    if demo is not None:
+        demo.stop(reason="Demo stopped: the scene changed.", restore_playback=False)
     reset_retry = getattr(viz, "reset_frame_retry_state", None)
     if callable(reset_retry):
         reset_retry()
@@ -200,9 +216,22 @@ def cleanup_previous_scene(viz: Any) -> None:
     cancel_statistics = getattr(statistics_service, "cancel_collection", None)
     if callable(cancel_statistics):
         cancel_statistics()
+    statistics_panel = getattr(getattr(viz, "ui_manager", None), "panels", {}).get("statistics")
+    bind_statistics = getattr(statistics_panel, "set_statistics_source", None)
+    if callable(bind_statistics):
+        # Retire the panel before the old frame provider is closed, including
+        # transitions to scene-only or failed loads that never bind a new source.
+        bind_statistics(None)
     viz._scene_boot_logged = False
     viz._scene_boot_start = None
     coverage_reset = False
+    if (
+        getattr(viz, "sensing_volume_window", None) is not None
+        or getattr(viz, "volume_return", None) is not None
+    ):
+        from ..sensing.volume_workspace import retire_volume_scene
+
+        retire_volume_scene(viz)
     coverage_service = getattr(viz, "coverage_service", None)
     reset_coverage = getattr(coverage_service, "reset_runtime_state", None)
     if callable(reset_coverage):
@@ -212,14 +241,29 @@ def cleanup_previous_scene(viz: Any) -> None:
     # overlays are touched. A failed preflight never reaches this point, so
     # the committed epoch does not invalidate the still-active scenario.
     viz._mpc_presented_source_epoch = int(getattr(viz, "_mpc_presented_source_epoch", 0)) + 1
+    camera = getattr(viz, "camera_controller", None)
+    reset_camera = getattr(camera, "reset_for_recording", None)
+    if callable(reset_camera):
+        reset_camera()
     explorer_session = getattr(viz, "_mpc_explorer_session", None)
     explorer_teardown = getattr(explorer_session, "on_scenario_teardown", None)
     if callable(explorer_teardown):
         explorer_teardown()
     # Retire trajectory reads before scene cleanup closes the active source.
     viz.trajectory_load_coordinator.reset()
-    viz.scene_service.cleanup_previous_scene()
+    # Inspection workers and their transient native layers must be retired
+    # while the source and renderer resources they reference are still alive.
+    figures = getattr(viz, "live_figure_manager", None)
+    if figures is not None:
+        figures.close()
+    # Returning borrowed plots emits dashboard option changes. Finish those
+    # callbacks before retiring readers so they cannot reopen the old provider.
+    sensing_panel = getattr(getattr(viz, "ui_manager", None), "panels", {}).get("sensing")
+    retire_sensing = getattr(sensing_panel, "retire_recording_source", None)
+    if callable(retire_sensing):
+        retire_sensing()
     clear_runtime_extension_services(viz)
+    viz.scene_service.cleanup_previous_scene()
     live_preview = getattr(viz, "live_preview_service", None)
     reset_preview = getattr(live_preview, "reset", None)
     if callable(reset_preview):
@@ -247,11 +291,15 @@ def _clear_scenario_identity(viz: Any) -> None:
     viz.scenario_config = None
     viz.frame_source = None
     viz.current_scenario_path = None
+    viz.current_scenario_config_path = None
     viz.current_scenario_policy = None
     viz.current_project_root = None
     viz.current_base_dir = None
     viz.ready = False
     viz.force_update_next_frame = False
+    orientation = getattr(getattr(viz, "app_state", None), "orientation_reference", None)
+    if orientation is not None:
+        viz.set_state(orientation_reference=replace(orientation, actor=""))
     refresh_authoring_actions = getattr(viz, "_refresh_authoring_actions", None)
     if callable(refresh_authoring_actions):
         refresh_authoring_actions()
@@ -322,14 +370,18 @@ def configure_visual_profiles(viz: Any, scenario: Any) -> None:
 
 
 def _record_recent_scenario(viz: Any, scenario: Any) -> None:
-    """Persist the canonical scenario root after a complete successful open."""
+    """Persist the exact YAML reference after a complete successful open."""
     add_recent_file = getattr(getattr(viz, "ui_controller", None), "add_recent_file", None)
     scenario_root = getattr(scenario, "root", None)
     if not callable(add_recent_file) or scenario_root is None:
         return
 
     try:
-        canonical_root = Path(scenario_root).expanduser().resolve(strict=False)
+        canonical_root = (
+            Path(getattr(scenario, "config_path", None) or scenario_root)
+            .expanduser()
+            .resolve(strict=False)
+        )
         add_recent_file(str(canonical_root))
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         # Recent-file persistence is ancillary UI state. A config or Qt menu
@@ -371,6 +423,7 @@ def open_scenario(
     replacement_started = False
     prepared_frame_source: ScenarioFrameSourcePreparation | None = None
     prepared_source_transferred = False
+    sensing_volume_source = None
 
     def close_progress() -> None:
         """Close the progress reporter at most once."""
@@ -394,6 +447,34 @@ def open_scenario(
         ensure_load_is_current()
 
     try:
+        if (
+            not getattr(viz, "_opening_sensing_volume_scene", False)
+            and find_spec("visualizer.src.sensing") is not None
+            and find_spec("visualizer.src.sensing.volume_sources") is not None
+        ):
+            from ..sensing.volume_sources import resolve_volume_source
+
+            sensing_volume_source = resolve_volume_source(viz, scenario_path)
+            if sensing_volume_source is False:
+                return ScenarioOpenOutcome.cancelled("No sensing condition selected.")
+            if sensing_volume_source is not None:
+                from shared.sensing.volume.reader import SensingVolume
+
+                from ..renderers.protocol import volume_rendering_unavailable_reason
+
+                reason = volume_rendering_unavailable_reason(viz.renderer)
+                if reason:
+                    viz._set_status_message(reason, 5000)
+                    return ScenarioOpenOutcome.failure(reason)
+                try:
+                    reader = SensingVolume(sensing_volume_source)
+                    reader.verify_scene()
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    message = f"Cannot open saved sensing volume: {exc}"
+                    viz._set_status_message(message, 5000)
+                    return ScenarioOpenOutcome.failure(message)
+                scenario_path = str(reader.scene_path)
+                data_mode_override = "files"
         progress = (
             _progress_factory(viz)
             if _progress_factory is not None
@@ -452,6 +533,30 @@ def open_scenario(
                     "ScenarioFrameSourcePreparation"
                 )
 
+            try:
+                from ..sensing.startup_cache_ui import prepare_scenario_sensing_cache
+            except ImportError:
+                prepare_scenario_sensing_cache = None
+            if prepare_scenario_sensing_cache is not None:
+                from PySide6.QtWidgets import QApplication
+
+                source = prepared_frame_source.frame_source
+                if not prepare_scenario_sensing_cache(
+                    preflight.scenario,
+                    getattr(source, "provider", None),
+                    QApplication.instance(),
+                    viz.progress,
+                ):
+                    message = "Scenario opening cancelled during sensing cache preparation"
+                    viz._set_status_message(message, 5000)
+                    _set_viewport_terminal_state(
+                        viz,
+                        ViewportState.ACTIVE if had_active_scenario else ViewportState.ERROR,
+                        message,
+                    )
+                    return ScenarioOpenOutcome.failure(message)
+                ensure_load_is_current()
+
         update_progress(2, "Cleaning up previous scene...")
         logger.debug("Cleaning up previous scene and clearing caches")
         viz.reset_startup_timing_profile()
@@ -494,6 +599,10 @@ def open_scenario(
         _refresh_edit_panel(viz)
         configure_visual_profiles(viz, scenario)
         viz.set_state(**get_beamforming_state_defaults(scenario))
+        beam_ui = getattr(viz, "beamforming_ui_controller", None)
+        sync_beams = getattr(beam_ui, "sync_from_state", None)
+        if callable(sync_beams):
+            sync_beams()
         configure_services_start = time.perf_counter()
         enabled_extensions = configure_optional_services(viz)
         viz.record_startup_stage_timing(
@@ -505,6 +614,10 @@ def open_scenario(
                 viz.ui_manager.ensure_panel(extension_key)
         configure_frame_loader_start = time.perf_counter()
         configure_frame_loader(viz, frame_source)
+        sensing_panel = getattr(getattr(viz, "ui_manager", None), "panels", {}).get("sensing")
+        bind_sensing = getattr(sensing_panel, "bind_recording_source", None)
+        if callable(bind_sensing):
+            bind_sensing()
         viz.record_startup_stage_timing(
             "configure_frame_loader_ms",
             (time.perf_counter() - configure_frame_loader_start) * 1000.0,
@@ -544,6 +657,9 @@ def open_scenario(
         # Commit identity and ancillary recent-file state only after every
         # required scene/UI synchronization step has succeeded.
         viz.current_scenario_path = str(scenario_root)
+        viz.current_scenario_config_path = str(
+            getattr(scenario, "config_path", None) or scenario_root / "scenario.yaml"
+        )
         refresh_authoring_actions = getattr(viz, "_refresh_authoring_actions", None)
         if callable(refresh_authoring_actions):
             refresh_authoring_actions()
@@ -556,6 +672,10 @@ def open_scenario(
         )
         viz._set_status_message(status_msg, 5000)
         _set_viewport_terminal_state(viz, ViewportState.ACTIVE)
+        if sensing_volume_source is not None:
+            from ..sensing.volume_window import open_sensing_volume
+
+            open_sensing_volume(viz, sensing_volume_source, scene_is_open=True)
         return ScenarioOpenOutcome.success(
             scenario_root,
             frame_source_ready=frame_source_ready,
@@ -572,6 +692,7 @@ def open_scenario(
         raise
     finally:
         if prepared_frame_source is not None and not prepared_source_transferred:
+            _discard_unclaimed_sensing_dashboard(prepared_frame_source.frame_source)
             close_source = getattr(prepared_frame_source.frame_source, "close", None)
             if callable(close_source):
                 try:
@@ -678,7 +799,7 @@ def _start_scenario_statistics(viz: Any, frame_source: Any) -> bool:
     benchmark_active = (
         getattr(getattr(viz, "pipeline", None), "benchmark_recorder", None) is not None
     )
-    if benchmark_active or not panel_enabled(viz, "statistics", default=True):
+    if benchmark_active:
         return False
 
     ui_manager = getattr(viz, "ui_manager", None)
@@ -688,6 +809,10 @@ def _start_scenario_statistics(viz: Any, frame_source: Any) -> bool:
     if not callable(bind_source):
         return False
     try:
+        if not panel_enabled(viz, "statistics", default=True):
+            # Visibility suppresses automatic work, not the source used by a
+            # later explicit Analysis/Compute request.
+            return bool(bind_source(frame_source, start_loading=False))
         return bool(bind_source(frame_source))
     except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.warning("Could not start scenario statistics: %s", exc)
@@ -748,15 +873,9 @@ def _apply_initial_camera(viz: Any, scenario: Any, pending_camera: Optional[dict
         viz.session_service._restore_camera_state(pending_camera)
         logger.debug("Applied pre-read session camera (no jump)")
     elif scenario.view_defaults:
-        cam_view = scenario.view_defaults.get("camera_view")
-        cam_dist = scenario.view_defaults.get("camera_dist")
-        cam_fov = scenario.view_defaults.get("fov")
-        if cam_view:
-            viz.default_camera_view = cam_view
-            viz.default_camera_dist = cam_dist
-            viz.default_camera_fov = cam_fov
-            viz.apply_camera_view(cam_view, camera_dist=cam_dist, fov=cam_fov)
-            logger.debug("Applied scenario view_defaults camera")
+        from .scenario_presentation import apply_camera_defaults
+
+        apply_camera_defaults(viz, scenario.view_defaults)
     viz.record_startup_stage_timing(
         "apply_initial_camera_ms",
         (time.perf_counter() - camera_start) * 1000.0,
@@ -765,28 +884,44 @@ def _apply_initial_camera(viz: Any, scenario: Any, pending_camera: Optional[dict
 
 def _sync_initial_frame(viz: Any, frame_source: Any) -> None:
     """Pin the UI to the first available frame step from the active source."""
-    first_frame = None
+    available_frames = []
     if frame_source and hasattr(frame_source, "list_frames"):
         try:
             available_frames = frame_source.list_frames()
-            if available_frames:
-                first_frame = min(available_frames)
         except (OSError, ValueError) as exc:
             logger.debug("Unable to determine initial frame: %s", exc)
 
-    if first_frame is None or first_frame == viz.animation_step:
+    if not available_frames:
         return
 
-    logger.debug("Setting initial animation step to %d", first_frame)
-    viz.animation_step = first_frame
-    viz.set_state(step=first_frame)
-    first_frame_index = viz.get_animation_step_index(first_frame)
-    if hasattr(viz, "step_slider") and viz.step_slider is not None:
-        viz.step_slider.blockSignals(True)
-        viz.step_slider.setValue(first_frame_index)
-        viz.step_slider.blockSignals(False)
-    if hasattr(viz, "step_label") and viz.step_label is not None:
-        viz.step_label.setText(str(first_frame_index + 1))
+    first_frame = min(available_frames)
+    # Bounds can clamp a previous scenario's current value. Suppress those
+    # navigation signals as well as the final value synchronization.
+    blocked = []
+    for name in ("step_slider", "frame_input"):
+        widget = getattr(viz, name, None)
+        if widget is not None:
+            blocked.append((widget, widget.blockSignals(True)))
+    try:
+        if not isinstance(frame_source, LiveGrpcSource):
+            # File manifests own the playback count, including sparse CPI-only
+            # outputs whose source IDs differ from the ordinal display index.
+            viz.total_animation_steps = len(available_frames)
+            manager = getattr(viz, "ui_manager", None)
+            if manager is not None and hasattr(manager, "update_total_steps"):
+                manager.update_total_steps(len(available_frames))
+            panel = getattr(manager, "panels", {}).get("animation")
+            if panel is not None and hasattr(panel, "set_recorded_frame_context"):
+                panel.set_recorded_frame_context(available_frames)
+        logger.debug("Setting initial animation step to %d", first_frame)
+        viz.animation_step = first_frame
+        viz.set_state(step=first_frame)
+        # Lifecycle reset may already have committed the first source ID while
+        # the widgets still display the previous scenario's last frame.
+        viz._sync_animation_navigation_widgets(viz.get_animation_step_index(first_frame))
+    finally:
+        for widget, was_blocked in blocked:
+            widget.blockSignals(was_blocked)
 
 
 def _configure_animation_panel_mode(viz: Any) -> None:

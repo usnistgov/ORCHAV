@@ -1,0 +1,538 @@
+{
+  "scenario": "scenarios/generator/targets/mesh_targets/scenario.yaml",
+  "scene_source": {
+    "source": "library",
+    "id": "ground/ground_60x50.xml"
+  },
+  "source_files": {
+    "libraries/scenes/ground/ground_60x50.ply": "ac6fde51be56692107e71a2faa61ca661a47e171bd9244b58523b2cc01dcd0fa",
+    "libraries/scenes/ground/ground_60x50.xml": "17359e5bee8e7bbd1b3340dbf6c20ece66636db0431d745d818947499445ef46",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply": "4f09bd84384eb5abe0fa2d2518e503c0891bebcc2a5e5e3524785fcee2e50798",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00020.ply": "492adfc3e48a46c80e1729237958aacb97c313740e1fccb216a9941f4701819e",
+    "libraries/targets/digital_twin_update1/DT_Pjh_02_00038.ply": "d542a73000e72827bfe678974e2d8dfc0fda7287d229fcd13e8b38e620ffce72",
+    "libraries/targets/digital_twin_update1/target_metadata.json": "cc20d833c61e7dad2b19198167f9ce7b0b6b443f34144bcd0e88e7bef4c95870",
+    "libraries/targets/procedural_car/car.ply": "14bd0d8e4ce3ef543d22bf08f041e82e42f9ba5067dea664e2610152a677f16c",
+    "libraries/targets/procedural_car/target_metadata.json": "cd4e86022ebe8c820118e29aca7283d3a107c0a7c0984d548e24a8592b28d016",
+    "scenarios/generator/targets/mesh_targets/scenario.yaml": "b8c7112490b5e68fdc26a1e8ecc082f0a43d7920ec3a6211aa1a0dd30eaf94b1"
+  },
+  "sample_indices": [
+    0,
+    37
+  ],
+  "sample_times_s": [
+    0.0,
+    5.285714285714286
+  ],
+  "steps": 38,
+  "actors": [
+    {
+      "name": "MainTransmitter",
+      "role": "tx",
+      "members": [
+        "MainTransmitter"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          0.0,
+          10.0
+        ],
+        [
+          0.0,
+          0.0,
+          10.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            0.0,
+            10.0
+          ],
+          "rotation_matrix": [
+            [
+              0.7071067811865475,
+              -0.0,
+              -0.7071067811865476
+            ],
+            [
+              0.0,
+              1.0,
+              -0.0
+            ],
+            [
+              0.7071067811865476,
+              0.0,
+              0.7071067811865475
+            ]
+          ],
+          "forward_direction": [
+            0.7071067811865475,
+            0.0,
+            0.7071067811865476
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX_Static",
+      "role": "rx",
+      "members": [
+        "RX_Static"
+      ],
+      "sample_positions_m": [
+        [
+          24.0,
+          -8.0,
+          1.5
+        ],
+        [
+          24.0,
+          -8.0,
+          1.5
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            24.0,
+            -8.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX_Linear",
+      "role": "rx",
+      "members": [
+        "RX_Linear"
+      ],
+      "sample_positions_m": [
+        [
+          -22.0,
+          -18.0,
+          1.5
+        ],
+        [
+          23.0,
+          -18.0,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -22.0,
+            -18.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX_Waypoint",
+      "role": "rx",
+      "members": [
+        "RX_Waypoint"
+      ],
+      "sample_positions_m": [
+        [
+          10.0,
+          -15.0,
+          1.5
+        ],
+        [
+          24.999999999999996,
+          0.0,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            10.0,
+            -15.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX_Circular",
+      "role": "rx",
+      "members": [
+        "RX_Circular"
+      ],
+      "sample_positions_m": [
+        [
+          -2.0,
+          14.0,
+          1.5
+        ],
+        [
+          -2.0,
+          14.000000000000002,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -2.0,
+            14.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pedestrian",
+      "role": "target",
+      "members": [
+        "Pedestrian"
+      ],
+      "sample_positions_m": [
+        [
+          -0.938,
+          5.0,
+          0.98
+        ],
+        [
+          0.938,
+          5.0,
+          0.98
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": true,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00001.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 19,
+          "mesh_index": 19,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00020.ply",
+          "time_s": 2.714285714285714,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 37,
+          "mesh_index": 37,
+          "source": "libraries/targets/digital_twin_update1/DT_Pjh_02_00038.ply",
+          "time_s": 5.285714285714286,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -0.938,
+            5.0,
+            0.98
+          ],
+          "rotation_matrix": [
+            [
+              -0.7673763924964729,
+              -0.6411969059806035,
+              0.0
+            ],
+            [
+              0.6411969059806035,
+              -0.7673763924964729,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            0.9999999999999998,
+            1.0925338875153338e-17,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ParkedCar",
+      "role": "target",
+      "members": [
+        "ParkedCar"
+      ],
+      "sample_positions_m": [
+        [
+          5.0,
+          -8.0,
+          0.79
+        ],
+        [
+          5.0,
+          -8.0,
+          0.79
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/procedural_car/car.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            5.0,
+            -8.0,
+            0.79
+          ],
+          "rotation_matrix": [
+            [
+              -1.0,
+              -1.2246467991473532e-16,
+              0.0
+            ],
+            [
+              1.2246467991473532e-16,
+              -1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "4cc9668ad5b12746e9ffbc8f6e0b88604af9be72d150b568eb763d849964bc76",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (concrete)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    }
+  ],
+  "output_sha256": "8ce527ef88b92b80b6193bb5dc74567c45b14ad75abd9889a9ece0600fa3a2f1",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -32.4,
+        -27.0,
+        -0.4
+      ],
+      [
+        32.4,
+        27.0,
+        10.4
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "name"
+  },
+  "renderer_sha256": "077c6c55d104403a84b34169fe50aeb171dc177a740258aa388cb27e0b566b1e",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/targets/mesh_targets"
+  ]
+}

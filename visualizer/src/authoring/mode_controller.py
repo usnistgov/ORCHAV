@@ -19,6 +19,7 @@ from .persistence import (
     load_for_authoring,
     save_document,
 )
+from .recording_workflow import RecordingVariantJob, acquisition_scenario_path
 from .undo import QtUndoStackAdapter
 from .workspace import ScenarioAuthoringWorkspace
 
@@ -48,6 +49,81 @@ class WorkspaceModeController:
         self._normal_widget: Any = None
         self._normal_scenario_path: str | None = None
         self._normal_renderer_was_initialized = False
+        self._variant_job = None
+
+    def inspect_recording(self) -> None:
+        """Open the recorded profile in normal playback without changing it."""
+        document = (
+            self.workspace.document if self.workspace is not None else self.authoring_document
+        )
+        if document is not None and document.path is not None:
+            self.preview_generated_result(document.path.parent)
+
+    def create_recording_variant(self, *, acquisition=None, destination=None) -> bool:
+        """Choose actual acquisition inputs and create a new editable copy."""
+        workspace = self.workspace
+        document = workspace.document if workspace is not None else self.authoring_document
+        if (
+            document is None
+            or not document.scenario.recorded_poses
+            or self._variant_job is not None
+        ):
+            return False
+        source = acquisition or acquisition_scenario_path(document)
+        if source is None:
+            selected, _ = QFileDialog.getOpenFileName(
+                self.visualizer,
+                "Choose acquisition scenario.yaml — saved frames cannot supply editable motion",
+                str(document.path.parent),
+                "Scenario YAML (scenario.yaml)",
+            )
+            if not selected:
+                return False
+            source = Path(selected)
+        if destination is None:
+            destination = QFileDialog.getExistingDirectory(
+                self.visualizer,
+                f"Create editable variant from {Path(source).parent.name} — choose a new empty directory",
+                str(document.path.parent),
+            )
+            if not destination:
+                return False
+        job = RecordingVariantJob(self.visualizer)
+        self._variant_job = job
+        if workspace is not None:
+            workspace.create_variant_button.setEnabled(False)
+            workspace.create_variant_button.setText("Creating variant…")
+            workspace.recording_explanation.setText(
+                f"Copying and validating acquisition inputs from {source}. The recording remains unchanged."
+            )
+
+        def finished(result=None, error=None):
+            if self._variant_job is not job:
+                return
+            self._variant_job = None
+            current = self.workspace
+            if current is not None:
+                current.create_variant_button.setEnabled(True)
+                current.create_variant_button.setText("Create editable variant…")
+            if error is not None:
+                QMessageBox.warning(self.visualizer, "Could not create editable variant", error)
+                if current is not None:
+                    current.recording_explanation.setText(error)
+            elif self.authoring_document is document:
+                self.enter_authoring(result)
+                self._normal_scenario_path = str(result.path.parent)
+            else:
+                QMessageBox.information(
+                    self.visualizer,
+                    "Editable variant created",
+                    f"Saved at {result.path}. Your current document was kept open.",
+                )
+            job.deleteLater()
+
+        job.succeeded.connect(lambda result: finished(result=result))
+        job.failed.connect(lambda error: finished(error=error))
+        job.start(source, destination)
+        return True
 
     def new_document(self) -> bool:
         """Create and enter an empty document after any replacement prompt."""
@@ -78,7 +154,7 @@ class WorkspaceModeController:
         try:
             undo_stack = QtUndoStackAdapter()
             result = load_for_authoring(source, undo_stack=undo_stack)
-            if result.editable and result.document is not None:
+            if result.document is not None:
                 return self.enter_authoring(result.document)
             self._read_only_result = result
             self.authoring_document = None
@@ -193,6 +269,8 @@ class WorkspaceModeController:
         self.workspace.save_requested.connect(self.save)
         self.workspace.save_as_requested.connect(self.save_as)
         self.workspace.leave_authoring_requested.connect(self.request_leave_authoring)
+        self.workspace.inspect_recording_requested.connect(self.inspect_recording)
+        self.workspace.create_variant_requested.connect(self.create_recording_variant)
         self.workspace.preview_generated_requested.connect(self.preview_generated_result)
         self.workspace.generate_requested.connect(self._start_generation)
         self.workspace.cancel_generation_requested.connect(self._cancel_generation)
@@ -434,6 +512,9 @@ class WorkspaceModeController:
     def close(self) -> None:
         """Release an active authoring viewport during application shutdown."""
 
+        if self._variant_job is not None:
+            self._variant_job.cancel()
+            self._variant_job = None
         if self.workspace is not None:
             self.workspace.close_workspace()
             workspace_stack = getattr(self.visualizer, "_workspace_stack", None)

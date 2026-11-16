@@ -369,6 +369,7 @@ class PygfxInteractionRouter:
             self._registered = True
         self._session = InteractionSession(session)
         self._sink = sink
+        self.runtime.set_live_preview_picking(self._session is InteractionSession.LIVE_PREVIEW)
         self.runtime.ensure_gizmo(authoring=self._session is InteractionSession.AUTHORING)
 
     def deactivate(self, session: InteractionSession | None = None) -> None:
@@ -393,6 +394,7 @@ class PygfxInteractionRouter:
         self._registered = False
         self._session = None
         self._sink = None
+        self.runtime.set_live_preview_picking(False)
 
     def close(self) -> None:
         """Release the one renderer-lifetime registration, if active."""
@@ -439,12 +441,14 @@ class PygfxInteractionRouter:
         return True
 
     def begin_drag_plane(self, z: float, source: HitResult) -> None:
-        """Lock subsequent pointer motion to one horizontal actor-drag plane."""
+        """Lock pointer motion to a horizontal actor or geographic-selection plane."""
 
         plane = float(z)
         if not np.isfinite(plane):
             raise ValueError("drag plane height must be finite")
-        if source.actor_id is None or source.component is None:
+        if self._tool is not AuthoringTool.OSM_REGION and (
+            source.actor_id is None or source.component is None
+        ):
             raise ValueError("drag source requires an actor and component")
         self._drag_plane_point = (
             source.world_position[0],
@@ -934,6 +938,7 @@ class PygfxInteractionRouter:
             AuthoringTool.PLACE,
             AuthoringTool.MOVE,
             AuthoringTool.WAYPOINT,
+            AuthoringTool.OSM_REGION,
         }:
             return True
         if not event_type.startswith("pointer_"):

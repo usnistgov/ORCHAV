@@ -11,7 +11,9 @@ mi = pytest.importorskip("mitsuba")
 if not hasattr(mi, "variants") or "llvm_ad_rgb" not in mi.variants():
     pytest.skip("Usable Mitsuba runtime required", allow_module_level=True)
 try:
-    mi.set_variant("llvm_ad_rgb")
+    # Collection must preserve the backend already selected by the live suite.
+    if mi.variant() is None:
+        mi.set_variant("llvm_ad_mono_polarized")
 except Exception as exc:
     pytest.skip(f"Usable Mitsuba runtime required: {exc}", allow_module_level=True)
 
@@ -86,6 +88,40 @@ def test_coherent_aligned_mesh_updates_can_advance_every_cpi() -> None:
     assert should_update_mesh_for_step(256, cfg) is True
 
 
+@pytest.mark.parametrize("steps,prf,cpi", [(4000, 2000.0, 128), (6001, 1000.0, 64)])
+def test_mesh_selection_matches_physical_pulse_and_cpi_times(steps, prf, cpi) -> None:
+    """Exact pulse timelines must select the next pose at each declared update."""
+    for interval, coherent_steps, selected_step in [(1 / prf, 1, 1), (cpi / prf, cpi, cpi)]:
+        cfg = _cfg(
+            duration=(steps - 1) / prf,
+            num_steps=steps,
+            mesh_update_interval_s=interval,
+            cir_time_steps=coherent_steps,
+        )
+        manager = _DummyTargetManager()
+        for frame in range(2 * selected_step + 1):
+            apply_target_state_to_scene(
+                [manager],
+                step_positions=[(0.0, 8.0 - frame / prf, 0.9)],
+                step_orientations=[(0.0, 0.0, 0.0)],
+                frame_idx=frame,
+                simulation_config=cfg,
+            )
+        assert manager.mesh_updates == [0, selected_step, 2 * selected_step]
+        assert manager.expected_call_counts == [0, 1, 2]
+
+
+def test_mesh_cadence_roundoff_does_not_add_a_scene_step() -> None:
+    assert (
+        mesh_update_step_interval(
+            duration=0.3,
+            num_steps=4,
+            mesh_update_interval_s=0.1,
+        )
+        == 1
+    )
+
+
 def test_coherent_without_explicit_mesh_interval_updates_each_acquisition() -> None:
     cfg = _cfg(
         duration=1.0,
@@ -143,7 +179,7 @@ def test_normalize_override_payload_accepts_mapping_fields() -> None:
         ]
     )
 
-    entry = normalized["tx"]["basestation"]
+    entry = normalized["tx"]["BaseStation"]
     assert entry.name == "BaseStation"
     assert entry.position == (1.0, 2.0, 3.5)
     assert entry.orientation == (10.0, -20.0, 30.5)
@@ -161,7 +197,7 @@ def test_normalize_override_payload_accepts_object_position_without_hasfield() -
 
     normalized = normalize_live_overrides([override])
 
-    entry = normalized["target"]["walker"]
+    entry = normalized["target"]["Walker"]
     assert entry.name == "Walker"
     assert entry.position == (4.0, 5.0, 6.25)
     assert entry.orientation == (90.0, 0.0, -15.0)
@@ -291,7 +327,7 @@ def test_ply_aabb_positions_use_shared_mesh_update_interval(monkeypatch) -> None
             num_steps=3,
             mesh_update_interval_s=0.34,
         )
-        == 2
+        == 1
     )
 
     positions = positions_from_ply_aabb(
@@ -306,8 +342,8 @@ def test_ply_aabb_positions_use_shared_mesh_update_interval(monkeypatch) -> None
         np.asarray(
             [
                 [0.0, 0.0, 0.0],
-                [5.0, 0.0, 0.0],
                 [10.0, 0.0, 0.0],
+                [20.0, 0.0, 0.0],
             ],
             dtype=np.float64,
         ),
@@ -352,3 +388,21 @@ def test_ply_aabb_positions_hold_final_mesh_with_start_and_stride(monkeypatch) -
             dtype=np.float64,
         ),
     )
+
+
+@pytest.mark.parametrize("switch_meshes", [False, True])
+def test_prepared_center_survives_rotation_and_mesh_replacement(switch_meshes):
+    class Manager(_DummyTargetManager):
+        def apply_position_snapshot(self, position):
+            self.target_object.center = tuple(position)
+
+        def apply_orientation_snapshot(self, orientation):
+            # Sionna rotates about the old AABB center; an asymmetric mesh's
+            # new AABB center need not coincide with that rotation pivot.
+            self.target_object.center = (0.05, -0.02, 0.0)
+
+    manager = Manager()
+    manager.config.switch_meshes = switch_meshes
+    desired = (10.0, 20.0, 3.0)
+    apply_target_state_to_scene([manager], [desired], [(45.0, 0.0, 0.0)], frame_idx=1)
+    assert manager.target_object.center == desired

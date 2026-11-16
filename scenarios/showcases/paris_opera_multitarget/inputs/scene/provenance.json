@@ -1,0 +1,24 @@
+{
+  "geography": "Paris Op\u00e9ra",
+  "attribution": "\u00a9 OpenStreetMap contributors",
+  "license": "ODbL-1.0",
+  "source_url": "https://www.openstreetmap.org/copyright",
+  "world_transform": "identity; original projected local metres",
+  "inputs": {
+    "mesh/buildings_concrete.ply": "8b966eacf165055524002a9190ca4f03dd4c723de85e65f48ad80ace1766893f",
+    "mesh/buildings_glass.ply": "df52ed41f66f3b911175222137fc542b02c0498562a4f6176376436ea7088cc3",
+    "mesh/buildings_marble.ply": "514029e1b8a00ac4b719915775b80cba200de1dc99c7ba5e3845cf677ea00a0d",
+    "mesh/buildings_metal.ply": "18fb6bfc1851fb1f3e10fc58cc2a86f9122dc09cf92bca9cf63778f3f83a1018",
+    "mesh/ground.ply": "c6a850964e9584e9d72cfc8d21f5dc2a366247059f70a8236b8ef60bb01b48a8",
+    "mesh/streets.ply": "961212fe7af18556c0b97fa553b23a7f706b34132232efbd5b1d304a2982d947",
+    "mesh/vegetation.ply": "5a67142b04b50586d8565635cdb1e39bb5a2bfa7b99644a129ef8a6e1d3d057b",
+    "mesh/water.ply": "ff681eb1a44f8428718134e54666eef869e3960c5f7f7c2b4aef48e50aeaa8d5",
+    "osm_metadata.json": "0ec122076d03d98ca5e53b6cd901c1b657cc03c192ae4184ed4edbffe8d492eb",
+    "scene.xml": "7c999e35873ec12aa7319b8b9acc605c62f5815ac3cdb6546008767e6eed2b23",
+    "street_network.graphml": "24dabaeb640f277e53b673dd1ce51a6a57335e9954ad1433684428d2e99b0ce4"
+  },
+  "visual_sidecars": {
+    "building_visuals.json": "841bb889f164473cc41c6d51b631dcad7b10b471da47157d1f154e6131ae472d"
+  },
+  "source_description": "Cached ORCHAV Paris Opera OSM city; original projected local metre frame"
+}

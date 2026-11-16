@@ -102,6 +102,13 @@ class LiveGrpcModePanel(BasePanel):
             request_history = provider.get_request_history(limit=100)
 
             self._connection.update(status)
+            update_summary = getattr(
+                getattr(self.parent, "ui_controller", None), "update_file_source_summary", None
+            )
+            if callable(update_summary):
+                # This is already the source panel's periodic poll. Avoid
+                # recursively polling it again while refreshing the footer.
+                update_summary(refresh_source=False)
             self._streaming.update(provider, buffer_status, request_history)
             self._performance.update(
                 provider, status, buffer_status, latency_stats, request_history

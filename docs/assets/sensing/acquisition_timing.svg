@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="700" viewBox="0 0 1040 700" role="img" aria-labelledby="title desc">
+<title id="title">Acquisition samples and result times</title>
+<desc id="desc">Schematic with four samples per window. Coherent processing uses two nonoverlapping blocks, each referenced to its scene solve at the first sample. Sequential processing solves every sample and references each overlapping window to its midpoint. Both results become available at their final sample.</desc>
+<rect width="1040" height="700" fill="#f8fafc"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#172b3a}.head{font-size:24px;font-weight:700}.label{font-size:18px}.small{font-size:16px}.axis{stroke:#82929e;stroke-width:2}.sample{fill:#246886}.reference{fill:#b45b18}.ready{fill:#27724c}</style>
+<text x="35" y="40" class="head" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" text-anchor="start">Acquisition samples and result times</text>
+<text x="35" y="69" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start">Schematic: four samples per window, sample times in units of 1 / sample rate</text>
+<text x="35" y="113" class="head" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" text-anchor="start">Coherent CPI: one scene solve per block</text>
+<rect x="321" y="135" width="278" height="84" rx="7" fill="#e5f1fa"/>
+<rect x="641" y="135" width="278" height="84" rx="7" fill="#e5f1fa"/>
+<text x="460" y="160" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">One fixed geometry</text>
+<text x="780" y="160" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">Next fixed geometry</text>
+<text x="35" y="194" class="label" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" text-anchor="start">Channel samples</text>
+<circle cx="340" cy="188" r="6" class="sample"/>
+<circle cx="420" cy="188" r="6" class="sample"/>
+<circle cx="500" cy="188" r="6" class="sample"/>
+<circle cx="580" cy="188" r="6" class="sample"/>
+<circle cx="660" cy="188" r="6" class="sample"/>
+<circle cx="740" cy="188" r="6" class="sample"/>
+<circle cx="820" cy="188" r="6" class="sample"/>
+<circle cx="900" cy="188" r="6" class="sample"/>
+<text x="35" y="255" class="label" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" text-anchor="start">Scene solve / reference</text>
+<path d="M340 240l9 9l-9 9l-9-9z" class="reference"/>
+<path d="M660 240l9 9l-9 9l-9-9z" class="reference"/>
+<text x="35" y="290" class="label" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" text-anchor="start">Result available</text>
+<rect x="573" y="277" width="14" height="14" class="ready"/>
+<rect x="893" y="277" width="14" height="14" class="ready"/>
+<text x="340" y="324" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">0</text>
+<text x="420" y="324" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">1</text>
+<text x="500" y="324" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">2</text>
+<text x="580" y="324" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">3</text>
+<text x="660" y="324" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">4</text>
+<text x="740" y="324" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">5</text>
+<text x="820" y="324" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">6</text>
+<text x="900" y="324" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">7</text>
+<text x="965" y="324" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start">Time</text>
+<text x="35" y="381" class="head" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" text-anchor="start">Sequential STFT: one scene solve per sample</text>
+<text x="35" y="422" class="label" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" text-anchor="start">Solved channel samples</text>
+<circle cx="340" cy="416" r="6" class="sample"/>
+<text x="340" y="446" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">0</text>
+<circle cx="420" cy="416" r="6" class="sample"/>
+<text x="420" y="446" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">1</text>
+<circle cx="500" cy="416" r="6" class="sample"/>
+<text x="500" y="446" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">2</text>
+<circle cx="580" cy="416" r="6" class="sample"/>
+<text x="580" y="446" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">3</text>
+<circle cx="660" cy="416" r="6" class="sample"/>
+<text x="660" y="446" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">4</text>
+<circle cx="740" cy="416" r="6" class="sample"/>
+<text x="740" y="446" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">5</text>
+<circle cx="820" cy="416" r="6" class="sample"/>
+<text x="820" y="446" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">6</text>
+<circle cx="900" cy="416" r="6" class="sample"/>
+<text x="900" y="446" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle">7</text>
+<text x="35" y="489" class="label" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" text-anchor="start">Window 1</text>
+<rect x="328" y="467" width="264" height="32" rx="7" fill="#e5f1fa"/>
+<circle cx="340" cy="483" r="6" class="sample"/>
+<circle cx="420" cy="483" r="6" class="sample"/>
+<circle cx="500" cy="483" r="6" class="sample"/>
+<circle cx="580" cy="483" r="6" class="sample"/>
+<path d="M460.0 474l9 9l-9 9l-9-9z" class="reference"/>
+<rect x="573" y="476" width="14" height="14" class="ready"/>
+<text x="35" y="539" class="label" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" text-anchor="start">Window 2</text>
+<rect x="408" y="517" width="264" height="32" rx="7" fill="#e5f1fa"/>
+<circle cx="420" cy="533" r="6" class="sample"/>
+<circle cx="500" cy="533" r="6" class="sample"/>
+<circle cx="580" cy="533" r="6" class="sample"/>
+<circle cx="660" cy="533" r="6" class="sample"/>
+<path d="M540.0 524l9 9l-9 9l-9-9z" class="reference"/>
+<rect x="653" y="526" width="14" height="14" class="ready"/>
+<text x="35" y="589" class="label" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" text-anchor="start">Window 3</text>
+<rect x="488" y="567" width="264" height="32" rx="7" fill="#e5f1fa"/>
+<circle cx="500" cy="583" r="6" class="sample"/>
+<circle cx="580" cy="583" r="6" class="sample"/>
+<circle cx="660" cy="583" r="6" class="sample"/>
+<circle cx="740" cy="583" r="6" class="sample"/>
+<path d="M620.0 574l9 9l-9 9l-9-9z" class="reference"/>
+<rect x="733" y="576" width="14" height="14" class="ready"/>
+<text x="35" y="644" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start">Subsequent windows advance by one sample. The first three samples are warm-up.</text>
+<circle cx="55" cy="677" r="6" class="sample"/>
+<text x="72" y="683" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start">Sample</text>
+<path d="M230 668l9 9l-9 9l-9-9z" class="reference"/>
+<text x="247" y="683" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start">Result reference time</text>
+<rect x="503" y="670" width="14" height="14" class="ready"/>
+<text x="527" y="683" class="small" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start">Result available</text>
+</svg>

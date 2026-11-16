@@ -1,0 +1,80 @@
+{
+  "schema": "orchav.paris-showcase-reference.v1",
+  "scope": "Historical 80-CPI acquisition evidence. Original commands and artifact hashes are retained as provenance, not current runnable instructions. See ../README.md for new acquisition. The overview containing an externally supplied body illustration is excluded from the release.",
+  "recording": {
+    "name": "bmw_native_v1",
+    "generation_id": "16a870f4-f282-4f2f-b32e-c274f7488ff7",
+    "frame_set_id": "ce297aea0bd9be0e4986c2af640eaa9aa052b7c057de46a3779bc1890dcf1755",
+    "created_utc": "2026-10-23T20:01:35.626014+00:00",
+    "generation_source_revision": "35c51aa61193d11c39fc5fb2eb782ede24f6d234",
+    "scene_samples": 10240,
+    "cpi_count": 80,
+    "simulation_duration_s": 5.12,
+    "source_inputs": [
+      {
+        "path": "runs/bmw_native_v1/scenario.yaml",
+        "bytes": 7094,
+        "sha256": "58faf7581de5c1e221bdaca8cd3273066a3bae4553e32e16d85e8f813982cb66"
+      },
+      {
+        "path": "runs/bmw_native_v1/frames/frames_manifest.json",
+        "bytes": 345674,
+        "sha256": "d76429b1144728308ab5cc9a4e03c041ab201d795580c9f7fe61f6b17497b109"
+      }
+    ]
+  },
+  "artifacts": {
+    "overview.png": {
+      "path": "figures/overview.png",
+      "bytes": 1256835,
+      "sha256": "559ca0511dce930a3eaebfc1e78a851e61e811ad78dc4fdbe59b5c9bfb3aa6bb"
+    },
+    "routes.png": {
+      "path": "figures/routes.png",
+      "bytes": 273931,
+      "sha256": "52be139aadb07a662575500fbca6f78b57b1c52e978534bc41ad9308db77fa07"
+    },
+    "reference_metrics.json": {
+      "path": "figures/reference_metrics.json",
+      "bytes": 1734,
+      "sha256": "5f1f0665cbdafb5854346f36ebba4821df8d06df0f27cfaddc3af4e12a9b692f"
+    }
+  },
+  "source_artifacts": [
+    {
+      "path": "demo/cover.png",
+      "bytes": 1256835,
+      "sha256": "559ca0511dce930a3eaebfc1e78a851e61e811ad78dc4fdbe59b5c9bfb3aa6bb"
+    },
+    {
+      "path": "evidence/routes.png",
+      "bytes": 273931,
+      "sha256": "52be139aadb07a662575500fbca6f78b57b1c52e978534bc41ad9308db77fa07"
+    },
+    {
+      "path": "demo/evidence/summary.json",
+      "bytes": 1734,
+      "sha256": "5f1f0665cbdafb5854346f36ebba4821df8d06df0f27cfaddc3af4e12a9b692f"
+    }
+  ],
+  "measurement_evidence": {
+    "path": "demo/evidence/epochs.json",
+    "bytes": 928555,
+    "sha256": "8cccdf7f8bc1115fb8e6b35509e13a880afc7d9a8b005eedb29e3dbe22d23cc8"
+  },
+  "unmatched_reports_by_nearest_truth_actor": {
+    "Car_Outbound": 6,
+    "Scooter": 1
+  },
+  "attribution": "../ATTRIBUTION.md",
+  "historical_reproduction": {
+    "prepare": "python scenarios/showcases/paris_opera_multitarget/prepare.py --output scenarios/showcases/paris_opera_multitarget/runs/my_run --epochs 80 --rays 800000",
+    "evaluation": "python scenarios/showcases/paris_opera_multitarget/analyze.py scenarios/showcases/paris_opera_multitarget/runs/my_run",
+    "layout": "python scenarios/showcases/paris_opera_multitarget/scripts/audit_routes.py",
+    "overview": "Native capture.py images and export_demo.py products composed by scripts/film.html; see README export commands."
+  },
+  "release_artifacts": [
+    "routes.png",
+    "reference_metrics.json"
+  ]
+}

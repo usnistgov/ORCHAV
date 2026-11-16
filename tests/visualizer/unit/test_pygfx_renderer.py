@@ -7,6 +7,7 @@ They are skipped unless the pygfx runtime profile is explicitly enabled.
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -589,7 +590,8 @@ class TestVisibilityAndMaterial:
         assert renderer._geometry_color_sources["m_obj"] is SurfaceColorSource.MATERIAL
         mat = renderer._objects["m_obj"].material
         assert getattr(mat, "color_mode", None) == "uniform"
-        np.testing.assert_allclose(_material_rgba(mat), [0.2, 0.4, 0.8, 0.7], atol=1e-6)
+        np.testing.assert_allclose(_material_rgba(mat), [0.2, 0.4, 0.8, 1.0], atol=1e-6)
+        assert mat.opacity == pytest.approx(0.7)
 
     def test_material_update_noop_does_not_request_extra_redraw(self, renderer):
         mesh = _make_mesh(20)
@@ -746,22 +748,26 @@ class TestVisibilityAndMaterial:
         ok = renderer.set_named_material("m_obj_payload", payload)
         assert ok is True
 
-    def test_active_albedo_forces_white_base_color(self, renderer, monkeypatch):
+    def test_active_albedo_forces_white_base_color(self, renderer, monkeypatch, tmp_path):
+        from PIL import Image
+
         monkeypatch.setenv("ORCHAV_ENABLE_TEXTURES", "1")
         monkeypatch.delenv("ORCHAV_DISABLE_TEXTURES", raising=False)
+        texture_path = tmp_path / "albedo.png"
+        Image.new("RGB", (4, 4), (180, 140, 40)).save(texture_path)
         mesh = _make_uv_mesh(20)
         renderer.ensure_named_geometry("flat_texture_obj", mesh)
 
         ok = renderer.modify_geometry_material_pbr(
             "flat_texture_obj",
             color=[0.2, 0.3, 0.4],
-            texture_path="libraries/textures/gold.png",
+            texture_path=str(texture_path),
         )
 
         assert ok is True
         mat = renderer._materials["flat_texture_obj"]
         assert mat.base_color == pytest.approx((1.0, 1.0, 1.0, 1.0))
-        assert Path(mat.texture_path) == Path("libraries/textures/gold.png")
+        assert Path(mat.texture_path) == texture_path
 
     def test_detail_only_texture_maps_keep_base_color(self, renderer, monkeypatch):
         monkeypatch.setenv("ORCHAV_ENABLE_TEXTURES", "1")
@@ -897,6 +903,7 @@ def _make_idle_renderer():
         fov=60.0,
     )
     renderer._update_headlight_pose = lambda: None
+    renderer._update_camera_depth_precision = lambda: None
     renderer._render_attempts = 1
     return renderer
 
@@ -1153,6 +1160,30 @@ class TestMpcPayloadConsistency:
                 dtype=np.float32,
             ),
         )
+
+    def test_mpc_spare_capacity_cannot_poison_native_bounds(self, renderer, monkeypatch):
+        original = renderer._ensure_buffer
+
+        def poisoned_allocation(name, shape, dtype):
+            fresh = getattr(renderer, name, None) is None
+            array = original(name, shape, dtype)
+            if fresh and name in {"_mpc_segment_points_buf", "_mpc_points_points_buf"}:
+                array.fill(1e30)
+            return array
+
+        monkeypatch.setattr(renderer, "_ensure_buffer", poisoned_allocation)
+        renderer._mpc_segment_capacity_hint = 32
+        renderer._mpc_point_capacity_hint = 32
+        frame = _make_mpc_view_model(
+            np.array([[1, 0, 0], [2, 1, 0], [3, 2, 0]], dtype=np.float32),
+            np.array([[0, 1], [1, 2]], dtype=np.int32),
+            show_mpc_bounce_points=True,
+        )
+        renderer.apply_frame(frame.to_render_packet())
+        for name in ("mpc_lines", "mpc_points"):
+            obj = renderer._objects[name]
+            assert obj.geometry.positions.data.shape[0] > 4
+            assert np.max(np.abs(obj.get_world_bounding_box())) <= 3
 
     def test_mpc_invalid_line_colors_are_ignored(self, renderer):
         view_model = _make_mpc_view_model(
@@ -1639,7 +1670,6 @@ class TestShadows:
 
 def _ibl_manager_available() -> bool:
     try:
-        import cv2  # noqa: F401
         import pygfx  # noqa: F401
 
         return True
@@ -1649,7 +1679,7 @@ def _ibl_manager_available() -> bool:
 
 ibl_pytestmark = pytest.mark.skipif(
     not _ibl_manager_available(),
-    reason="pygfx or opencv-python-headless not available",
+    reason="pygfx not available",
 )
 
 
@@ -1687,7 +1717,7 @@ class TestIBLManagerDiscovery:
 
 @ibl_pytestmark
 class TestIBLManagerResolveHDR:
-    def test_resolve_zup_preferred(self, tmp_path):
+    def test_resolve_plain_preferred(self, tmp_path):
         import pygfx as gfx
 
         from visualizer.src.renderers.pygfx.lighting import PygfxIBLManager
@@ -1697,18 +1727,20 @@ class TestIBLManagerResolveHDR:
         mgr = PygfxIBLManager(gfx, tmp_path)
         path = mgr._resolve_hdr_path("my_env")
         assert path is not None
-        assert path.name == "my_env_zup.hdr"
+        assert path.name == "my_env.hdr"
 
-    def test_resolve_fallback_to_plain(self, tmp_path):
+    @pytest.mark.parametrize("suffix", ["", "_zup"])
+    def test_resolve_only_available_variant(self, tmp_path, suffix):
         import pygfx as gfx
 
         from visualizer.src.renderers.pygfx.lighting import PygfxIBLManager
 
-        (tmp_path / "my_env.hdr").write_bytes(b"dummy")
+        expected_name = f"my_env{suffix}.hdr"
+        (tmp_path / expected_name).write_bytes(b"dummy")
         mgr = PygfxIBLManager(gfx, tmp_path)
         path = mgr._resolve_hdr_path("my_env")
         assert path is not None
-        assert path.name == "my_env.hdr"
+        assert path.name == expected_name
 
     def test_resolve_returns_none_for_missing(self, tmp_path):
         import pygfx as gfx
@@ -1747,6 +1779,25 @@ class TestIBLManagerEquirectToCubemap:
 
 @ibl_pytestmark
 class TestIBLManagerTextureLoading:
+    def test_load_hdr_without_opencv(self, tmp_path, monkeypatch):
+        import pygfx as gfx
+
+        from visualizer.src.renderers.pygfx.lighting import PygfxIBLManager
+
+        hdr = tmp_path / "two_pixels.hdr"
+        hdr.write_bytes(
+            b"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 2\n"
+            + bytes([128, 64, 32, 129, 0, 0, 0, 0])
+        )
+        monkeypatch.setitem(sys.modules, "cv2", None)
+        mgr = PygfxIBLManager(gfx, tmp_path)
+
+        image = mgr._load_hdr(hdr, "two_pixels")
+
+        assert image is not None
+        assert image.dtype == np.float32
+        np.testing.assert_array_equal(image, [[[1.0, 0.5, 0.25], [0.0, 0.0, 0.0]]])
+
     def test_load_real_ibl(self):
         import pygfx as gfx
 

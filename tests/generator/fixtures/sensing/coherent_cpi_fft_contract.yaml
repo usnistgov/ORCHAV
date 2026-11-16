@@ -1,0 +1,17 @@
+schema_version: null
+processing_strategy: coherent_cpi_fft
+rd_source: fft_cpi
+rd_model: point_binned_cir_doppler_fft
+frame_role: cpi_end
+pair_index: 0
+raw_payload_policy: none
+rd_required_history: 4
+rd_ready: true
+rd_map_frames_used: 4
+rd_fresh: true
+rp_fresh: true
+source_frame_step: 11
+range_mode: bistatic
+config_resolved:
+  raw_payload_policy: none
+  rd_required_history: 4

@@ -1462,10 +1462,17 @@ class GrpcProvider(DataProvider):
                         pass
 
         elif resp_type == "eof":
-            logger.info("Received end-of-stream at frame %s", response.eof.last_frame_idx)
+            if response_epoch < self._generation_epoch:
+                return
+            last_frame_idx = response.eof.last_frame_idx
+            logger.info("Received end-of-stream at frame %s", last_frame_idx)
             self.playback_state.handle_eof()
-            # Don't set _shutdown on EOF - allow user to navigate back
-            # The stream should continue to accept requests
+            with self._pending_lock:
+                for pending_idx in list(self._pending_frames):
+                    if pending_idx > last_frame_idx:
+                        self._cancel_pending_frame_locked(pending_idx)
+            # EOF ends the finite recording, not the bidirectional RPC. Keep
+            # backward navigation and Apply available in the same session.
 
         elif resp_type == "status_update":
             logger.debug(

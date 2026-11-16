@@ -1,0 +1,247 @@
+{
+  "scenario": "scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset/scenario.yaml",
+  "scene_source": {
+    "source": "library",
+    "id": "box/open_room6materials.xml"
+  },
+  "source_files": {
+    "libraries/scenes/box/meshes/box_back.ply": "c65e42ac7233352a6fe4326ea54541fec9a4da8bfbdb6fdf521b71445179fa2e",
+    "libraries/scenes/box/meshes/box_bottom.ply": "5c3a68d820308dee555deb952f4939054bf3b0fcfd85da3341a13191f7f7cfd8",
+    "libraries/scenes/box/meshes/box_front.ply": "b8b84d63da1071bdb2e9c6c34ce2a0f92393e3f30e816beafde7123b1a3563cc",
+    "libraries/scenes/box/meshes/box_left.ply": "a69900c585af833ebf7c5605f026ff7aa3a1ddd1826ffb398f2e719ae535415f",
+    "libraries/scenes/box/meshes/box_right.ply": "01dc4d117ab562bbca6ca65309fdfbd6fef0f493cf81b624ccca1546120213ab",
+    "libraries/scenes/box/open_room6materials.xml": "61b2e9b024c50f4f03c5806af0933726d850aec0c212f088918afbe650d0880a",
+    "scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset/scenario.yaml": "c4f013e704d50abe9d4649f8b49403cdafce72bff88dfddef4cbf7efe8b20be3"
+  },
+  "sample_indices": [
+    0
+  ],
+  "sample_times_s": [
+    0.0
+  ],
+  "steps": 1,
+  "actors": [
+    {
+      "name": "TX",
+      "role": "tx",
+      "members": [
+        "TX"
+      ],
+      "sample_positions_m": [
+        [
+          -3.0,
+          -3.0,
+          4.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -3.0,
+            -3.0,
+            4.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX",
+      "role": "rx",
+      "members": [
+        "RX"
+      ],
+      "sample_positions_m": [
+        [
+          3.0,
+          3.0,
+          1.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            3.0,
+            3.0,
+            1.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "a29f856ad59eebeaa7862001dc92aea6fff86d93326897a0a184efed5866f13b",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Brick",
+      "display_rgb": [
+        0.796,
+        0.49,
+        0.42200000000000004
+      ]
+    },
+    {
+      "label": "Concrete",
+      "display_rgb": [
+        0.90133336,
+        0.90133336,
+        0.90133336
+      ]
+    },
+    {
+      "label": "Ground (chipboard)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Plasterboard",
+      "display_rgb": [
+        0.53224296,
+        0.8640000000000001,
+        0.33530272
+      ]
+    },
+    {
+      "label": "Wood",
+      "display_rgb": [
+        0.8640000000000001,
+        0.56912412,
+        0.32254388
+      ]
+    }
+  ],
+  "output_sha256": "b13d9946291e7aa4cef945ba9bb693b0c6290ee3b8ec8eb3b431da45df12e276",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -5.4,
+        -5.4,
+        -0.2
+      ],
+      [
+        5.4,
+        5.4,
+        5.2
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "ef1158c348035b465264fffe0e89ec2f7ce041fa72adf21bba951cf058f35c7d",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

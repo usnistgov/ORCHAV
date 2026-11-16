@@ -35,6 +35,17 @@ def _mesh_payload(*, cache_key: str | None = None) -> MeshPayload:
     )
 
 
+@pytest.mark.parametrize(
+    "color,outline", [((0.0, 0.0, 0.4), (1.0, 1.0, 1.0)), ((1.0, 1.0, 1.0), (0.0, 0.0, 0.0))]
+)
+def test_default_text_outline_contrasts_with_glyph_color(color, outline):
+    label = make_text_label_state("label", "Target", color)
+    assert label.payload.outline_color == outline
+    assert label.material.base_color == (*color, 1.0)
+    explicit = make_text_label_state("label", "Target", color, outline_color=(0.3, 0.2, 0.1))
+    assert explicit.payload.outline_color == (0.3, 0.2, 0.1)
+
+
 def test_transform_normalizes_and_exposes_translation() -> None:
     transform = Transform.from_translation([1, 2, 3])
 

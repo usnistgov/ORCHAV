@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import time
+import xml.etree.ElementTree as ET
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -136,6 +138,109 @@ def test_unsupported_transform_fails_before_scene_cache_lookup(tmp_path, monkeyp
 
     with pytest.raises(UnsupportedLightweightTransformError, match="<matrix>"):
         scene_io.build_scene_from_root(root, str(xml_path))
+
+
+@pytest.mark.parametrize("authored_texture", [False, True])
+def test_cached_materials_follow_current_catalog_but_preserve_authored_maps(
+    tmp_path, monkeypatch, authored_texture
+) -> None:
+    """A cache from another checkout must not turn catalog maps into authored maps."""
+    from PIL import Image
+
+    from visualizer.src.model import RenderObjectState
+    from visualizer.src.services import material_pbr_service
+    from visualizer.src.services.scene_service import SceneService
+
+    monkeypatch.delenv("ORCHAV_DISABLE_SCENE_PAYLOAD_CACHE", raising=False)
+    monkeypatch.setenv("ORCHAV_SCENE_PAYLOAD_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("ORCHAV_UV_CACHE_DIR", str(tmp_path / "uv"))
+    monkeypatch.setenv("ORCHAV_ENABLE_TEXTURES", "1")
+    monkeypatch.delenv("ORCHAV_DISABLE_TEXTURES", raising=False)
+    original_preset = scene_io.material_preset
+    catalog_root = tmp_path / "checkout_a"
+
+    def catalog_preset(name):
+        props = original_preset(name)
+        props["texture_path"] = str(catalog_root / "concrete.png")
+        props["roughness"] = 0.3 if catalog_root.name == "checkout_a" else 0.7
+        return props
+
+    for folder in ("checkout_a", "checkout_b", "authored"):
+        directory = tmp_path / folder
+        directory.mkdir()
+        Image.new("RGB", (2, 2), "gray").save(directory / "concrete.png")
+    monkeypatch.setattr(scene_io, "material_preset", catalog_preset)
+    monkeypatch.setattr(material_pbr_service, "material_preset", catalog_preset)
+    xml_path = _write_tiny_scene(tmp_path)
+    root = scene_io.XMLSceneHandler.load_xml_scene(str(xml_path))
+    bsdf = root.find("bsdf")
+    ET.SubElement(bsdf, "string", name="type", value="concrete")
+    if authored_texture:
+        # Same basename as the catalog, but explicitly selected by the author.
+        ET.SubElement(bsdf, "string", name="texture_path", value="authored/concrete.png")
+        ET.SubElement(bsdf, "float", name="roughness", value="0.23")
+    first = scene_io.build_scene_from_root(root, str(xml_path))[0]
+    cache_path = next((tmp_path / "cache").glob("scene.*.npz"))
+    cache_bytes = cache_path.read_bytes()
+
+    catalog_root = tmp_path / "checkout_b"
+    expected = (
+        tmp_path / "authored/concrete.png" if authored_texture else catalog_root / "concrete.png"
+    )
+    with monkeypatch.context() as cache_only:
+
+        def fail_mesh_load(*args, **kwargs):
+            raise AssertionError("material refresh must reuse cached geometry")
+
+        cache_only.setattr(scene_io.MeshLoader, "load_mesh", staticmethod(fail_mesh_load))
+        restored = scene_io.build_scene_from_root(root, str(xml_path))[0]
+
+    assert restored["pbr_properties"]["texture_path"] == str(expected)
+    assert restored["pbr_properties"]["roughness"] == (0.23 if authored_texture else 0.7)
+    assert restored["xml_bsdf"] is bsdf
+    assert restored["material_id"] == first["material_id"]
+    np.testing.assert_array_equal(restored["mesh"].vertices, first["mesh"].vertices)
+    np.testing.assert_array_equal(restored["mesh"].triangles, first["mesh"].triangles)
+    assert cache_path.read_bytes() == cache_bytes
+
+    # The same resolution must apply with and without a geometry cache.
+    monkeypatch.setenv("ORCHAV_DISABLE_SCENE_PAYLOAD_CACHE", "1")
+    cold = scene_io.build_scene_from_root(root, str(xml_path))[0]
+    assert restored["pbr_properties"] == cold["pbr_properties"]
+    assert restored["color"] == cold["color"]
+
+    restored["mesh"] = RenderObjectState(id="building", payload=restored["mesh"])
+    restored["_osm_building_faces"] = 1
+    restored["_osm_building_parts"] = [[0, 1]]
+    viz = SimpleNamespace(
+        mesh_entries=[restored], target_entries=[], building_appearance="original"
+    )
+    service = material_pbr_service.MaterialPBRService(viz)
+    initial = service.resolve_entry_material(restored)
+    SceneService._remember_resolved_texture_maps(restored, initial.properties_copy())
+    viz.building_appearance = "varied"
+    styled = service.resolve_entry_material(restored)
+    assert bool(restored.get("_building_style_key")) is not authored_texture
+    if authored_texture:
+        assert styled.payload.texture_path == str(expected)
+
+
+@pytest.mark.parametrize(
+    "mesh_name", ["vegetation.ply", "ground.ply", "buildings_glass.ply", "water.ply"]
+)
+def test_cached_geographic_materials_match_cold_load(tmp_path, monkeypatch, mesh_name) -> None:
+    monkeypatch.delenv("ORCHAV_DISABLE_SCENE_PAYLOAD_CACHE", raising=False)
+    monkeypatch.setenv("ORCHAV_SCENE_PAYLOAD_CACHE_DIR", str(tmp_path / "cache"))
+    xml_path = _write_tiny_scene(tmp_path)
+    (tmp_path / "wall.ply").rename(tmp_path / mesh_name)
+    xml_path.write_text(xml_path.read_text().replace("wall.ply", mesh_name))
+    (tmp_path / "osm_metadata.json").write_text("{}")
+    root = scene_io.XMLSceneHandler.load_xml_scene(str(xml_path))
+    cold = scene_io.build_scene_from_root(root, str(xml_path))[0]
+    warm = scene_io.build_scene_from_root(root, str(xml_path))[0]
+    assert warm["material_type"] == cold["material_type"]
+    assert warm["pbr_properties"] == cold["pbr_properties"]
+    assert warm["color"] == cold["color"]
 
 
 def test_scene_payload_cache_invalidates_when_source_mesh_revision_changes(

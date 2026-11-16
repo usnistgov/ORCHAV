@@ -229,6 +229,16 @@ def _sensing_parts(
     sensing: Mapping[str, Any] | None,
 ) -> tuple[dict[str, np.ndarray], np.ndarray | None, dict[str, Any]]:
     """Split top-level sensing arrays from small JSON metadata."""
+    if sensing is not None:
+        # Local import avoids a package-initialization cycle: the sensing
+        # extension itself uses the shared frame JSON codec and payload names.
+        from shared.extensions.sensing import assert_sensing_contract
+
+        assert_sensing_contract(
+            {"sensing": sensing},
+            require_schema_version=True,
+            require_described_products=True,
+        )
     fixed: dict[str, np.ndarray] = {}
     cir: np.ndarray | None = None
     metadata: dict[str, Any] = {}
@@ -710,7 +720,9 @@ class PackedMPCChunkWriter:
                 "data",
                 shape=(prior_frame_count, *shape),
                 maxshape=maxshape,
-                chunks=True,
+                # Automatic chunks can span dozens of large sensing frames,
+                # recompressing prior products on each single-frame append.
+                chunks=_numeric_chunk_shape(values.dtype, *shape),
                 dtype=values.dtype,
                 **self._numeric_options(),
             )
@@ -794,7 +806,7 @@ class PackedMPCChunkWriter:
         sensing_metadata = dict(sensing_metadata)
         static_sensing_config = {
             key: sensing_metadata.pop(key)
-            for key in ("config", "config_resolved")
+            for key in ("config", "config_resolved", "target_catalog")
             if key in sensing_metadata
         }
         sensing_config_json = (

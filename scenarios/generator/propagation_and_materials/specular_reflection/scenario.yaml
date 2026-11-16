@@ -12,7 +12,6 @@ scene:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
   quality:
     preset: ultra-low
 
@@ -38,4 +37,4 @@ view_defaults:
 
 generator_summary:
   enabled: true
-  create: [scene2d]
+  create: [topology]

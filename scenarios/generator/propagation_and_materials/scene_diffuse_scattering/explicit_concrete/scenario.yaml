@@ -10,7 +10,6 @@ scene:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
   quality:
     custom:
       max_depth: 1

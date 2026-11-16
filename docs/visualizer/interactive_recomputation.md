@@ -2,7 +2,7 @@
 
 Interactive recomputation lets the Visualizer request a temporary propagation
 result without rewriting `scenario.yaml` or replacing the generated HDF5 frame
-set. It is a capability of the selected data mode, not a fourth data mode.
+set. It is a capability of the selected data mode.
 
 The [Shared Data Layer guide](../shared/README.md) explains how frames are
 stored or transported. The selected mode determines which temporary edits the
@@ -39,9 +39,6 @@ flowchart LR
     Live ~~~ Remote
 ```
 
-The outer left-to-right layout is intentional: it presents three comparable
-columns, while every workflow still reads from top to bottom.
-
 ## Mode Boundaries
 
 | Data mode | Visualizer edit behavior |
@@ -74,6 +71,25 @@ returned [`StandardMPCFrame`](../shared/frame_reference.md#frame-contract)
 replaces only that step's in-memory preview. Use pygfx for this workflow
 because Local What-if Preview relies on its transform gizmo.
 
+For a scripted scenario, provide the shared `actors.py` factory described in
+[Python-Scripted Actors](../generator/scenario_authoring.md#python-scripted-actors).
+Preview uses that factory when the YAML does not define both TX and RX actors.
+It does not execute `generate.py`. [Hello World Scripted](../../scenarios/getting_started/hello_world_scripted/README.md)
+is a runnable example.
+
+While actor editing is enabled, visible MPC and sensing overlays let clicks
+through to actors. Disable editing to resume picking those overlays. Preview
+frames retain the selected recording's simulation timestamp.
+
+Local preview recomputes propagation paths for one scene state. It does not
+recompute a sensing CPI or tracker history: sensing plots and tracks remain
+the saved recording. Enable **MPC** in the Context row to inspect recomputed
+paths when the scenario starts with them hidden.
+
+If the preview reports a **source identity** mismatch, restart the Visualizer
+from the intended checkout. See [troubleshooting](../help/troubleshooting.md)
+for worker startup problems.
+
 ## Live Generator Session Editing
 
 Use Live Generator when a separate running Generator should compute requested
@@ -82,12 +98,6 @@ settings can be applied with either renderer. Actor editing uses the pygfx
 transform gizmo. Release the gizmo to send an actor edit, or choose **Apply
 Raytracing Changes** after changing solver settings. The Generator returns a
 new `StandardMPCFrame` and keeps the edit in the current session only.
-
-## Remote HDF5 Playback Is Read-Only
-
-Remote HDF5 Playback retrieves frames from an existing HDF5 frame set through
-the remote frame server. The server does not run Sionna RT, so it cannot offer
-either local preview or live Generator session editing.
 
 ## Persisting A Change
 

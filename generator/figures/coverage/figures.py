@@ -708,7 +708,8 @@ def _add_scene_overlay_to_axis(
     """
     if scenario_context is None:
         return
-    before_counts = _capture_artist_counts(ax)
+    # Keep the saved coverage grid's bounds, including explicitly cropped grids.
+    xlim, ylim = ax.get_xlim(), ax.get_ylim()
     try:
         from shared.geometry.cache import get_scene_geometry
 
@@ -716,8 +717,16 @@ def _add_scene_overlay_to_axis(
 
         geom = get_scene_geometry(scenario_context=scenario_context)
         if geom:
-            plot_scene_geometry_2d(ax, geom)
-            _style_overlay_artists(ax, overlay_alpha, overlay_style, image_artist, before_counts)
+            style = "outline" if overlay_style == "outline" else "fill"
+            image_zorder = image_artist.get_zorder() if image_artist is not None else 1.0
+            plot_scene_geometry_2d(
+                ax,
+                geom,
+                rendering_mode="mesh",
+                style=style,
+                alpha=float(np.clip(overlay_alpha, 0.0, 1.0)),
+                zorder=image_zorder + (1.0 if style == "outline" else -0.2),
+            )
     except (
         ValueError,
         TypeError,
@@ -726,7 +735,10 @@ def _add_scene_overlay_to_axis(
         RuntimeError,
         OSError,
     ) as exc:
-        logger.debug("Coverage metric-guide overlay not rendered: %s", exc)
+        logger.debug("Coverage scene overlay not rendered: %s", exc)
+    finally:
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
 
 
 def _add_tx_markers_to_axis(ax, tx_names: Sequence[str], tx_positions: np.ndarray) -> None:
@@ -770,75 +782,6 @@ def _add_tx_markers_to_axis(ax, tx_names: Sequence[str], tx_positions: np.ndarra
                 "boxstyle": "round,pad=0.2",
             },
         )
-
-
-def _capture_artist_counts(ax):
-    """Snapshot counts of matplotlib artists to isolate overlay additions."""
-    return {
-        "patches": len(ax.patches),
-        "lines": len(ax.lines),
-        "collections": len(ax.collections),
-        "texts": len(ax.texts),
-    }
-
-
-def _style_overlay_artists(ax, overlay_alpha, overlay_style, image_artist, before_counts):
-    """Ensure overlay artists stay readable without obscuring coverage."""
-    if image_artist is None:
-        image_zorder = 1.0
-    else:
-        image_zorder = image_artist.get_zorder()
-
-    overlay_alpha = float(np.clip(overlay_alpha, 0.0, 1.0))
-    overlay_style = (overlay_style or "fill").lower()
-    if overlay_style not in {"fill", "outline"}:
-        overlay_style = "fill"
-
-    patch_start = before_counts.get("patches", 0)
-    line_start = before_counts.get("lines", 0)
-    collection_start = before_counts.get("collections", 0)
-    text_start = before_counts.get("texts", 0)
-
-    new_patches = ax.patches[patch_start:]
-    new_lines = ax.lines[line_start:]
-    new_collections = ax.collections[collection_start:]
-    new_texts = ax.texts[text_start:]
-
-    # Patches often represent polygon fills. Outline mode removes the fill entirely.
-    for patch in new_patches:
-        if overlay_style == "outline":
-            patch.set_facecolor("none")
-            patch.set_alpha(max(overlay_alpha, 0.35))
-            patch.set_zorder(image_zorder + 1.0)
-        else:
-            patch.set_alpha(overlay_alpha)
-            patch.set_zorder(image_zorder - 0.1)
-
-    for line in new_lines:
-        line_alpha = max(overlay_alpha, 0.35) if overlay_style == "outline" else overlay_alpha
-        line.set_alpha(line_alpha if line_alpha > 0 else 0.3)
-        line.set_zorder(image_zorder + 1.0)
-
-    for collection in new_collections:
-        coll_alpha = max(overlay_alpha, 0.35) if overlay_style == "outline" else overlay_alpha
-        try:
-            collection.set_alpha(coll_alpha)
-        except (AttributeError, ValueError):
-            pass
-        # Place filled overlays beneath the image to avoid hiding data.
-        z_offset = -0.1 if overlay_style == "fill" else 1.0
-        try:
-            collection.set_zorder(image_zorder + z_offset)
-        except (AttributeError, ValueError):
-            pass
-
-    for text in new_texts:
-        text_alpha = max(overlay_alpha, 0.35) if overlay_style == "outline" else overlay_alpha
-        try:
-            text.set_alpha(text_alpha)
-        except (AttributeError, ValueError):
-            pass
-        text.set_zorder(image_zorder + 1.0)
 
 
 def create_coverage_visualization(
@@ -926,25 +869,7 @@ def create_coverage_visualization(
 
         # Optional overlay of scene geometry in XY
         if overlay_scene:
-            before_counts = _capture_artist_counts(ax)
-            try:
-                from shared.geometry.cache import get_scene_geometry
-
-                from ..scene import plot_scene_geometry_2d
-
-                geom = get_scene_geometry(scenario_context=scenario_context)
-                if geom:
-                    plot_scene_geometry_2d(ax, geom)
-                    _style_overlay_artists(ax, overlay_alpha, overlay_style, im, before_counts)
-            except (
-                ValueError,
-                TypeError,
-                KeyError,
-                IndexError,
-                RuntimeError,
-                OSError,
-            ) as e:  # defensive catch: plot resilience
-                logger.debug(f"Overlay not rendered: {e}")
+            _add_scene_overlay_to_axis(ax, im, scenario_context, overlay_alpha, overlay_style)
         if show_tx:
             _add_tx_markers_to_axis(ax, tx_names, tx_positions)
         ax.set_xlabel("X (m)")
@@ -1342,25 +1267,7 @@ def create_coverage_comparison_figure(
 
         # Optional overlay of scene geometry (drawn on top of coverage)
         if overlay_scene:
-            before_counts = _capture_artist_counts(ax)
-            try:
-                from shared.geometry.cache import get_scene_geometry
-
-                from ..scene import plot_scene_geometry_2d
-
-                geom = get_scene_geometry(scenario_context=scenario_context)
-                if geom:
-                    plot_scene_geometry_2d(ax, geom)
-                    _style_overlay_artists(ax, overlay_alpha, overlay_style, im, before_counts)
-            except (
-                ValueError,
-                TypeError,
-                KeyError,
-                IndexError,
-                RuntimeError,
-                OSError,
-            ) as e:  # defensive catch: plot resilience
-                logger.debug(f"Overlay not rendered for height {z_val}: {e}")
+            _add_scene_overlay_to_axis(ax, im, scenario_context, overlay_alpha, overlay_style)
         ax.set_xlabel("X (m)")
         ax.set_ylabel("Y (m)")
         ax.set_title(f"Height: {z_val:.1f}m")
@@ -1488,25 +1395,7 @@ def create_coverage_height_evolution_animation(
 
     # Optional overlay of scene geometry (static)
     if overlay_scene:
-        before_counts = _capture_artist_counts(ax)
-        try:
-            from shared.geometry.cache import get_scene_geometry
-
-            from ..scene import plot_scene_geometry_2d
-
-            geom = get_scene_geometry(scenario_context=scenario_context)
-            if geom:
-                plot_scene_geometry_2d(ax, geom)
-                _style_overlay_artists(ax, overlay_alpha, overlay_style, im, before_counts)
-        except (
-            ValueError,
-            TypeError,
-            KeyError,
-            IndexError,
-            RuntimeError,
-            OSError,
-        ) as e:  # defensive catch: plot resilience
-            logger.debug(f"Overlay not rendered: {e}")
+        _add_scene_overlay_to_axis(ax, im, scenario_context, overlay_alpha, overlay_style)
 
     # Height label
     height_text = ax.text(

@@ -1,0 +1,21 @@
+{
+  "asset": "animated_target_binding.png",
+  "source_command": "orchav-animated-target demo --output-dir analysis/animated-target-demo",
+  "source_output": "alignment_and_geometry.png",
+  "sha256": "bbe1ebbbe20aa7e55906d4bc0f1c39af38107355a14de7bf15baec9cfe5e95fa",
+  "source_type": "orchav_authored_synthetic",
+  "description": "Hand-authored asymmetric closed mesh, three poses, and independent root track.",
+  "license": {
+    "notice": "ORCHAV-authored synthetic data; no third-party motion input.",
+    "redistribution": "allowed",
+    "spdx_id": "GPL-3.0-only"
+  },
+  "runtime": {
+    "matplotlib": "3.11.2",
+    "matplotlib_backend": "Agg",
+    "numpy": "2.5.3",
+    "png_portability": "The PNG SHA-256 is exact only for the declared runtime versions; binding JSON and CSV are the portable semantic evidence.",
+    "python": "3.12.16"
+  },
+  "binding_id": "e9b65ed589a99bf31841e25891c32ef8437bdfd2398ce6c37228bfbc09c9f237"
+}

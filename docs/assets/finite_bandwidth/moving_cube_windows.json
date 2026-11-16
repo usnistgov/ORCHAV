@@ -1,0 +1,117 @@
+{
+  "kind": "standard_range_profiles_from_reprocessed_frequency_observations",
+  "tutorial_scenario": "scenarios/sensing/cube_radar/moving/scenario.yaml",
+  "tutorial_scenario_sha256": "815f716e3b62b9d6ba10d8b4e0bd2fd21d18ea65c5c10fedfc87f15ae0f1f7bf",
+  "source_manifest_sha256": "ad2481e1388149632e0b810c9af8691623e7f4daa9f403063dd560302b1b117b",
+  "figure_source_revision": "9158101f906f9dd6c0342985d7952f2fb88069c5",
+  "processing": "The same retained frequency observations are reprocessed with different frequency windows. No new ray tracing.",
+  "plotting": "Standard saved-sensing range-profile renderer; no plotting-time reprocessing.",
+  "path_convention": "Commands use the guide output directories; hashes identify the recordings used for these figures.",
+  "license_spdx": "GPL-3.0-only",
+  "recipes": {
+    "boxcar": {
+      "image": "moving_cube_boxcar_range.png",
+      "sha256": "bc2d9e31a5f9a29d3e21ff7f3572b241a46ae01aeb2b69834feae7ce684a4051",
+      "postprocess_command": "orchav-sensing scenarios/sensing/cube_radar/moving/frames --frequency-window boxcar --range-ifft-size 512 --cfar-min-snr 3 --cfar-max-dynamic-range 12 --tracker none -o analysis/range-boxcar",
+      "figure_command": "python -m generator.figures.summary.saved_sensing analysis/range-boxcar -o analysis/range-boxcar-figures --figure range_profile --frame-index 63 --range-limits 3 6",
+      "output_figure": "analysis/range-boxcar-figures/sensing/range_profile.png",
+      "source_identity": {
+        "generation_id": "01321e9f-f43c-4466-8999-ace218a59ae0",
+        "frame_set_id": "97af3beed2f084f54f02c4e6cbe2f5d3018b7c0e1240a72aa4c4fa12f8969e9d"
+      },
+      "source_files_sha256": {
+        "frames_manifest.json": "d540d6021856b975dfb3df5d43cb437787839c0f49ff4460bca765c310240c2a",
+        "mpc_frames_00063-00063.h5": "77a7bcf8b1558196e73be668b19515a62048991fc77a5fc3ac59d0cab88c796e",
+        "mpc_frames_00127-00127.h5": "c7031f5f4f1d4755a1ee3ffe59d73d3b0ab5e8437116227617cb5bec784f8245",
+        "mpc_frames_00191-00191.h5": "f8a27fbcf52b40793c59c1d8a457cb0930c7423b6e864575cfa7e8a4556178bd",
+        "mpc_frames_00255-00255.h5": "46e1c284b6b5d672a3b7ad6370557ef04f7b527d537f875a65aab73a7a319b51",
+        "mpc_frames_00319-00319.h5": "c18c9a121add01f30520bc8a786e6109d88cdeb4b040d2592b17d7478925e4fa",
+        "mpc_frames_00383-00383.h5": "d1511b9b03c7d95dc55587dbafdd4d7e897ccf6d62f2108a13b5253ff89aa3e0",
+        "mpc_frames_00447-00447.h5": "de41ca61dfdfd171db6b0a8d8d81f5c1614d4211ce150593e29550ed0108583e",
+        "mpc_frames_00511-00511.h5": "ceb1f07551433d2a27d53733f5a3d51912c750c2ae793e251db9a9d9fa910490",
+        "mpc_frames_00575-00575.h5": "f8e0ea508ac15a1d15d3de6f7b2c9e27fd69cf2bdb956e37adca686bc8f5c4c9",
+        "mpc_frames_00639-00639.h5": "979b454134f675ab5c6bf57ab8e697472e88dfe90724e60faee9872d1ca90408",
+        "mpc_frames_00703-00703.h5": "cc7b6baab3521d5b2f6c1143d8fe38ce003e3c7bca7dec5eadf821b67f15bc05",
+        "mpc_frames_00767-00767.h5": "f7ac8e7f8deaa638f85059b6bc67449754afd116c2b19281d10579a17d3bbc48",
+        "mpc_frames_00831-00831.h5": "de543968d1dca2e100db8df6fc3307fc3b709e7a0696b9c6f9b173e63a33fc0a",
+        "mpc_frames_00895-00895.h5": "18afc56f953a984988135093d7dc8b3ca63aa2cf50c190c498ef5936db978301",
+        "mpc_frames_00959-00959.h5": "83f84bb4425497aa9076bc3f61876957481f8db7ae11c6709edf16709dc1561d",
+        "mpc_frames_01023-01023.h5": "2f7978bd70d72bddaa6c41acb4104f532cee8c7609823c6d014d8101240de0ac"
+      },
+      "results": [
+        {
+          "frame_index": 63,
+          "reference_time_s": 0.0,
+          "acquisition_id": "6cc408d0-76f8-52ad-be8f-f4f1969b6ff1",
+          "processing_recipe_id": "72e6ee3825e71e3c5ffd968dc5c8a6ee619daf25cc053ac2a31fd200b190a211",
+          "detection_count": 1
+        }
+      ],
+      "display_limits": {
+        "range_limits_m": [
+          3.0,
+          6.0
+        ],
+        "velocity_limits_m_s": null,
+        "power_limits_db": null
+      },
+      "processing_config_sha256": "e3760ec726349a5cbc7dcc416f0256d04a686c64439eaaa19c30e09c6bc6a055",
+      "original_summary_receipt_sha256": "6e97c9eb42b146bcbdf4ec968201c14baa0b76d2f940f61602d45263f2c1bd6e"
+    },
+    "hann": {
+      "image": "moving_cube_hann_range.png",
+      "sha256": "147357d6e633bbe7f55ba3bbcb3be0672647e32ec2e11e806466405a46dfd954",
+      "postprocess_command": "orchav-sensing scenarios/sensing/cube_radar/moving/frames --frequency-window hann --range-ifft-size 512 --cfar-min-snr 3 --cfar-max-dynamic-range 12 --tracker none -o analysis/range-hann",
+      "figure_command": "python -m generator.figures.summary.saved_sensing analysis/range-hann -o analysis/range-hann-figures --figure range_profile --frame-index 63 --range-limits 3 6",
+      "output_figure": "analysis/range-hann-figures/sensing/range_profile.png",
+      "source_identity": {
+        "generation_id": "8e6f6dcc-4e23-468c-b0e9-6d4977403a57",
+        "frame_set_id": "29b26db46e4cfe5de4fd263d070aa7b4b0153ef73c92263dc709c21081fab579"
+      },
+      "source_files_sha256": {
+        "frames_manifest.json": "cda18b9e519425a59aeede2f39253d9a0d534ac1bd364de7b91e23d22c9f2dd0",
+        "mpc_frames_00063-00063.h5": "a935153d66e642df0f70b11511cbff4b4a1dddf5826b90bf6ec8d0ea77d1d8ea",
+        "mpc_frames_00127-00127.h5": "afb0c8ac46af0ef611bee31ed4a05d72f1b43b9b4f729d2d784f9b3b56edadd8",
+        "mpc_frames_00191-00191.h5": "fa1b6214f2629b706845e2c1a8270dc01f2b4907b2a481ebb75459c17337f00e",
+        "mpc_frames_00255-00255.h5": "03c5602672bbb39843d4d54f86e44e2c14cc3c5a26e759bf99d9e3c978678a46",
+        "mpc_frames_00319-00319.h5": "e789e6dbe7202a202fbe34c9fdaf6c47a97a858bcec20289e74cd40e3110cfdf",
+        "mpc_frames_00383-00383.h5": "55189a078bfb8563d52b661dae3a80ea0edfd8dfcaf4b1ab193abc05d7a88162",
+        "mpc_frames_00447-00447.h5": "029fdd295ecfd4179b321fa70deff7baa1dd6895c892bb06b0132617c578b559",
+        "mpc_frames_00511-00511.h5": "c1c0ed87e96f7e18c9643b018ae62ac99b77cbce37ff8e3d31125d58149d3dcf",
+        "mpc_frames_00575-00575.h5": "af71477354f78772ee429954d50dbb4432452fde2b533d0e9cf952e505454974",
+        "mpc_frames_00639-00639.h5": "b518c8b276847ffe4b461e8154d5c9fb6cb721cd139d5f3626b2bd66ab9722a7",
+        "mpc_frames_00703-00703.h5": "424206e9c9a2d27a0eeb374fec650218ae8a9bf8ebe47e191ca72e054ac110c7",
+        "mpc_frames_00767-00767.h5": "2814465836d2c9aa27aefd07e6556a9cfb52a62fa30da8f961a852980bfb8fe1",
+        "mpc_frames_00831-00831.h5": "f44ced919fe7829012af3416bf6a250b0603178cbdd34fc526e5d29e2a0b2ecb",
+        "mpc_frames_00895-00895.h5": "13af636e7d3d8ea575ef78f588789fb0b798beec546bed7b6d3a0471f9dd63f2",
+        "mpc_frames_00959-00959.h5": "eb479aa4969f8c788fcd14629cdcbe4455ced73703b1751c6da7ea455a751190",
+        "mpc_frames_01023-01023.h5": "ec100fc493beadafd554a89e13d75d2e6071aefd82fba1f9faf9cd6d1b9314ad"
+      },
+      "results": [
+        {
+          "frame_index": 63,
+          "reference_time_s": 0.0,
+          "acquisition_id": "6cc408d0-76f8-52ad-be8f-f4f1969b6ff1",
+          "processing_recipe_id": "a051eaaccaa3d5abcba08509ed3934869fc599492a6aa786b1eae853410dd8ad",
+          "detection_count": 1
+        }
+      ],
+      "display_limits": {
+        "range_limits_m": [
+          3.0,
+          6.0
+        ],
+        "velocity_limits_m_s": null,
+        "power_limits_db": null
+      },
+      "processing_config_sha256": "d5373e2d2950a2f008d3c0159dffc5074e372fe3cb5ae977ead2e5b2fb82daf6",
+      "original_summary_receipt_sha256": "da81dafaf6238a143644a77508e242bd1a887640401d3ae0e48849d2ea57066b"
+    }
+  },
+  "plotting_source_sha256": {
+    "generator/figures/summary/saved_sensing.py": "e3c98eff30a9d8c76e9348703e08fba18ea93ae5295c2d842141d9c3fd8277a0",
+    "generator/figures/summary/sensing.py": "0866c47e1189f22189dbc854e1c16599729d252bd416c54fb2787e197130bb85",
+    "shared/sensing/plotting/viz.py": "08476ff5adade34c0550cca9734f08cbaa69a706ba9bd8bcb27c3316526024b1",
+    "shared/sensing/plotting/style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  }
+}

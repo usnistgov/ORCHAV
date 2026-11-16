@@ -1,7 +1,5 @@
 # Statistics
 
-[Scenarios](../../README.md) > [Visualizer](../README.md) > Statistics
-
 This scenario demonstrates whole-sequence Statistics in the Visualizer. It
 uses the [Sionna RT](https://nvlabs.github.io/sionna/) `florence` scene, which
 represents Florence's historic city center with dense streets and piazzas. A
@@ -12,9 +10,9 @@ coverage map for the same area.
 
 To run it, see [Running](#running).
 
-## Scene Setup
+## Scene Layout
 
-![2D scene layout](../../../docs/assets/scenarios/scenarios_visualizer_statistics_summary2d.png)
+![Scenario topology](../../../docs/assets/scenarios/scenarios_visualizer_statistics_topology.png)
 
 ![Coverage map](../../../docs/assets/scenarios/scenarios_visualizer_statistics_coverage_map.png)
 
@@ -27,6 +25,8 @@ To run it, see [Running](#running).
 
 ## Scenario Configuration
 
+See [scenario.yaml](scenario.yaml) for the complete configuration.
+
 ```yaml
 timeline:
   steps: 50
@@ -34,7 +34,6 @@ timeline:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
   quality:
     preset: custom
 
@@ -46,7 +45,7 @@ coverage:
 
 generator_summary:
   enabled: true
-  create: [scene2d, speed]
+  create: [topology, speed]
 ```
 
 The custom ray-tracing and coverage profiles inherit the medium solver
@@ -63,11 +62,15 @@ diagnostic figures for the route, speed profile, and coverage map.
 
 ## Running
 
-From the repository root, generate the frames and inspect the saved coverage
-output:
+Generate the frames from the repository root:
 
 ```bash
 orchav-generator scenarios/visualizer/statistics
+```
+
+Inspect the saved data:
+
+```bash
 orchav-inspect scenarios/visualizer/statistics --coverage
 ```
 
@@ -80,30 +83,27 @@ orchav-visualizer --scenario scenarios/visualizer/statistics
 ## What To Notice
 
 - When the Visualizer opens the frame set, the **Analysis** tab's
-  **Statistics** section
-  checks for a matching cache and otherwise computes the aggregate values
-  automatically.
+  **Statistics** section checks for a matching cache. On a cache miss, choose
+  **Compute Statistics**. Automatic computation on a cache miss is optional
+  and off by default.
 - The **Graphs** section summarizes the full 50-frame route. MPC count, path
-  loss, delay, and material-use trends change as `RX1` moves through the
+  loss, delay, interaction-mechanism and interaction-order trends change as `RX1` moves through the
   streets.
 - The saved coverage map provides a broader street-level path-loss view for the
   same Florence scene.
 
 ## What To Try
 
-- Wait for the **Statistics** status to report that the values are ready, then
-  expand **Graphs**. Use **Compute Statistics** only to force a fresh scan of
-  the active frame set.
-- Open **Coverage**, enable **Show coverage map**, and select the 1.5 m height.
-  The coverage graphs in **Analysis** > **Graphs** follow the selected coverage
-  metric and height.
+- Choose **Compute Statistics** if no matching cache was loaded. Wait for the
+  status to report that the values are ready, then expand **Graphs**. The same
+  button can force another scan of the currently open recording. For material
+  contacts in the current frame, use **Metrics → Materials** instead.
+- Open **Coverage** and enable **Show coverage map**. This scenario has one
+  coverage layer, at 1.5 m. The coverage graphs in **Analysis** > **Graphs**
+  follow the selected coverage metric.
 - For spatial context, open **Scene** > **Nodes**, enable **Trajectory** in the
   **RX** section, and compare the route with the whole-sequence graphs.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../README.md) | [Visualizer](../README.md) |
-> Current: **Statistics**
->
-> Previous: [Metrics Evolution](../metrics_evolution/README.md) | Next:
-> [Multi-Device Trajectory](../multi_device_trajectory/README.md)
+Up: [Visualizer scenarios](../README.md) | Previous: [Metrics Evolution](../metrics_evolution/README.md) | Next: [Multi-Device Trajectory](../multi_device_trajectory/README.md)

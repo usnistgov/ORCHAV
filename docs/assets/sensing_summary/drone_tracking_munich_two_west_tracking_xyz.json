@@ -1,0 +1,44 @@
+{
+  "license_spdx": "GPL-3.0-only",
+  "tutorial_scenario": "scenarios/sensing/applications/drone_tracking/munich/two_drones/scenario.yaml",
+  "tutorial_scenario_sha256": "90121345704591a627ad2e7461cfef73cc4349064f3fdac3a06cb75737705583",
+  "authored_scenarios": {
+    "scenarios/sensing/applications/drone_tracking/munich/two_drones/scenario.yaml": "90121345704591a627ad2e7461cfef73cc4349064f3fdac3a06cb75737705583",
+    "scenarios/sensing/applications/drone_tracking/munich/two_drones/south/scenario.yaml": "b2bb01eb53b28ac47f8f4bddfe75cc231f026ec5e8f1213f878b023a073f9bbc"
+  },
+  "authored_experiment": "scenarios/sensing/applications/drone_tracking/munich/two_drones/experiment.json",
+  "authored_experiment_sha256": "e62baecc5f848d0d476984989e06d3b88baf9763f35e4fb477caa96915628032",
+  "acquisition_configuration_equal_to_authored": true,
+  "execution_scenarios_sha256": {
+    "west": "63a4480f0530e36fc04799f08c7568076107795e47020ccaf4e687eb69baab59",
+    "south": "e8439db0a13f4ee61f6f4d3380e49fa8f7ef8bb7132964d69a7b59ae06917867"
+  },
+  "fusion_results_sha256": "e2ac6c3fcaaf4686fc1e8122147e69cfcfe0030bf35355c7899f61a137a90f28",
+  "run_id": "6967f5c0-4ec3-4df1-b8a9-979b4cc93c6a",
+  "source_unchanged": true,
+  "native_sources": {
+    "West": {
+      "generation_id": "36f4078b-1d5f-4b87-99eb-48cdde893911",
+      "frame_set_id": "ba9b6c003f6191bdb85cc2fac363a332b3e518947a6bcf01e23d4f662f3bfae9",
+      "pair_id": "c8e28d3556435e74585d94db08ce740735d64712a36930d032ae6c4dcc44c5da"
+    },
+    "South": {
+      "generation_id": "32e291bd-cb1b-47a5-b921-9237c66576d9",
+      "frame_set_id": "c132987c2b2283e1524b81b0ccea87be276c74ce9cb5f38b990a381f2d2f0f74",
+      "pair_id": "c8002465105fa76604d827c5ce19a098ee6b25e7eff29877a79db3d49c96af47"
+    }
+  },
+  "image": "drone_tracking_munich_two_west_tracking_xyz.png",
+  "sha256": "aa2056a3b557495c596c481c87ebbb302e2d25a520f485fba85fe670ab716f21",
+  "mode": "West",
+  "coordinate_frame": "world",
+  "kind": "standard_sensing_tracking_summary_from_fusion",
+  "plotting_source_sha256": {
+    "shared/sensing_viz.py": "45def40892a71ec9fddf952ae697673174d8d3bcf4646b67ee79206b61175ef1",
+    "shared/sensing_fusion_figures.py": "2bde8b4fecee80b9120cad98ecc9c572dba822a199d9d59b0c4cc29646bfa152",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "reproduction_command": "python -m shared.sensing_fusion_figures analysis/drone-tracking/munich-two-fusion --output-dir analysis/drone-tracking/munich-two-fusion",
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "8c02d18bd1e0b08eb60740d625fbdc3d89ead43057eedb47dc83f92f8ea8e710"
+}

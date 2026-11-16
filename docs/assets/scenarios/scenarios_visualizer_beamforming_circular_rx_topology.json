@@ -1,0 +1,285 @@
+{
+  "scenario": "scenarios/visualizer/beamforming/circular_rx/scenario.yaml",
+  "scene_source": {
+    "source": "library",
+    "id": "ground/ground_60x50.xml"
+  },
+  "source_files": {
+    "libraries/scenes/ground/ground_60x50.ply": "ac6fde51be56692107e71a2faa61ca661a47e171bd9244b58523b2cc01dcd0fa",
+    "libraries/scenes/ground/ground_60x50.xml": "17359e5bee8e7bbd1b3340dbf6c20ece66636db0431d745d818947499445ef46",
+    "scenarios/visualizer/beamforming/circular_rx/scenario.yaml": "f220c9dbbf74d5c87e3b49358f038f67cf228b70286177c60bcd359512dddf78"
+  },
+  "sample_indices": [
+    0,
+    31
+  ],
+  "sample_times_s": [
+    0.0,
+    8.0
+  ],
+  "steps": 32,
+  "actors": [
+    {
+      "name": "CenterTX",
+      "role": "tx",
+      "members": [
+        "CenterTX"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          0.0,
+          8.0
+        ],
+        [
+          0.0,
+          0.0,
+          8.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            0.0,
+            8.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OrbitRX",
+      "role": "rx",
+      "members": [
+        "OrbitRX"
+      ],
+      "sample_positions_m": [
+        [
+          12.0,
+          0.0,
+          1.5
+        ],
+        [
+          12.0,
+          -2.9391523179536475e-15,
+          1.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            12.0,
+            0.0,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              -0.879291966536774,
+              -1.2246467991473532e-16,
+              0.47628314854075254
+            ],
+            [
+              1.076822092335242e-16,
+              -1.0,
+              -5.832786333482559e-17
+            ],
+            [
+              0.47628314854075254,
+              0.0,
+              0.8792919665367741
+            ]
+          ],
+          "forward_direction": [
+            -0.879291966536774,
+            1.076822092335242e-16,
+            0.47628314854075254
+          ]
+        },
+        {
+          "index": 16,
+          "time_s": 4.129032258064516,
+          "position_m": [
+            -11.938431880702742,
+            -1.2140198638491846,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              0.8747806038123691,
+              -0.10116832198743242,
+              -0.47383949373170037
+            ],
+            [
+              0.08895649279155499,
+              0.9948693233918952,
+              -0.04818476692875899
+            ],
+            [
+              0.476283148540753,
+              -6.938893903907228e-18,
+              0.8792919665367739
+            ]
+          ],
+          "forward_direction": [
+            0.8747806038123691,
+            0.08895649279155499,
+            0.476283148540753
+          ]
+        },
+        {
+          "index": 31,
+          "time_s": 8.0,
+          "position_m": [
+            12.0,
+            -2.9391523179536475e-15,
+            1.5
+          ],
+          "rotation_matrix": [
+            [
+              -0.879291966536774,
+              -5.66553889764798e-16,
+              0.47628314854075254
+            ],
+            [
+              4.981662838803479e-16,
+              -1.0,
+              -2.698400704351884e-16
+            ],
+            [
+              0.47628314854075254,
+              2.465190328815662e-32,
+              0.8792919665367741
+            ]
+          ],
+          "forward_direction": [
+            -0.879291966536774,
+            4.981662838803479e-16,
+            0.47628314854075254
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "a5a0576b3f8ccdb1423cd3460e903f5b05b4fe9f2aff160bd6938c40006c4e52",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (concrete)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    }
+  ],
+  "output_sha256": "95e4c25698dc09b603866f04afcd13d6b1b0c3abfd5c5a4e423b88cce62e702e",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -32.4,
+        -27.0,
+        -0.32
+      ],
+      [
+        32.4,
+        27.0,
+        8.32
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "8832ee6a74cf03bfac1434a265d6ca1d887e04f7f95394323e31955b255118e1",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/visualizer/beamforming/circular_rx"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

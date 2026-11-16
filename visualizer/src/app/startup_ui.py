@@ -58,6 +58,7 @@ def apply_visualizer_shell(
     screen = QApplication.primaryScreen()
     if screen is not None:
         geom = screen.availableGeometry()
+        viz.setMinimumSize(min(minimum_width, geom.width() - 16), min(500, geom.height() - 16))
         device_pixel_ratio = 1.0
         try:
             device_pixel_ratio = float(screen.devicePixelRatio())

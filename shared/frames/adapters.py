@@ -107,6 +107,13 @@ def project_standard_mpc_frame(
     loaded_sensing_products: frozenset[str] = frozenset()
     all_sensing_products_loaded = False
     if FrameComponent.SENSING in components:
+        if frame.sensing is not None:
+            from shared.extensions.sensing import assert_sensing_contract
+
+            assert_sensing_contract(
+                {"sensing": frame.sensing},
+                require_schema_version=True,
+            )
         sensing, loaded_sensing_products, all_sensing_products_loaded = _sensing_projection(
             frame.sensing, request
         )

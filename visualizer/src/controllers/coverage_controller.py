@@ -18,6 +18,7 @@ from PySide6.QtCore import QTimer
 from ..coverage.analysis import (
     compute_coverage_threshold_summary,
     coverage_metric_valid_mask,
+    coverage_quantity_family,
     default_coverage_threshold,
     format_coverage_threshold_summary,
     is_serving_tx_metric,
@@ -93,6 +94,7 @@ class CoverageController:
         viz = self.visualizer
         logger.debug("Coverage toggle changed to: %s", state)
         viz.set_state(show_coverage=bool(state))
+        self._sync_coverage_view()
         if state and getattr(viz, "coverage_data", None):
             self._refresh_coverage_visuals()
         elif getattr(viz, "coverage_data", None) and (
@@ -196,7 +198,7 @@ class CoverageController:
         self._refresh_coverage_visuals()
 
     def handle_coverage_metric_changed(self, metric_name: str) -> None:
-        """Switch the active coverage metric layer and reset threshold state."""
+        """Switch layers, retaining the threshold within the same quantity."""
         viz = self.visualizer
         if not getattr(viz, "coverage_data", None):
             return
@@ -204,12 +206,14 @@ class CoverageController:
         if metric_name not in available:
             logger.warning("Coverage metric %s is not available", metric_name)
             return
+        previous_family = coverage_quantity_family(viz.coverage_data.get("metric_name"))
         self.coverage_service.select_metric_layer(viz.coverage_data, metric_name)
         if not self._activate_coverage_height(int(getattr(viz, "coverage_height_index", 0))):
             return
         metric_name = str(viz.coverage_data.get("metric_name", metric_name))
         viz.coverage_metric_name = metric_name
-        self.coverage_threshold_value = None
+        if coverage_quantity_family(metric_name) != previous_family:
+            self.coverage_threshold_value = None
         if not supports_coverage_threshold(metric_name):
             self.coverage_threshold_enabled = False
             self.coverage_threshold_mask_enabled = False
@@ -458,13 +462,24 @@ class CoverageController:
     def _refresh_coverage_visuals(self) -> None:
         """Regenerate the current ViewModel when threshold visuals change."""
         viz = self.visualizer
+        self._sync_coverage_view()
         if not getattr(viz.app_state, "show_coverage", False):
             return
         if not getattr(viz, "coverage_data", None):
             return
+        if getattr(viz, "coverage_volume_active", False):
+            return  # The retained texture is updated directly; no frame rebuild.
         viz._coverage_interpolation_dirty = True
         viz.force_update_next_frame = True
         self._render_current_coverage()
+
+    def _sync_coverage_view(self):
+        """Keep the embedded display synchronized without owning its controls."""
+        manager = getattr(self.visualizer, "ui_manager", None)
+        panel = getattr(manager, "panels", {}).get("coverage")
+        sync = getattr(panel, "sync_coverage_view", None)
+        if callable(sync):
+            sync()
 
     def _render_current_coverage(self) -> None:
         """Refresh coverage through the scene-only or frame-backed pipeline."""

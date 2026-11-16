@@ -1,0 +1,83 @@
+{
+  "license_spdx": "GPL-3.0-only",
+  "kind": "native_visualizer_documentation_captures",
+  "date": "2026-11-11",
+  "runtime_export_revision": "d834585049991cd00045f00a523fc0cb164dd182",
+  "source_revision": "dfd4fcbc28e1aee7781209aa7f02b4b765321fb1",
+  "capture_method": "Unedited Qt widget screenshots of the exported production Visualizer and its Metrics dashboard. Existing saved frames, no acquisition or reprocessing. Isolated settings and cache. The source checkout editable import fallback was disabled.",
+  "renderer": "pygfx, Vulkan software rendering (Mesa lavapipe), Qt offscreen bitmap presentation",
+  "software": {
+    "pygfx": "0.17.0",
+    "wgpu": "0.31.1",
+    "rendercanvas": "2.6.3",
+    "PySide6": "6.8.3",
+    "pyqtgraph": "0.14.0"
+  },
+  "limits": "Illustrations of the controls and saved data, not rendering-performance measurements. Renderer and widget appearance can vary across platforms.",
+  "figures": [
+    {
+      "image": "hello_world_workspace.png",
+      "sha256": "14b9a57499ce4401cc2031cea357d8963dc9f1f9e7ebd6928bd8175e2e16597e",
+      "scenario": "scenarios/getting_started/hello_world",
+      "scenario_sha256": "c8d561a762dbddeb1dac1ae48b94140fe55a5ce3bc39a456875214cf27e963fd",
+      "frame_index": 0,
+      "frames_manifest_sha256": "fb41e339ee04ebd95c462c47424dd0bc30e34230fb570d0a1493af17832cc24f",
+      "view": "Main workspace, ordinary initial camera",
+      "dimensions_px": [
+        1600,
+        1000
+      ],
+      "captured_at_utc": "2026-11-11T13:10:50.176685+00:00"
+    },
+    {
+      "image": "hello_world_metrics.png",
+      "sha256": "13744c52e4e5fde16ac2213e2b98af66ff66fb71df4c2f7391b07b49881359cb",
+      "scenario": "scenarios/getting_started/hello_world",
+      "scenario_sha256": "c8d561a762dbddeb1dac1ae48b94140fe55a5ce3bc39a456875214cf27e963fd",
+      "frame_index": 0,
+      "frames_manifest_sha256": "fb41e339ee04ebd95c462c47424dd0bc30e34230fb570d0a1493af17832cc24f",
+      "view": "Metrics overview, all six saved paths",
+      "dimensions_px": [
+        1250,
+        1150
+      ],
+      "captured_at_utc": "2026-11-11T13:10:54.775656+00:00"
+    },
+    {
+      "image": "circular_rx_beam_patterns.png",
+      "sha256": "081aa21cbc457b2fb8deca04ee71794186398f4dbf59e1f8a704b56f16fc2170",
+      "scenario": "scenarios/visualizer/beamforming/circular_rx",
+      "scenario_sha256": "e09e5045e7119734786cb542526ec20b7b760640ce0046c350e1b88bbf1ad7b7",
+      "frame_index": 0,
+      "frames_manifest_sha256": "dd367ad43856d4affa1f387692365f1bf6049d94c0ec11f3b3693193d526da63",
+      "view": "Antennas, standalone LOS steering, TX0/RX0, 4x8 arrays, scale 7",
+      "camera": {
+        "eye": [
+          21,
+          -25,
+          21
+        ],
+        "lookat": [
+          6,
+          0,
+          4
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "fov_deg": 42
+      },
+      "dimensions_px": [
+        1600,
+        1000
+      ],
+      "captured_at_utc": "2026-11-11T13:11:01.615613+00:00"
+    }
+  ],
+  "runtime_export_source_revision": "3f3a9400086ef94a6616f9f3062c8ebca36818e5",
+  "runtime_equivalence": "The Visualizer, Shared Data Layer, and Generator runtime files are unchanged between the export source revision and the documentation source revision.",
+  "theme": "dark",
+  "theme_control": "Display > Theme > Dark"
+}

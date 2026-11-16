@@ -1,0 +1,10 @@
+{
+  "frames": 8,
+  "total_tp": 8,
+  "total_fp": 0,
+  "total_fn": 0,
+  "tp_rate": 1.0,
+  "fp_per_frame": 0.0,
+  "mean_range_rmse_m": 2.7183,
+  "mean_velocity_rmse_m_s": 0.0227
+}

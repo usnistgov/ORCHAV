@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "landmark": "Palais Garnier / Op\u00e9ra Garnier",
+  "created": "2026-09-29",
+  "parent_source_id": "osm:way/54667456",
+  "front_component_source_id": "osm:way/822291002",
+  "visual_only": true,
+  "source_mesh": "../mesh/buildings_concrete.ply",
+  "source_ply_sha256": "8b966eacf165055524002a9190ca4f03dd4c723de85e65f48ad80ace1766893f",
+  "source_geometry_sha256": "71b998eb31d533066e2f7a237264ee843728a9a16f4c4a168cab3513a2942de4",
+  "source_geometry_hash_encoding": "little-endian float64 vertices then little-endian uint32 triangle indices",
+  "source_authored_uv": false,
+  "source_vertex_count": 32145,
+  "source_triangle_count": 58410,
+  "front_triangle_ids": [
+    29271,
+    29272,
+    29277,
+    29278,
+    29279,
+    29280
+  ],
+  "front_projection": {
+    "origin_m": [
+      -65.04632568359375,
+      -51.523216247558594,
+      0.0
+    ],
+    "tangent": [
+      0.965090900972996,
+      0.26191516347689947,
+      0.0
+    ],
+    "width_m": 58.71178305207133,
+    "height_m": 35.0,
+    "u": "dot(vertex-origin,tangent)/width",
+    "v": "1-vertex.z/height",
+    "v_convention": "image row, zero at top",
+    "z_displacement_m": 0
+  },
+  "assets": {
+    "opera_south_facade_albedo.png": {
+      "sha256": "0e2e1cebf3403b028a04d53767ea3ee82819794b58659191a6654d3175a8fa87",
+      "width": 1536,
+      "height": 1024,
+      "mode": "RGB",
+      "role": "albedo",
+      "generation": "built-in imagegen",
+      "raster_postprocessing": "none"
+    },
+    "opera_verdigris_copper_albedo.png": {
+      "sha256": "ed0d7fc5a258be294e3d361d9d52f0eb69ae83109069d9e971925419f7e8af44",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "role": "albedo",
+      "generation": "built-in imagegen",
+      "raster_postprocessing": "none"
+    }
+  },
+  "front_material_recommendation": {
+    "base_color": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "roughness": 0.88,
+    "metallic": 0,
+    "emission": 0,
+    "alpha": "opaque"
+  },
+  "optional_copper_roof_parts": [
+    {
+      "first_triangle": 27983,
+      "triangle_count": 274,
+      "source_id": "osm:way/822290988"
+    },
+    {
+      "first_triangle": 28325,
+      "triangle_count": 274,
+      "source_id": "osm:way/822290989"
+    },
+    {
+      "first_triangle": 28955,
+      "triangle_count": 282,
+      "source_id": "osm:way/822291001"
+    }
+  ],
+  "cached_osm_sources": [
+    {
+      "sha256": "d4860b9e5ec6a68773189eb4ccd967302eb189db11f4445fabd0ab7fb760ad9e",
+      "source_asset": "buildings_954bd3e0dc77.geojson"
+    },
+    {
+      "sha256": "42b967400db78bbaabb67e59234da20a46952fb0914cd3db301d5ad9ff011155",
+      "source_asset": "building_parts_5e8575bfbf88.geojson",
+      "included_input": "../../osm_building_parts.geojson"
+    }
+  ],
+  "photo_reference": {
+    "creator": "Peter Rivera",
+    "date": "2009-05-01",
+    "license": "CC BY 2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Paris_Opera_full_frontal_architecture,_May_2009.jpg",
+    "sha256": "2b3c34d3d794e2b00b0e1b20c13e6eee27d56cfcbe861b8dfbe400c4a1f873d2",
+    "reference_filename": "peter_rivera_front_2009_ccby2.jpg",
+    "bundled": false
+  },
+  "limits": [
+    "Photo-informed approximate facade, not a measured or surveyed reconstruction.",
+    "Generated ornament and fine lettering may differ from the monument.",
+    "OSM geometry, silhouette and RF materials are unchanged.",
+    "No geometric displacement or measured PBR maps."
+  ],
+  "mapping_helper": {
+    "sha256": "5b3652f81bdd6c398a66c5e9d60b04839f6bd03c31a269eade99d3b119340cf5",
+    "functions": [
+      "split_opera_front_payload",
+      "split_opera_front_and_copper_payload"
+    ],
+    "bundled": false
+  },
+  "copper_projection": {
+    "coordinates": "angular azimuth and elliptical-meridian approximation",
+    "material_repeat_approx_m": 4,
+    "azimuth_seam": "unwrap per triangle",
+    "pole": "neighbouring non-pole azimuth mean",
+    "sampler_addressing": "repeat in both axes",
+    "source_degenerate_apex_faces": "preserved unchanged",
+    "roughness": 0.78,
+    "metallic": 0.2
+  },
+  "original_record_scope": "Historical mapping evidence; current visual binding is ../visual_surfaces.json"
+}

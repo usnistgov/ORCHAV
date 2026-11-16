@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from shared.logging import get_logger
-from shared.scenarios.defaults import DEFAULT_COVERAGE_TX_MODE
+from shared.scenarios.defaults import DEFAULT_COVERAGE_TX_MODE, DEFAULT_EXPORT_PATH_METRICS
 from shared.scenarios.extensions import parse_registered_scene_source
 from shared.scenarios.frame_paths import (
     DEFAULT_FRAMES_DIRECTORY,
@@ -195,7 +195,7 @@ def parse_raytracing_config(scenario_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     rt_spec = scenario_data.get("raytracing", {}) or {}
 
-    export_path_metrics = bool(rt_spec.get("export_path_metrics", False))
+    export_path_metrics = bool(rt_spec.get("export_path_metrics", DEFAULT_EXPORT_PATH_METRICS))
     path_filter = rt_spec.get("path_filter", None)
 
     # Path filtering requires path metrics (path_loss_db) to determine which
@@ -216,6 +216,7 @@ def parse_raytracing_config(scenario_data: Dict[str, Any]) -> Dict[str, Any]:
         "start_step": rt_spec.get("start_step", None),
         "view": rt_spec.get("view", None),
         "export_path_metrics": export_path_metrics,
+        "rcs": rt_spec.get("rcs", None),
         "carrier_frequency_hz": rt_spec.get("carrier_frequency_hz", None),
         "bandwidth_hz": rt_spec.get("bandwidth_hz", None),
         "temperature_k": rt_spec.get("temperature_k", None),
@@ -237,6 +238,24 @@ def parse_raytracing_config(scenario_data: Dict[str, Any]) -> Dict[str, Any]:
         "cir_time_steps": rt_spec.get("cir_time_steps", None),
         "cir_sampling_frequency_hz": rt_spec.get("cir_sampling_frequency_hz", None),
     }
+
+
+def parse_sensing_config(scenario_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse sensing configuration section.
+
+    Args:
+        scenario_data: Full scenario YAML data
+
+    Returns:
+        Dictionary with sensing configuration
+    """
+    sensing_spec = scenario_data.get("sensing", {}) or {}
+    sensing_cfg = dict(sensing_spec)
+    # Ensure enabled flag defaults to False if not present
+    if "enabled" not in sensing_cfg:
+        sensing_cfg["enabled"] = False
+    return sensing_cfg
 
 
 def parse_generator_summary_config(
@@ -277,6 +296,8 @@ def parse_generator_summary_config(
         "enabled": summary_enabled,
         "force": bool(summary_spec.get("force", False)),
         "create": summary_create,
+        "inspection_figures": list(summary_spec.get("inspection_figures", []) or []),
+        "sensing": dict(summary_spec.get("sensing") or {}),
         "output": {
             "dir": summary_dir_path,
             "format": summary_format,

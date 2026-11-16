@@ -1,6 +1,7 @@
 """Tests for the pygfx notebook and standalone headless interfaces."""
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +14,9 @@ from visualizer.src.notebook.pygfx import (
     _normalize_pygfx_ibl_intensity,
 )
 
-HELLO_WORLD = "scenarios/getting_started/hello_world"
+HELLO_WORLD = os.environ.get(
+    "ORCHAV_NOTEBOOK_TEST_SCENARIO", "scenarios/getting_started/hello_world"
+)
 
 
 def test_normalize_pygfx_ibl_intensity_accepts_both_scales():
@@ -91,6 +94,40 @@ def test_offscreen_render_always_closes_canvas(draw_raises):
 
 @pytest.mark.headless
 @pytest.mark.skipif(not PYGFX_AVAILABLE, reason="pygfx not installed")
+def test_explicit_camera_framing_preserves_eye_despite_large_scene():
+    """A local inspection stays local even when its city extends far beyond it."""
+    import pygfx as gfx
+
+    from visualizer.src.scene.assembly import compute_camera_orbit
+
+    scene = gfx.Scene()
+    scene.add(gfx.Mesh(gfx.box_geometry(1000, 1000, 100), gfx.MeshBasicMaterial()))
+    center = np.array([-129.5, -5.0, 1.0])
+    orbit = compute_camera_orbit([], np.empty((0, 3)), np.empty((0, 3)), 225, 20, 13, center)
+    camera = gfx.PerspectiveCamera(60, aspect=16 / 9)
+    PygfxNotebookViz._apply_camera_orbit(camera, scene, orbit, explicit_framing=True)
+    np.testing.assert_allclose(camera.local.position, orbit.eye_position(), atol=1e-10)
+    assert np.linalg.norm(camera.local.position - center) == pytest.approx(13.0)
+    forward = -np.asarray(camera.world.matrix[:3, 2])
+    expected = center - orbit.eye_position()
+    np.testing.assert_allclose(forward / np.linalg.norm(forward), expected / 13, atol=1e-10)
+
+
+@pytest.mark.headless
+@pytest.mark.skipif(not PYGFX_AVAILABLE, reason="pygfx not installed")
+def test_automatic_camera_fits_empty_scene_without_error():
+    import pygfx as gfx
+
+    from visualizer.src.scene.assembly import compute_camera_orbit
+
+    orbit = compute_camera_orbit([], np.empty((0, 3)), np.empty((0, 3)))
+    camera = gfx.PerspectiveCamera(60, aspect=16 / 9)
+    PygfxNotebookViz._apply_camera_orbit(camera, gfx.Scene(), orbit)
+    assert np.isfinite(camera.local.position).all()
+
+
+@pytest.mark.headless
+@pytest.mark.skipif(not PYGFX_AVAILABLE, reason="pygfx not installed")
 class TestPygfxNotebookViz:
     @pytest.fixture(scope="class")
     def viz(self):
@@ -98,6 +135,8 @@ class TestPygfxNotebookViz:
         viz = PygfxNotebookViz(HELLO_WORLD)
         if viz.num_frames < 1:
             viz.close()
+            if os.environ.get("ORCHAV_NOTEBOOK_TEST_SCENARIO"):
+                pytest.fail("Configured notebook test recording contains no frames")
             pytest.skip("Notebook frame fixtures are not included in this checkout")
         try:
             yield viz

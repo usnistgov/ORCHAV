@@ -1,7 +1,5 @@
 # Scene Diffuse Scattering
 
-[Scenarios](../../../README.md) > [Generator](../../README.md) > Scene Diffuse Scattering
-
 This comparison uses one room to show when scene surfaces produce diffuse
 paths and how ORCHAV resolves their scattering coefficients. It starts with
 diffuse solving enabled but the scene's material values unchanged, then adds a
@@ -11,7 +9,7 @@ To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scenario overview](../../../../docs/assets/scenarios/scenarios_generator_propagation_and_materials_scene_diffuse_scattering_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_generator_propagation_and_materials_scene_diffuse_scattering_topology.png)
 
 | Element | Configuration |
 | --- | --- |
@@ -33,7 +31,8 @@ Diffuse paths require two independent conditions:
 2. At least one effective scene material must have a nonzero
    `scattering_coefficient`.
 
-The parent `scenario.yaml` tests only the first condition:
+The starting configuration in [`scenario.yaml`](scenario.yaml) tests only the
+first condition:
 
 ```yaml
 raytracing:
@@ -73,9 +72,15 @@ so its generated frames remain available for comparison.
 
 ### 1. Enable Diffuse Solving Only
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/propagation_and_materials/scene_diffuse_scattering
 orchav-generator scenarios/generator/propagation_and_materials/scene_diffuse_scattering
+```
+
+Inspect the effective material coefficients:
+
+```bash
 orchav-inspect scenarios/generator/propagation_and_materials/scene_diffuse_scattering --frame 0 --materials
 ```
 
@@ -85,7 +90,7 @@ the loaded material values.
 
 ### 2. Apply The ITU-Family Preset
 
-The first child adds a preset:
+The [ITU preset variant](itu_preset/README.md) adds a material-family preset:
 
 ```yaml
 raytracing:
@@ -93,19 +98,28 @@ raytracing:
     scattering_coefficient_preset: itu
 ```
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset
 orchav-generator scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset
+```
+
+Inspect the effective material coefficients:
+
+```bash
 orchav-inspect scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset --frame 0 --materials
 ```
 
-Known material families now have nonzero coefficients, and the interaction
-summary contains `code 2 (diffuse)`. Brick remains at zero because this preset
-does not define a value for its family.
+The preset gives concrete, wood, plasterboard, and chipboard nonzero
+coefficients, and the interaction summary contains `code 2 (diffuse)`.
+ORCHAV's `itu` preset assigns no coefficient to brick. The brick material
+therefore retains its loaded value of `0`, and the brick wall produces no
+diffuse paths in this variant.
 
 ### 3. Override Concrete After The Preset
 
-The next child keeps the preset and adds an explicit override:
+The [concrete override variant](itu_preset_concrete_override/README.md) keeps
+the preset and sets concrete explicitly:
 
 ```yaml
 raytracing:
@@ -116,9 +130,15 @@ raytracing:
       scattering_coefficient: 0.0
 ```
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset_concrete_override
 orchav-generator scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset_concrete_override
+```
+
+Inspect the effective material coefficients:
+
+```bash
 orchav-inspect scenarios/generator/propagation_and_materials/scene_diffuse_scattering/itu_preset_concrete_override --frame 0 --materials
 ```
 
@@ -128,7 +148,8 @@ nonzero preset values.
 
 ### 4. Set Concrete Directly
 
-The final child skips the preset and sets one material explicitly:
+The [explicit concrete variant](explicit_concrete/README.md) skips the preset
+and sets one material directly:
 
 ```yaml
 raytracing:
@@ -140,9 +161,15 @@ raytracing:
       scattering_coefficient: 0.1
 ```
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/propagation_and_materials/scene_diffuse_scattering/explicit_concrete
 orchav-generator scenarios/generator/propagation_and_materials/scene_diffuse_scattering/explicit_concrete
+```
+
+Inspect the effective material coefficients:
+
+```bash
 orchav-inspect scenarios/generator/propagation_and_materials/scene_diffuse_scattering/explicit_concrete --frame 0 --materials
 ```
 
@@ -180,7 +207,7 @@ orchav-visualizer --scenario scenarios/generator/propagation_and_materials/scene
 ## Outputs And Path Limits
 
 Each generated variant writes a manifest-driven HDF5 frame set under its own
-`frames/` directory. The parent scenario also writes the scene-layout figure
+`frames/` directory. The starting configuration also writes the scene-layout figure
 under `summary/`. Recorded interaction codes let inspection and analysis tools
 separate line-of-sight, specular, and diffuse interactions.
 
@@ -210,7 +237,6 @@ Reference](../../../../docs/reference/scenario_yaml.md#raytracing-scene-material
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) | [Generator](../../README.md) |
-> Current: **Scene Diffuse Scattering**
->
-> Track: **Propagation and Materials** | Previous: [Specular Reflection](../specular_reflection/README.md) | Next: [Refraction And Diffraction](../refraction_and_diffraction/README.md)
+Up: [Generator](../../README.md) ·
+[Specular Reflection](../specular_reflection/README.md) ·
+[Refraction And Diffraction](../refraction_and_diffraction/README.md)

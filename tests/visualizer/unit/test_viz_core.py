@@ -490,7 +490,7 @@ class TestMPCCore:
         assert summary["total_mpcs"] == 2
         assert summary["all_mpcs"] == 3
         assert summary["total_segments"] == 2
-        assert summary["header"].startswith("Reflection Order")
+        assert summary["header"] == "Interaction Order — MPCs"
         assert summary["lines"][0].endswith("LoS: 1")
         assert summary["lines"][1].endswith("2nd Order: 1")
 

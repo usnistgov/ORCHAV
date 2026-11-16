@@ -91,14 +91,14 @@ class PresetService:
         }
 
         presets["Low Order (≤2)"] = {
-            "description": "Show MPCs with up to 2 reflections (typically stronger)",
+            "description": "Show MPCs with up to 2 interactions, including sensing events",
             "mpc_allowed_orders": [0, 1, 2],
             "mpc_allowed_types": list(MPC_TYPE_VALUES),
             "materials": {},
         }
 
         presets["Multi-Bounce Only"] = {
-            "description": "Show MPCs with 2+ reflections only (excludes LoS and single bounce)",
+            "description": "Show MPCs with 2+ interactions only (excludes LoS and single interaction)",
             "mpc_allowed_orders": [2, 3, 4, 5, 6],
             "mpc_allowed_types": list(MPC_TYPE_VALUES),
             "materials": {},

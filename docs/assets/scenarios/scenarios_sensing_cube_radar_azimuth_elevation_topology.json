@@ -1,0 +1,351 @@
+{
+  "scenario": "scenarios/sensing/cube_radar/azimuth/elevation/scenario.yaml",
+  "scene_source": {
+    "id": "empty/empty.xml",
+    "source": "library"
+  },
+  "source_files": {
+    "libraries/scenes/empty/empty.xml": "cad4eee6d9d4902909746d583904e156f27f3b022d08a2055d3ccc24666b7742",
+    "libraries/targets/cube/cube.ply": "92b4c49988762b9f7e425596c2b071dc3ba8ecb2d281df7985e32249bb6ed437",
+    "scenarios/sensing/cube_radar/azimuth/elevation/scenario.yaml": "4bb49cd974104b142facaddd588541a7cab4fedf536b49d6e6fade2d5fe527ce"
+  },
+  "sample_indices": [
+    0,
+    1023
+  ],
+  "sample_times_s": [
+    0.0,
+    1.023
+  ],
+  "steps": 1024,
+  "actors": [
+    {
+      "name": "Monostatic radar",
+      "role": "radar",
+      "members": [
+        "RadarTX",
+        "RadarRX"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          0.0,
+          0.5
+        ],
+        [
+          0.0,
+          0.0,
+          0.5
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            0.0,
+            0.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cube",
+      "role": "target",
+      "members": [
+        "Cube"
+      ],
+      "sample_positions_m": [
+        [
+          5.0,
+          -0.6,
+          1.1
+        ],
+        [
+          3.977,
+          0.42299999999999993,
+          1.9184
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 512,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 0.512,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 1023,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 1.023,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            5.0,
+            -0.6,
+            1.1
+          ],
+          "rotation_matrix": [
+            [
+              -0.9859037584063739,
+              -0.11914522061843087,
+              -0.11746572080386739
+            ],
+            [
+              0.11830845100876507,
+              -0.9928768384869222,
+              0.014095886496464111
+            ],
+            [
+              -0.11830845100876489,
+              -8.673617379884035e-19,
+              0.9929768931953586
+            ]
+          ],
+          "forward_direction": [
+            -0.9859037584063739,
+            0.11830845100876507,
+            -0.11830845100876489
+          ]
+        },
+        {
+          "index": 512,
+          "time_s": 0.512,
+          "position_m": [
+            4.4879999999999995,
+            -0.08800000000000008,
+            1.5096
+          ],
+          "rotation_matrix": [
+            [
+              -0.9754406018485808,
+              -0.019604074934445635,
+              -0.2193884967614384
+            ],
+            [
+              0.019126286310756534,
+              -0.9998078216567248,
+              0.0043017352306164505
+            ],
+            [
+              -0.21943066658340626,
+              4.336808689942018e-19,
+              0.9756280964398073
+            ]
+          ],
+          "forward_direction": [
+            -0.9754406018485808,
+            0.019126286310756534,
+            -0.21943066658340626
+          ]
+        },
+        {
+          "index": 1023,
+          "time_s": 1.023,
+          "position_m": [
+            3.977,
+            0.42299999999999993,
+            1.9184
+          ],
+          "rotation_matrix": [
+            [
+              -0.9371974350207497,
+              0.1057650130870807,
+              -0.3323773906227943
+            ],
+            [
+              -0.09968179909825925,
+              -0.994391151412104,
+              -0.03535218411703344
+            ],
+            [
+              -0.334252160380546,
+              0.0,
+              0.9424836832969247
+            ]
+          ],
+          "forward_direction": [
+            -0.9371974350207497,
+            -0.09968179909825925,
+            -0.334252160380546
+          ]
+        }
+      ]
+    }
+  ],
+  "display_groups": [],
+  "material_legend": [],
+  "output_sha256": "6941f0b391fe9821147c79019659c288ccf9c25ea7cb34cefc3bc1450891cc23",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -0.22445029399657343,
+        -1.2486547142084667,
+        0.4177292831264506
+      ],
+      [
+        5.83570764391091,
+        1.0737266935260892,
+        2.6390386387122846
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 30,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [
+    {
+      "name": "Cube",
+      "projection_axes": [
+        "X",
+        "Y"
+      ],
+      "displacement_m": 1.6621782575885176,
+      "start_position_m": [
+        5.0,
+        -0.6,
+        1.1
+      ],
+      "end_position_m": [
+        3.977,
+        0.42299999999999993,
+        1.9184
+      ],
+      "start_time_s": 0.0,
+      "end_time_s": 1.023,
+      "pose_times_s": {
+        "Start": 0.0,
+        "Middle": 0.512,
+        "End": 1.023
+      }
+    }
+  ],
+  "mesh_snapshot_styles": [
+    {
+      "name": "Cube",
+      "index": 1023,
+      "time_s": 1.023,
+      "style": "filled",
+      "label": "End",
+      "opacity": 0.88
+    },
+    {
+      "name": "Cube",
+      "index": 512,
+      "time_s": 0.512,
+      "style": "filled",
+      "label": "Middle",
+      "opacity": 0.42
+    },
+    {
+      "name": "Cube",
+      "index": 0,
+      "time_s": 0.0,
+      "style": "filled",
+      "label": "Start",
+      "opacity": 0.16
+    }
+  ],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "077c6c55d104403a84b34169fe50aeb171dc177a740258aa388cb27e0b566b1e",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "motion_renderer_sha256": "8fea0d9a9ed108fe662e2941ee7b19df5b36b935bd1ac67b13769c343795aa58",
+  "versions": {
+    "numpy": "2.5.3",
+    "matplotlib": "3.11.2",
+    "sionna-rt": "2.2.0",
+    "open3d": "0.20.0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.topology",
+    "--scenario",
+    "scenarios/sensing/cube_radar/azimuth/elevation",
+    "--output",
+    "docs/assets/scenarios/scenarios_sensing_cube_radar_azimuth_elevation_topology.png"
+  ]
+}

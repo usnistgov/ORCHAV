@@ -9,14 +9,13 @@ widget keys.
 from __future__ import annotations
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -28,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..renderers.protocol import renderer_capabilities
 from ..scene.defaults import (
     DEFAULT_LABEL_FONT_SIZE,
     DEFAULT_LABEL_OFFSET_M,
@@ -42,9 +42,15 @@ from ..scene.defaults import (
     TRAJECTORY_LINE_WIDTH_BOUNDS_PX,
     TRAJECTORY_POINT_SIZE_BOUNDS_PX,
 )
+from ..services.label_callout_service import active_callout_style
+from ..types.label_style import CALLOUT_MARKER_SIZE_BOUNDS_PX
 from ..utils.colors import ensure_viridis_lut
+from ..widgets.responsive import ResponsiveRow, wrap_control_row
 from .base import BasePanel
+from .collapsible_section import CollapsibleSection
 from .data_source.raytracing_section import RaytracingControlSection
+from .label_style_controls import LabelStyleControls
+from .orientation_controls import OrientationControls
 from .ui_theme import compact_button_style, configure_label
 
 
@@ -88,34 +94,30 @@ class NodesSelectionPanel(BasePanel):
         """
         group = self.create_group_box("Nodes")
         layout = QVBoxLayout(group)
-        layout.setSpacing(4)
-        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(10)
+        layout.setContentsMargins(0, 4, 0, 4)
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(6)
-        grid.setVerticalSpacing(4)
-        grid.setContentsMargins(0, 0, 0, 0)
-
-        self._entity_grid = grid
-
-        # Row 0: entity-level controls
-        grid.addWidget(self._create_tx_group(), 0, 0)
-        grid.addWidget(self._create_rx_group(), 0, 1)
+        layout.addWidget(self._create_display_group())
+        layout.addWidget(self._create_tx_group())
+        layout.addWidget(self._create_rx_group())
         self._target_group = self._create_target_group()
-        grid.addWidget(self._target_group, 0, 2)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 1)
-
-        # Rows below: shared styling and display controls
-        grid.addWidget(self._create_display_group(), 1, 0, 1, 3)
-        grid.addWidget(self._create_coloring_group(), 2, 0, 1, 3)
+        layout.addWidget(self._target_group)
+        self._axis_size_row = self._create_axis_size_row()
+        layout.addWidget(self._axis_size_row)
+        orientation = CollapsibleSection("Orientation", start_open=False, flat_header=True)
+        self.widgets["orientation_section"] = orientation
+        self.widgets["orientation_controls"] = OrientationControls(self.parent)
+        orientation.content_layout().addWidget(self.widgets["orientation_controls"])
+        layout.addWidget(orientation)
+        styling = CollapsibleSection("Colors and trajectories", start_open=False, flat_header=True)
+        styling.content_layout().addWidget(self._create_coloring_group())
         self._trajectory_style_group = self._create_trajectory_style_group()
-        grid.addWidget(self._trajectory_style_group, 3, 0, 1, 3)
-        layout.addLayout(grid)
+        styling.content_layout().addWidget(self._trajectory_style_group)
+        layout.addWidget(styling)
         self.update_node_rename_visibility()
         self.update_target_controls()
         self.update_trajectory_style_enabled()
+        self.refresh_display_controls()
         return group
 
     def create_interactive_preview_panel(self) -> QGroupBox:
@@ -123,10 +125,10 @@ class NodesSelectionPanel(BasePanel):
         group = self.create_group_box("Edit")
         self._interactive_edit_panel = group
         layout = QVBoxLayout(group)
-        layout.setSpacing(4)
-        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(10)
+        layout.setContentsMargins(0, 4, 0, 4)
         mode_label = QLabel("Open a scenario to see the available edit workflow.")
-        configure_label(mode_label, role="muted", font_size=10, word_wrap=True)
+        configure_label(mode_label, role="muted", word_wrap=True)
         self.widgets["interactive_edit_mode_label"] = mode_label
         layout.addWidget(mode_label)
         layout.addWidget(self._create_interactive_preview_row())
@@ -135,7 +137,7 @@ class NodesSelectionPanel(BasePanel):
 
     # --- group builders -------------------------------------------------
 
-    def _create_tx_group(self) -> QGroupBox:
+    def _create_tx_group(self) -> QWidget:
         """Create transmitter display controls and the contextual rename action."""
         return self._create_tx_rx_group(
             title="TX",
@@ -144,7 +146,7 @@ class NodesSelectionPanel(BasePanel):
             rename_tooltip="Rename the selected transmitter node",
         )
 
-    def _create_rx_group(self) -> QGroupBox:
+    def _create_rx_group(self) -> QWidget:
         """Create receiver display controls and the contextual rename action."""
         return self._create_tx_rx_group(
             title="RX",
@@ -153,6 +155,23 @@ class NodesSelectionPanel(BasePanel):
             rename_tooltip="Rename the selected receiver node",
         )
 
+    @staticmethod
+    def _entity_row(title: str) -> tuple[QWidget, QVBoxLayout]:
+        """Keep actor names aligned while controls can wrap in a narrow sidebar."""
+        box = QWidget()
+        box.setProperty("sceneEntityRow", True)
+        row = QHBoxLayout(box)
+        row.setContentsMargins(0, 8, 0, 8)
+        row.setSpacing(12)
+        label = configure_label(QLabel(title), bold=True)
+        label.setMinimumWidth(54)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        row.addWidget(label, alignment=Qt.AlignVCenter)
+        controls = QVBoxLayout()
+        controls.setSpacing(6)
+        row.addLayout(controls, 1)
+        return box, controls
+
     def _create_tx_rx_group(
         self,
         *,
@@ -160,19 +179,22 @@ class NodesSelectionPanel(BasePanel):
         prefix: str,
         size_tooltip: str,
         rename_tooltip: str,
-    ) -> QGroupBox:
-        """Create a TX/RX display subgroup with stable widget keys by prefix."""
-        box = QGroupBox(title)
-        box.setStyleSheet("QGroupBox { font-size: 10px; }")
-        vbox = QVBoxLayout(box)
-        vbox.setSpacing(4)
-        vbox.setContentsMargins(4, 8, 4, 4)
+    ) -> QWidget:
+        """Create a TX/RX display row with stable widget keys by prefix."""
+        box, controls = self._entity_row(title)
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        orient_cb = QCheckBox("Axes")
+        orient_cb.setToolTip(f"Show orientation frame (XYZ axes) for {title} nodes")
+        self.widgets[f"{prefix}_orient_cb"] = orient_cb
+        orient_cb.toggled.connect(self.update_axis_size_visibility)
 
-        # TX/RX scope is owned by the persistent Context strip. This row keeps
-        # only the appearance setting that is local to the Scene workflow.
-        row1 = QHBoxLayout()
-        row1.setSpacing(4)
-        row1.addWidget(QLabel("Size:"))
+        trajectory_cb = QCheckBox("Trajectory")
+        trajectory_cb.setToolTip(f"Show full {title} trajectory as 3D lines in the scene")
+        trajectory_cb.toggled.connect(self.update_trajectory_style_enabled)
+        self.widgets[f"{prefix}_trajectory_cb"] = trajectory_cb
+
+        row.addWidget(QLabel("Marker"))
         size_spin = QDoubleSpinBox()
         size_spin.setRange(*NODE_MARKER_SIZE_BOUNDS_M)
         size_spin.setSingleStep(0.1)
@@ -184,117 +206,77 @@ class NodesSelectionPanel(BasePanel):
         size_spin.setToolTip(size_tooltip)
         size_spin.setMinimumWidth(86)
         self.widgets[f"{prefix}_marker_size_spin"] = size_spin
-        row1.addWidget(size_spin)
-        row1.addStretch()
-        vbox.addLayout(row1)
-
-        # Row 2: per-node display toggles
-        row2 = QHBoxLayout()
-        row2.setSpacing(4)
-
-        orient_cb = QCheckBox("Axes")
-        orient_cb.setChecked(False)
-        orient_cb.setToolTip(f"Show orientation frame (XYZ axes) for {title} nodes")
-        self.widgets[f"{prefix}_orient_cb"] = orient_cb
-        row2.addWidget(orient_cb)
-
-        trajectory_cb = QCheckBox("Trajectory")
-        trajectory_cb.setChecked(False)
-        trajectory_cb.setToolTip(f"Show full {title} trajectory as 3D lines in the scene")
-        trajectory_cb.toggled.connect(self.update_trajectory_style_enabled)
-        self.widgets[f"{prefix}_trajectory_cb"] = trajectory_cb
-        row2.addWidget(trajectory_cb)
-
-        row2.addStretch()
-        vbox.addLayout(row2)
-
-        # Row 3: rename action
-        row3 = QHBoxLayout()
-        row3.setSpacing(4)
+        row.addWidget(size_spin)
+        row.addWidget(trajectory_cb)
+        row.addWidget(orient_cb)
         rename_btn = QPushButton("Rename")
-        rename_btn.setFixedWidth(80)
         rename_btn.setToolTip(rename_tooltip)
         rename_btn.clicked.connect(lambda: self._rename_node(title))
         rename_btn.setVisible(False)
         self.widgets[f"{prefix}_rename_btn"] = rename_btn
-        row3.addWidget(rename_btn)
-
-        row3.addStretch()
-        vbox.addLayout(row3)
+        row.addWidget(rename_btn)
+        controls.addLayout(wrap_control_row(row, [2, 1, 1, 1]))
         return box
 
-    def _create_target_group(self) -> QGroupBox:
-        """Create controls for target visibility, labels, trajectories, and rename."""
-        box = QGroupBox("Targets")
-        box.setStyleSheet("QGroupBox { font-size: 10px; }")
-        vbox = QVBoxLayout(box)
-        vbox.setSpacing(4)
-        vbox.setContentsMargins(4, 8, 4, 4)
+    def _create_target_group(self) -> QWidget:
+        """Create controls for target visibility, trajectories, and rename."""
+        box, controls = self._entity_row("Targets")
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        dropdown = QComboBox()
+        dropdown.setMinimumWidth(105)
+        dropdown.setToolTip("Select a target to rename or emphasize")
+        dropdown.currentIndexChanged.connect(lambda _idx: self._update_target_rename_visibility())
+        self.widgets["target_dropdown"] = dropdown
+        row.addWidget(dropdown, 1)
+        show = QCheckBox("Show")
+        show.setChecked(True)
+        show.setToolTip("Show target objects in the visualization")
+        self.widgets["target_cb"] = show
+        row.addWidget(show)
+        rename = QPushButton("Rename")
+        rename.setToolTip("Rename the selected target")
+        rename.clicked.connect(self._rename_target)
+        rename.setVisible(False)
+        self.widgets["target_rename_btn"] = rename
+        row.addWidget(rename)
+        controls.addLayout(row)
 
-        # Row 1: target selector + visibility
-        row1 = QHBoxLayout()
-        row1.setSpacing(4)
-
-        self.widgets["target_dropdown"] = QComboBox()
-        self.widgets["target_dropdown"].setMinimumWidth(105)
-        self.widgets["target_dropdown"].setStyleSheet("QComboBox { padding: 2px; }")
-        self.widgets["target_dropdown"].setToolTip("Select a target to rename")
-        self.widgets["target_dropdown"].currentIndexChanged.connect(
-            lambda _idx: self._update_target_rename_visibility()
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        axes = QCheckBox("Axes")
+        axes.setToolTip("Show orientation frame (XYZ axes) for target objects")
+        self.widgets["target_orient_cb"] = axes
+        axes.toggled.connect(self.update_axis_size_visibility)
+        trajectory = QCheckBox("Trajectory")
+        trajectory.setToolTip("Show full target trajectory as 3D lines in the scene")
+        trajectory.toggled.connect(self.update_trajectory_style_enabled)
+        self.widgets["target_trajectory_cb"] = trajectory
+        row.addWidget(trajectory)
+        silhouette = QCheckBox("Silhouette")
+        silhouette.setToolTip(
+            "Outline the selected target without changing its surface colors. "
+            "Hidden, transparent and wireframe targets have no silhouette."
         )
-        row1.addWidget(self.widgets["target_dropdown"], stretch=1)
-
-        self.widgets["target_cb"] = QCheckBox("Show")
-        self.widgets["target_cb"].setChecked(True)
-        self.widgets["target_cb"].setToolTip("Show target objects in the visualization")
-        row1.addWidget(self.widgets["target_cb"])
-        vbox.addLayout(row1)
-
-        # Row 2: target display toggles
-        row2 = QHBoxLayout()
-        row2.setSpacing(4)
-
-        self.widgets["target_orient_cb"] = QCheckBox("Axes")
-        self.widgets["target_orient_cb"].setChecked(False)
-        self.widgets["target_orient_cb"].setToolTip(
-            "Show orientation frame (XYZ axes) for target objects"
+        silhouette.setVisible(
+            renderer_capabilities(getattr(self.parent, "renderer", None)).target_silhouette
         )
-        row2.addWidget(self.widgets["target_orient_cb"])
-
-        self.widgets["target_trajectory_cb"] = QCheckBox("Trajectory")
-        self.widgets["target_trajectory_cb"].setChecked(False)
-        self.widgets["target_trajectory_cb"].setToolTip(
-            "Show full target trajectory as 3D lines in the scene"
-        )
-        self.widgets["target_trajectory_cb"].toggled.connect(self.update_trajectory_style_enabled)
-        row2.addWidget(self.widgets["target_trajectory_cb"])
-
-        row2.addStretch()
-        vbox.addLayout(row2)
-
-        # Row 3: rename action
-        row3 = QHBoxLayout()
-        row3.setSpacing(4)
-        self.widgets["target_rename_btn"] = QPushButton("Rename")
-        self.widgets["target_rename_btn"].setFixedWidth(80)
-        self.widgets["target_rename_btn"].setToolTip("Rename the selected target")
-        self.widgets["target_rename_btn"].clicked.connect(self._rename_target)
-        self.widgets["target_rename_btn"].setVisible(False)
-        row3.addWidget(self.widgets["target_rename_btn"])
-
-        row3.addStretch()
-        vbox.addLayout(row3)
+        self.widgets["target_silhouette_cb"] = silhouette
+        silhouette.toggled.connect(self._sync_target_silhouette)
+        row.addWidget(silhouette)
+        row.addWidget(axes)
+        row.addStretch()
+        controls.addLayout(wrap_control_row(row, [1, 1, 1]))
         return box
 
     def _create_display_group(self) -> QGroupBox:
-        """Create shared label, marker-size, axis-size, and offset controls."""
-        box = QGroupBox("Display")
-        box.setStyleSheet("QGroupBox { font-size: 10px; }")
+        """Put label visibility, text and style before secondary appearance controls."""
+        box = QGroupBox("Labels")
         vbox = QVBoxLayout(box)
-        vbox.setSpacing(4)
-        vbox.setContentsMargins(4, 8, 4, 4)
+        vbox.setSpacing(8)
+        vbox.setContentsMargins(8, 12, 8, 8)
 
-        # Row 1: label toggles + global sizes
+        # Keep label visibility and text semantics together.
         row1 = QHBoxLayout()
         row1.setSpacing(4)
         self.widgets["labels_cb"] = QCheckBox("TX/RX labels")
@@ -309,7 +291,9 @@ class NodesSelectionPanel(BasePanel):
         self.widgets["node_label_mode_combo"].addItem("Role", "role")
         self.widgets["node_label_mode_combo"].addItem("Device Name", "name")
         self.widgets["node_label_mode_combo"].setToolTip(
-            "Choose whether transmitter/receiver labels use TX1/RX1 roles or scenario device names"
+            "Use TX1/RX1 roles or device names. Sensing roles are available when "
+            "the scenario enables sensing; colocated transmitter/receiver pairs "
+            "then share a Monostatic radar label."
         )
         self.widgets["node_label_mode_combo"].setFixedWidth(118)
         row1.addWidget(self.widgets["node_label_mode_combo"])
@@ -319,7 +303,16 @@ class NodesSelectionPanel(BasePanel):
         self.widgets["target_labels_cb"].setToolTip("Display text labels for target objects")
         row1.addWidget(self.widgets["target_labels_cb"])
 
-        row1.addWidget(QLabel("Label font:"))
+        row1.addStretch()
+        vbox.addLayout(wrap_control_row(row1, [1, 2, 1]))
+
+        callouts = LabelStyleControls(self.parent, show_marker_size=False, collapsible_details=True)
+        self.widgets["label_style_controls"] = callouts
+        vbox.addWidget(callouts)
+
+        # One shared font control stays visible beside all label styles.
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
         self.widgets["label_font_size_spin"] = QDoubleSpinBox()
         self.widgets["label_font_size_spin"].setRange(*LABEL_FONT_SIZE_BOUNDS)
         self.widgets["label_font_size_spin"].setSingleStep(0.1)
@@ -327,26 +320,22 @@ class NodesSelectionPanel(BasePanel):
             float(getattr(self.parent, "label_font_size", DEFAULT_LABEL_FONT_SIZE))
         )
         self.widgets["label_font_size_spin"].setDecimals(2)
-        self.widgets["label_font_size_spin"].setToolTip("Font size for node and target labels")
+        self.widgets["label_font_size_spin"].setToolTip(
+            "Shared font size for TX/RX and target labels in every style. Plain text "
+            "scales in world space; Callout and Card keep a fixed screen size."
+        )
         self.widgets["label_font_size_spin"].setMinimumWidth(76)
         row1.addWidget(self.widgets["label_font_size_spin"])
-
-        row1.addWidget(QLabel("Axis size:"))
-        self.widgets["orientation_scale_spin"] = QDoubleSpinBox()
-        self.widgets["orientation_scale_spin"].setRange(*ORIENTATION_SCALE_BOUNDS_M)
-        self.widgets["orientation_scale_spin"].setSingleStep(0.1)
-        self.widgets["orientation_scale_spin"].setValue(
-            float(getattr(self.parent, "orientation_scale", DEFAULT_ORIENTATION_SCALE_M))
-        )
-        self.widgets["orientation_scale_spin"].setDecimals(3)
-        self.widgets["orientation_scale_spin"].setSuffix(" m")
-        self.widgets["orientation_scale_spin"].setToolTip("Orientation-frame axis size in meters")
-        self.widgets["orientation_scale_spin"].setMinimumWidth(86)
-        row1.addWidget(self.widgets["orientation_scale_spin"])
         row1.addStretch()
-        vbox.addLayout(row1)
+        callouts.layout().insertRow(1, "Label font", row1)
 
-        # Row 2: label offset X/Y/Z spinboxes
+        details = CollapsibleSection("World offset", start_open=False, flat_header=True)
+        self.widgets["label_world_offset_section"] = details
+        callouts.displayModeChanged.connect(lambda mode: details.setVisible(mode == "plain"))
+        vbox.addWidget(details)
+        vbox = details.content_layout()
+
+        # Saved world offsets remain available when returning to plain text.
         row2 = QHBoxLayout()
         row2.setSpacing(3)
         row2.addWidget(QLabel("Label offset:"))
@@ -363,9 +352,114 @@ class NodesSelectionPanel(BasePanel):
             self.widgets[f"{axis}_offset_spinbox"] = spin
             row2.addWidget(spin)
         row2.addStretch()
-        vbox.addLayout(row2)
-
+        vbox.addLayout(wrap_control_row(row2, [1, 2, 2, 2]))
         return box
+
+    def _create_axis_size_row(self) -> QWidget:
+        """Place the shared axis size directly below the actor axes toggles."""
+        box, controls = self._entity_row("Axes")
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Axis size"))
+        spin = QDoubleSpinBox()
+        spin.setRange(*ORIENTATION_SCALE_BOUNDS_M)
+        spin.setDecimals(3)
+        spin.setSingleStep(0.1)
+        spin.setSuffix(" m")
+        spin.setValue(float(getattr(self.parent, "orientation_scale", DEFAULT_ORIENTATION_SCALE_M)))
+        spin.setToolTip("Shared orientation-frame axis size for TX, RX and targets")
+        spin.setMinimumWidth(86)
+        self.widgets["orientation_scale_spin"] = spin
+        row.addWidget(spin)
+        row.addStretch()
+        controls.addLayout(row)
+        return box
+
+    def refresh_display_controls(self) -> None:
+        """Refresh scenario choices and marker units after source or style changes."""
+        state = getattr(self.parent, "app_state", None)
+        for key, field in (
+            ("labels_cb", "show_labels"),
+            ("target_labels_cb", "show_target_labels"),
+        ):
+            widget = self.widgets.get(key)
+            if widget is not None and state is not None:
+                with QSignalBlocker(widget):
+                    widget.setChecked(bool(getattr(state, field)))
+        self._refresh_label_modes()
+        controls = self.widgets.get("label_style_controls")
+        if controls is not None:
+            controls.sync_from_state()
+        self.refresh_marker_controls()
+        self.update_axis_size_visibility()
+        self.refresh_orientation_controls()
+
+    def refresh_orientation_controls(self) -> None:
+        """Refresh the inspected actor after frame, inventory or label changes."""
+        controls = self.widgets.get("orientation_controls")
+        if controls is not None:
+            controls.sync_from_state()
+
+    def _refresh_label_modes(self) -> None:
+        """Offer sensing roles for recordings and frame-free sensing volumes."""
+        from ..services.sensing_label_context import has_sensing_label_context
+
+        combo = self.widgets.get("node_label_mode_combo")
+        if combo is None:
+            return
+        enabled = has_sensing_label_context(self.parent)
+        mode = getattr(getattr(self.parent, "app_state", None), "node_label_mode", "role")
+        with QSignalBlocker(combo):
+            index = combo.findData("sensing")
+            if enabled and index < 0:
+                combo.addItem("Sensing role", "sensing")
+            elif not enabled and index >= 0:
+                combo.removeItem(index)
+            combo.setCurrentIndex(max(0, combo.findData(mode)))
+        if mode == "sensing" and not enabled:
+            set_state = getattr(self.parent, "set_state", None)
+            if callable(set_state):
+                set_state(node_label_mode="role")
+
+    def refresh_marker_controls(self) -> None:
+        """Show metres for world markers or pixels for supported callout markers."""
+        style = active_callout_style(self.parent)
+        for kind in ("tx", "rx"):
+            spin = self.widgets.get(f"{kind}_marker_size_spin")
+            if spin is None:
+                continue
+            with QSignalBlocker(spin):
+                spin.setDecimals(0 if style is not None else 3)
+                spin.setRange(
+                    *(
+                        CALLOUT_MARKER_SIZE_BOUNDS_PX
+                        if style is not None
+                        else NODE_MARKER_SIZE_BOUNDS_M
+                    )
+                )
+                spin.setSingleStep(2 if style is not None else 0.1)
+                spin.setSuffix(" px" if style is not None else " m")
+                spin.setValue(
+                    style.node_marker_size(kind)
+                    if style is not None
+                    else float(
+                        getattr(self.parent, f"{kind}_marker_size", DEFAULT_NODE_MARKER_SIZE_M)
+                    )
+                )
+                spin.setToolTip(
+                    f"{kind.upper()} marker size in pixels for card/callout labels"
+                    if style is not None
+                    else f"{kind.upper()} world marker size in meters"
+                )
+
+    def update_axis_size_visibility(self, _checked: bool | None = None) -> None:
+        """Show axis size only when an available actor's axes are enabled."""
+        row = getattr(self, "_axis_size_row", None)
+        if row is None:
+            return
+        kinds = (
+            ("tx", "rx", "target") if getattr(self.parent, "target_entries", ()) else ("tx", "rx")
+        )
+        row.setVisible(any(self.widgets[f"{kind}_orient_cb"].isChecked() for kind in kinds))
 
     def _create_coloring_group(self) -> QGroupBox:
         """Create node coloring-mode controls and TX/RX legend labels."""
@@ -536,11 +630,10 @@ class NodesSelectionPanel(BasePanel):
 
     def _create_live_preview_group(self) -> QGroupBox:
         """Create pygfx controls shared by local and live actor editing."""
-        box = QGroupBox("Actor Editing")
-        box.setStyleSheet("QGroupBox { font-size: 10px; }")
+        box = QGroupBox("Actor editing")
         layout = QVBoxLayout(box)
-        layout.setSpacing(4)
-        layout.setContentsMargins(4, 8, 4, 4)
+        layout.setSpacing(8)
+        layout.setContentsMargins(8, 12, 8, 8)
 
         cb = QCheckBox("Enable Actor Editing")
         cb.setToolTip("Use the pygfx gizmo to move TX/RX nodes or targets")
@@ -558,7 +651,7 @@ class NodesSelectionPanel(BasePanel):
         self.widgets["live_preview_recompute_btn"] = recompute_btn
         primary_row.addWidget(recompute_btn)
         primary_row.addStretch()
-        layout.addLayout(primary_row)
+        layout.addLayout(wrap_control_row(primary_row, [1, 1]))
 
         reset_selected_btn = QPushButton("Reset Selected")
         reset_selected_btn.setToolTip("Reset the selected edited TX/RX/target to its loaded pose")
@@ -578,7 +671,7 @@ class NodesSelectionPanel(BasePanel):
         layout.addLayout(reset_row)
 
         status = QLabel("Editing off")
-        configure_label(status, role="muted", font_size=10, italic=True)
+        configure_label(status, role="muted", italic=True)
         status.setWordWrap(True)
         status.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         status.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
@@ -588,8 +681,8 @@ class NodesSelectionPanel(BasePanel):
 
     def _create_interactive_preview_row(self) -> QWidget:
         """Create the live-preview row with adjacent solver settings."""
-        row_widget = QWidget()
-        row = QHBoxLayout(row_widget)
+        row_widget = ResponsiveRow()
+        row = row_widget.row
         row.setSpacing(6)
         row.setContentsMargins(0, 0, 0, 0)
         self._live_preview_group = self._create_live_preview_group()
@@ -632,12 +725,31 @@ class NodesSelectionPanel(BasePanel):
             return
 
         rename_btn.setVisible(dropdown.count() > 0 and dropdown.currentData() is not None)
+        self._sync_target_silhouette()
+
+    def _sync_target_silhouette(self, *_args) -> None:
+        """Send the chosen actor's stable render ID to the optional backend feature."""
+        toggle = self.widgets.get("target_silhouette_cb")
+        dropdown = self.widgets.get("target_dropdown")
+        if toggle is None or dropdown is None:
+            return
+        entries = getattr(self.parent, "target_entries", ())
+        index = dropdown.currentData()
+        available = isinstance(index, int) and 0 <= index < len(entries)
+        toggle.setEnabled(available)
+        renderer = getattr(self.parent, "renderer", None)
+        if not renderer_capabilities(renderer).target_silhouette:
+            return
+        mesh = entries[index].get("mesh") if available and toggle.isChecked() else None
+        renderer.set_target_silhouette(getattr(mesh, "id", None))
 
     def update_node_rename_visibility(self) -> None:
         """Refresh rename buttons after dropdown contents or selection change."""
         self._update_node_rename_visibility("tx")
         self._update_node_rename_visibility("rx")
         self._update_target_rename_visibility()
+        self._refresh_label_modes()
+        self.refresh_orientation_controls()
 
     def update_target_controls(self) -> None:
         """Show target controls only when target entries exist."""
@@ -658,6 +770,7 @@ class NodesSelectionPanel(BasePanel):
 
         self._update_target_rename_visibility()
         self.update_trajectory_style_enabled()
+        self.update_axis_size_visibility()
 
     def update_trajectory_style_enabled(self, _checked: bool | None = None) -> None:
         """Enable trajectory styling only while a visible trajectory is active."""
@@ -679,6 +792,7 @@ class NodesSelectionPanel(BasePanel):
 
     def refresh_live_preview_state(self) -> None:
         """Refresh the Edit tab from the active frame-source policy."""
+        self.refresh_display_controls()
         group = getattr(self, "_live_preview_group", None)
         if group is None:
             return
@@ -696,7 +810,8 @@ class NodesSelectionPanel(BasePanel):
             if mode == "files":
                 message = (
                     "Local what-if preview. Actor changes affect the current preview only; "
-                    "scenario files and generated frames are unchanged."
+                    "scenario files and generated frames are unchanged. Recompute updates "
+                    "propagation paths; sensing results remain from the recording."
                 )
                 if not available:
                     message += " Actor gizmos require the pygfx renderer."

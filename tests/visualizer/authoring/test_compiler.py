@@ -159,6 +159,44 @@ def test_canonical_mapping_uses_default_file_output_settings() -> None:
     assert "data" not in result.mapping
 
 
+@pytest.mark.parametrize("explicit", [False, True])
+def test_installed_compiler_uses_matching_checkout_assets(
+    authoring_project_root, tmp_path, monkeypatch, explicit
+):
+    from visualizer.src.authoring import compiler as compiler_module
+
+    site_packages = tmp_path / "venv" / "site-packages"
+    module = site_packages / "visualizer" / "src" / "authoring" / "compiler.py"
+    module.parent.mkdir(parents=True)
+    (site_packages / "shared").mkdir()
+    monkeypatch.setattr(compiler_module, "__file__", str(module))
+    scenario_dir = authoring_project_root / "scenarios" / "draft"
+    scenario_dir.mkdir(parents=True)
+    monkeypatch.chdir(scenario_dir)
+    compiler = ScenarioCompiler(PROJECT_ROOT if explicit else None)
+    expected = PROJECT_ROOT if explicit else authoring_project_root
+    scenario, _ = _scenario_with_subject(
+        ActorRole.RX, StationaryMobilitySpec(position_m=(0.0, 0.0, 1.0))
+    )
+
+    result = compiler.compile(scenario, scenario_directory=scenario_dir)
+
+    assert compiler.project_root == expected
+    assert result.valid, result.issues
+
+
+def test_compiler_keeps_source_checkout_fallback(authoring_project_root, tmp_path, monkeypatch):
+    from visualizer.src.authoring import compiler as compiler_module
+
+    module = authoring_project_root / "visualizer" / "src" / "authoring" / "compiler.py"
+    module.parent.mkdir(parents=True)
+    monkeypatch.setattr(compiler_module, "__file__", str(module))
+    standalone = tmp_path / "standalone"
+    standalone.mkdir()
+    monkeypatch.chdir(standalone)
+    assert ScenarioCompiler().project_root == authoring_project_root
+
+
 def test_generation_issues_reject_summary_only_workflows() -> None:
     compiler = ScenarioCompiler(PROJECT_ROOT)
 
@@ -447,7 +485,7 @@ def test_catalog_asset_id_and_directory_must_match_exactly() -> None:
         "Target1",
         target=TargetAsset(
             asset_id="cube",
-            mesh_directory="libraries/targets/car",
+            mesh_directory="libraries/targets/procedural_car",
             mesh_pattern="car.ply",
         ),
     )
@@ -584,7 +622,7 @@ def test_generator_owned_exceptions_become_structured_validation_issues(
     result = compiler.compile(scenario, scenario_directory=PROJECT_ROOT)
 
     assert result.runtime is None
-    assert result.samples == {}
+    assert set(result.samples) == {actor.id for actor in scenario.actors}
     assert any(
         issue.code == "generator.invalid" and "construction failed" in issue.message
         for issue in result.issues
@@ -600,7 +638,7 @@ def test_resolved_target_metadata_offset_matches_generator_when_cwd_differs(
         AuthoringActor.create(
             ActorRole.TARGET,
             "Car",
-            target=TargetAsset.from_catalog_id("car", mesh_pattern="car.ply"),
+            target=TargetAsset.from_catalog_id("procedural_car", mesh_pattern="car.ply"),
         ),
         mobility=StationaryMobilitySpec(position_m=(2, 0, 0)),
         orientation=FixedOrientationSpec(

@@ -73,6 +73,11 @@ def estimate_retained_bytes(*values: Any) -> int:
             return 0
         seen_objects.add(object_id)
 
+        # Saved metadata contains many scalar samples. Exact built-ins cannot
+        # own child buffers, so avoid array/ABC/dataclass probing for each one.
+        if type(value) in (str, int, float, bool, complex):
+            return sys.getsizeof(value)
+
         if isinstance(value, (np.ndarray, memoryview)):
             owner = _backing_owner(value)
             owner_id = id(owner)

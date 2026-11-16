@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 from uuid import UUID
 
 from shared.scenarios.actors import MeshSequenceMobilitySpec, NetworkRouteMobilitySpec
@@ -18,6 +18,7 @@ from .domain import (
     AuthoringScenario,
     AuthoringSubject,
     ScenarioDependency,
+    ScenarioSourceSnapshot,
     SceneReference,
     SubjectKind,
     TimelineSettings,
@@ -363,6 +364,28 @@ class ScenarioDocument:
         self.add_actor(actor)
         return actor
 
+    def add_actors_with_resources(self, actors, resources=()) -> None:
+        """Add one previewed placement batch as a single undoable command."""
+        actors = tuple(actors)
+        if not actors:
+            return
+        names = {a.name for a in self.actors}
+        identifiers = {a.id for a in self.actors}
+        for actor in actors:
+            if actor.name in names or actor.id in identifiers:
+                raise ValueError(f"Duplicate actor: {actor.name}")
+            names.add(actor.name)
+            identifiers.add(actor.id)
+        self._push(
+            replace(
+                self._scenario,
+                actors=(*self.actors, *actors),
+                resources=self._merged_resources(self._scenario, resources),
+            ),
+            actors[0].id,
+            f"Place {len(actors)} street actors",
+        )
+
     def remove_actor(self, actor_id: UUID | str) -> AuthoringActor:
         """Remove one actor while leaving UUID references explicitly dangling."""
         wanted = UUID(str(actor_id))
@@ -601,7 +624,128 @@ class ScenarioDocument:
         capability = self._scenario.capability("scene")
         if not capability.editable:
             raise PermissionError(capability.reason)
-        self._push(replace(self._scenario, scene=scene), self._selection, "Change scene")
+        scenario = self._scenario
+        if scene != scenario.scene:
+            scenario = replace(
+                scenario,
+                source_snapshot=scenario.source_snapshot.without_path(
+                    "visualizer.scenario_builder.map_reference"
+                ),
+                dependencies=tuple(
+                    item for item in scenario.dependencies if item.kind != "builder_map"
+                ),
+            )
+        self._push(replace(scenario, scene=scene), self._selection, "Change scene")
+
+    def install_osm_scene(self, config: dict, scene_root: Path, *, project_root: Path) -> None:
+        """Adopt a completed build, its source configuration and assets in one undo step."""
+        from generator.osm.metadata import validate_generated_scene
+
+        from .dependencies import ScenarioDependencyCollector
+
+        capability = self._scenario.capability("scene")
+        if not capability.editable:
+            raise PermissionError(capability.reason)
+        complete, reason = validate_generated_scene(scene_root, config)
+        if not complete:
+            raise ValueError(f"Cannot install an incomplete OSM scene: {reason}")
+        scene_mapping = {"source": "osm", "id": "scene.xml", "osm": dict(config)}
+        marker: dict[str, Any] = {"document_version": 2}
+        if (scene_root / "builder_map" / "map.json").is_file():
+            marker["map_reference"] = "builder_map/map.json"
+        # Collect the scene in a valid envelope, independently of unfinished actors/timeline.
+        assets = ScenarioDependencyCollector(project_root).collect(
+            {
+                "schema_version": 2,
+                "timeline": {"steps": 1, "duration_s": 1.0},
+                "scene": scene_mapping,
+                "visualizer": {"scenario_builder": marker},
+            },
+            scene_root,
+        )
+        for asset in assets:
+            if asset.problem or not asset.available or asset.external:
+                raise ValueError(asset.problem or f"Missing scene asset: {asset.relative_path}")
+        destinations = {asset.relative_path for asset in assets}
+        retained = []
+        for dependency in self._scenario.dependencies:
+            if dependency.origin_path.startswith("scene.") or dependency.kind == "builder_map":
+                continue
+            if dependency.relative_path in destinations:
+                # Network-route actors should bind to the new region's street graph.
+                if dependency.relative_path != "street_network.graphml":
+                    raise ValueError(
+                        f"Scene asset conflicts with an actor resource: {dependency.relative_path}"
+                    )
+                continue
+            retained.append(dependency)
+        previous = self._scenario.source_snapshot
+        mapping = previous.to_mapping()
+        mapping["scene"] = scene_mapping
+        builder = mapping.setdefault("visualizer", {}).setdefault("scenario_builder", {})
+        builder.pop("map_reference", None)
+        builder.update(marker)
+        snapshot = ScenarioSourceSnapshot.from_mapping(
+            mapping, actor_bindings=previous.actor_bindings, group_bindings=previous.group_bindings
+        )
+        self._push(
+            replace(
+                self._scenario,
+                scene=SceneReference("osm", "scene.xml"),
+                source_snapshot=snapshot,
+                dependencies=tuple(retained) + tuple(assets),
+            ),
+            self._selection,
+            "Build OpenStreetMap scene",
+        )
+
+    def use_environment(self, scene_mapping: dict, dependencies, *, builder=None) -> None:
+        """Replace only the environment, preserving actors/settings in one undo step."""
+        capability = self._scenario.capability("scene")
+        if not capability.editable:
+            raise PermissionError(capability.reason)
+        dependencies = tuple(dependencies)
+        destinations = {d.relative_path: d.source_path for d in dependencies}
+        retained = []
+        for dependency in self._scenario.dependencies:
+            if dependency.origin_path.startswith("scene.") or dependency.kind == "builder_map":
+                continue
+            if (
+                dependency.relative_path in destinations
+                and dependency.source_path != destinations[dependency.relative_path]
+            ):
+                raise ValueError(
+                    f"Environment conflicts with actor input {dependency.relative_path}. Save the actor graph as a separate mobility resource first."
+                )
+            retained.append(dependency)
+        for resource in self._scenario.resources:
+            if (
+                resource.relative_path in destinations
+                and resource.source_path != destinations[resource.relative_path]
+            ):
+                raise ValueError(
+                    f"Environment conflicts with actor resource {resource.relative_path}."
+                )
+        previous = self._scenario.source_snapshot
+        mapping = previous.to_mapping()
+        mapping["scene"] = scene_mapping
+        marker = mapping.setdefault("visualizer", {}).setdefault("scenario_builder", {})
+        marker.pop("map_reference", None)
+        if builder and builder.get("map_reference"):
+            marker["map_reference"] = builder["map_reference"]
+        snapshot = ScenarioSourceSnapshot.from_mapping(
+            mapping, actor_bindings=previous.actor_bindings, group_bindings=previous.group_bindings
+        )
+        self._push(
+            replace(
+                self._scenario,
+                scene=SceneReference(scene_mapping["source"], scene_mapping["id"]),
+                dependencies=tuple(retained) + dependencies,
+                source_snapshot=snapshot,
+            ),
+            self._selection,
+            "Use saved environment",
+        )
 
     def set_timeline(
         self,
@@ -690,7 +834,9 @@ class ScenarioDocument:
         self._selection = before.selection
         self._emit(DocumentEventKind.TRANSIENT)
 
-    def mark_saved(self, path: Path) -> None:
+    def mark_saved(
+        self, path: Path, *, dependencies: tuple[ScenarioDependency, ...] | None = None
+    ) -> None:
         """Record a successful atomic save and establish a new clean state."""
         self._ensure_writable()
         resolved = Path(path).resolve()
@@ -715,7 +861,9 @@ class ScenarioDocument:
                     origin_path=dependency.origin_path,
                 )
             )
-            for dependency in self._scenario.dependencies
+            for dependency in (
+                self._scenario.dependencies if dependencies is None else dependencies
+            )
         )
         self._scenario = replace(
             self._scenario,

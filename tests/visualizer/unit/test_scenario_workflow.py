@@ -69,6 +69,7 @@ def _make_open_scenario_viz(
             calls.append(("panel_visible", key, visible))
 
     viz = SimpleNamespace(
+        renderer=SimpleNamespace(),
         cancel_startup_preload=lambda: calls.append("cancel_preload"),
         reset_preloading_state=lambda: calls.append("reset_preload"),
         scene_service=SimpleNamespace(
@@ -109,6 +110,7 @@ def _make_open_scenario_viz(
         ),
         animation_step=0,
         get_animation_step_index=lambda _step: 0,
+        _sync_animation_navigation_widgets=lambda index: calls.append(("navigation_index", index)),
         ready=False,
         request_startup_preload=lambda: calls.append("request_preload"),
         force_update_next_frame=False,
@@ -178,10 +180,10 @@ def test_start_scenario_statistics_binds_source_before_preload_completion():
     assert calls == [frame_source]
 
 
-def test_start_scenario_statistics_skips_benchmark_and_disabled_panel():
+def test_start_scenario_statistics_skips_benchmark_but_binds_hidden_panel():
     calls = []
     statistics_panel = SimpleNamespace(
-        set_statistics_source=lambda source: calls.append(source) or True
+        set_statistics_source=lambda source, **kwargs: calls.append((source, kwargs)) or True
     )
     viz = SimpleNamespace(
         pipeline=SimpleNamespace(benchmark_recorder=object()),
@@ -192,12 +194,18 @@ def test_start_scenario_statistics_skips_benchmark_and_disabled_panel():
     assert scenario_workflow._start_scenario_statistics(viz, object()) is False
     viz.pipeline.benchmark_recorder = None
     viz.scenario_config.visualizer_cfg = {"panels": {"statistics": {"enabled": False}}}
-    assert scenario_workflow._start_scenario_statistics(viz, object()) is False
-    assert calls == []
+    source = object()
+    assert scenario_workflow._start_scenario_statistics(viz, source) is True
+    assert calls == [(source, {"start_loading": False})]
 
 
-def test_cleanup_previous_scene_resets_app_state():
+def test_cleanup_previous_scene_resets_app_state(monkeypatch):
     calls = []
+    monkeypatch.setattr(
+        scenario_workflow,
+        "clear_runtime_extension_services",
+        lambda _viz: calls.append("extension_retire"),
+    )
 
     class ProgressBar:
         def __init__(self):
@@ -212,7 +220,15 @@ def test_cleanup_previous_scene_resets_app_state():
 
     progress_bar = ProgressBar()
     ui_manager = SimpleNamespace(
-        set_panel_visible=lambda panel, visible: calls.append(("panel", panel, visible))
+        panels={
+            "sensing": SimpleNamespace(
+                retire_recording_source=lambda: calls.append("sensing_retire")
+            ),
+            "statistics": SimpleNamespace(
+                set_statistics_source=lambda source: calls.append(("statistics_source", source))
+            ),
+        },
+        set_panel_visible=lambda panel, visible: calls.append(("panel", panel, visible)),
     )
     viz = SimpleNamespace(
         cancel_startup_preload=lambda: calls.append("cancel_preload"),
@@ -221,6 +237,8 @@ def test_cleanup_previous_scene_resets_app_state():
         live_preview_service=SimpleNamespace(reset=lambda: calls.append("live_preview_reset")),
         scenario_config=object(),
         _scene_only_mode=True,
+        demo_service=SimpleNamespace(stop=lambda **_kwargs: calls.append("demo_stop")),
+        live_figure_manager=SimpleNamespace(close=lambda: calls.append("figures_close")),
         frame_loader=SimpleNamespace(invalidate=lambda: calls.append("teardown_loader")),
         trajectory_load_coordinator=SimpleNamespace(
             reset=lambda: calls.append("cleanup_trajectory")
@@ -247,16 +265,135 @@ def test_cleanup_previous_scene_resets_app_state():
     assert progress_bar.value == 0
     assert progress_bar.visible is False
     assert calls == [
+        "demo_stop",
         "cancel_preload",
         "reset_preload",
+        ("statistics_source", None),
         "coverage_reset",
         "mpc_explorer_teardown",
         "cleanup_trajectory",
+        "figures_close",
+        "sensing_retire",
+        "extension_retire",
         "scene_cleanup",
         "live_preview_reset",
         "teardown_loader",
         ("frame_data", False),
     ]
+
+
+@pytest.mark.parametrize("demo_returns_figure", [False, True])
+def test_cleanup_finishes_live_plot_callbacks_before_retiring_sensing_readers(
+    qtbot, monkeypatch, demo_returns_figure
+):
+    """Returning real borrowed plots must not restart readers after retirement."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QMainWindow, QWidget
+
+    from visualizer.src.panels import sensing_panel
+    from visualizer.src.sensing.sensing_window import SensingDashboard
+    from visualizer.src.widgets.live_figure_dock import LiveFigureManager
+
+    calls = []
+    viz = QMainWindow()
+    qtbot.addWidget(viz)
+    for name, value in vars(_make_open_scenario_viz(None, calls)).items():
+        setattr(viz, name, value)
+    viz.resize(1200, 800)
+    viz.setCentralWidget(QWidget())
+    viz.app_state = SimpleNamespace(extension_state={})
+    provider = object()
+    viz.frame_source = SimpleNamespace(provider=provider)
+    panel = sensing_panel.SensingPanel(viz)
+    dashboard = SensingDashboard(viz)
+    panel._sensing_window = dashboard
+    dashboard._live_catalog = (("rd_plot", "Range–Velocity"), ("rp_plot", "Range profile"))
+    # Keep the real visibility and view_changed wiring; replace only data reads
+    # and unrelated scene services at the workflow boundary.
+    monkeypatch.setattr(panel, "_sync_runtime_controls", lambda: None)
+    monkeypatch.setattr(panel, "_get_service", lambda: object())
+    monkeypatch.setattr(panel, "_current_step", lambda: 0)
+    monkeypatch.setattr(
+        sensing_panel,
+        "visualizer_frame_provider",
+        lambda window: getattr(window.frame_source, "provider", None),
+    )
+    readers = []
+
+    class Reader:
+        source_identity = id(provider)
+
+        def __init__(self):
+            self.closed = False
+
+        @staticmethod
+        def provider_identity(source):
+            return id(source)
+
+        def close(self):
+            self.closed = True
+            calls.append("reader_close")
+
+    def request_reader(*_args, **_kwargs):
+        calls.append("reader_request")
+        if panel._dashboard_session is None:
+            panel._dashboard_session = Reader()
+            readers.append(panel._dashboard_session)
+
+    monkeypatch.setattr(panel, "_refresh_dashboard_async", request_reader)
+    dashboard.view_changed.connect(panel._on_dashboard_options_changed)
+    monkeypatch.setattr(panel, "ensure_live_figure_dashboard", lambda: dashboard)
+    viz.ui_manager.panels = {"sensing": panel}
+    manager = viz.live_figure_manager = LiveFigureManager(viz)
+    viz.show()
+    first, second = manager.add(), manager.add()
+    qtbot.waitUntil(lambda: first.isVisible() and second.isVisible())
+    assert len(readers) == 1 and not readers[0].closed
+    calls.clear()
+
+    retire = panel.retire_recording_source
+
+    def retire_readers():
+        calls.append("sensing_retire")
+        retire()
+
+    monkeypatch.setattr(panel, "retire_recording_source", retire_readers)
+
+    def stop_demo(**_kwargs):
+        calls.append("demo_stop")
+        if demo_returns_figure:
+            first.release_figure()
+
+    viz.demo_service = SimpleNamespace(stop=stop_demo)
+    close_figures = manager.close
+
+    def close_live_figures():
+        calls.append("figures_close")
+        close_figures()
+
+    monkeypatch.setattr(manager, "close", close_live_figures)
+
+    def close_provider():
+        calls.append("provider_close")
+        assert viz.frame_source.provider is provider
+        assert panel._dashboard_session is None
+        assert all(reader.closed for reader in readers)
+
+    viz.scene_service.cleanup_previous_scene = close_provider
+    try:
+        scenario_workflow.cleanup_previous_scene(viz)
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        QCoreApplication.processEvents()
+        assert "reader_request" in calls  # The live-plot signal path was exercised.
+        retired = calls.index("sensing_retire")
+        assert "reader_request" not in calls[retired:]
+        assert calls.index("demo_stop") < calls.index("figures_close") < retired
+        assert retired < calls.index("provider_close")
+        assert not manager.views and panel._dashboard_session is None
+    finally:
+        viz._shutdown_started = True
+        manager.close()
+        panel.cleanup()
 
 
 def test_open_scenario_reports_frame_backed_progress_order():
@@ -753,3 +890,27 @@ def test_open_scenario_rolls_back_when_scene_synchronization_fails():
     assert viz.ready is False
     assert not any(isinstance(call, tuple) and call[0] == "recent_file" for call in calls)
     assert ("status", "Scenario loaded successfully", (5000,)) not in calls
+
+
+def test_sparse_count_is_correct_without_preloading_even_at_initial_step():
+    counts = []
+    context = []
+    state_changes = []
+    navigation = []
+    viz = SimpleNamespace(
+        animation_step=63,
+        set_state=lambda **changes: state_changes.append(changes),
+        get_animation_step_index=lambda _step: 0,
+        _sync_animation_navigation_widgets=navigation.append,
+        total_animation_steps=192,
+        ui_manager=SimpleNamespace(
+            update_total_steps=counts.append,
+            panels={"animation": SimpleNamespace(set_recorded_frame_context=context.append)},
+        ),
+    )
+    scenario_workflow._sync_initial_frame(viz, SimpleNamespace(list_frames=lambda: [63, 127, 191]))
+    assert viz.total_animation_steps == 3
+    assert counts == [3]
+    assert context == [[63, 127, 191]]
+    assert state_changes == [{"step": 63}]
+    assert navigation == [0]

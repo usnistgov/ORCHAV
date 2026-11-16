@@ -1,0 +1,126 @@
+# One large UAV turns around a building in the full built-in Munich scene.
+# First-order echoes isolate occlusion; the paired radar shares the exact flight.
+schema_version: 2
+scene:
+  source: sionna
+  id: munich
+data:
+  files:
+    chunk_size: 64
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 28000000000.0
+  antenna:
+    rx:
+      num_rows: 8
+      num_cols: 8
+  quality:
+    custom:
+      samples_per_src: 1000000
+      max_depth: 1
+      los: false
+      specular_reflection: true
+      diffuse_reflection: true
+      refraction: false
+      seed: 42
+  materials:
+    itu_metal_DroneA:
+      scattering_coefficient: 0.8
+      scattering_pattern: lambertian
+timeline:
+  steps: 16384
+  sample_rate_hz: 2000.0
+actors:
+  tx:
+  - name: WestTX
+    mobility:
+      type: stationary
+      position_m: [87, 182, 7]
+    orientation:
+      type: fixed
+      yaw_deg: -15
+  rx:
+  - name: WestRX
+    mobility:
+      type: stationary
+      position_m: [87, 182, 7]
+    orientation:
+      type: fixed
+      yaw_deg: -15
+  targets:
+  - name: DroneA
+    asset:
+      source: directory
+      path: libraries/targets/uav/large
+      pattern: drone.obj
+      material_type: metal
+      switch_meshes: false
+    mobility:
+      type: waypoint
+      interpolation: catmull_rom
+      points_m:
+      - [102, 179, 10]
+      - [112, 177, 10]
+      - [118, 174, 10]
+      - [120, 168, 10]
+      - [120, 158, 10]
+      traversal:
+        type: fit_duration
+    orientation:
+      type: align_motion
+      allow_pitch: false
+sensing:
+  enabled: true
+  preset: coherent_hann
+  acquisition:
+    bandwidth_hz: 500000000.0
+    frequency_samples: 512
+    sample_rate_hz: 2000.0
+    samples_per_cpi: 128
+  processing:
+    range:
+      interpretation: monostatic
+      fft_size: 512
+    clutter:
+      coherent_mode: windowed_mean
+  detection:
+    mode: beam_scan
+    angle_oversampling: 8
+    cfar:
+      threshold_scale: 2.0
+      range_doppler:
+        reference_range_cells: 6
+    filters:
+      minimum_snr_db: 3.0
+      maximum_dynamic_range_db: 36.0
+      minimum_range_m: 1.0
+      maximum_range_m: 45.0
+    clustering:
+      range_gate_m: 1.2
+      velocity_gate_m_s: 0.4
+    exclusions:
+      doppler_dc_bins: 3
+  recording:
+    profile: maps
+    detection_stages: true
+    tracking_diagnostics: true
+  tracking:
+    enabled: true
+    type: cartesian3d
+    confirmation:
+      hits: 3
+    max_missed_updates: 3
+    association:
+      position_gate_m: 1.0
+      velocity_gate_m_s: 1.0
+generator_summary:
+  enabled: true
+  create:
+  - topology
+  - sensing
+  sensing:
+    figures:
+    - range_doppler
+    - tracking_xyz
+  visualization:
+    actor_label_mode: name

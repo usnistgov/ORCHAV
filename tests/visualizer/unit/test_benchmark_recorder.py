@@ -85,3 +85,27 @@ def test_benchmark_recorder_summary_and_metadata(tmp_path):
     assert data["timed"][0]["breakdown_ms"]["filter_ms"] == 2.5
     assert data["timed"][0]["breakdown_bytes"]["pygfx_push_buffer_bytes"] == 2048
     assert data["timed"][0]["prepare_step_ms"] == 1.5
+
+
+def test_failed_export_preserves_existing_results(tmp_path, monkeypatch):
+    import pytest
+
+    from visualizer.src.benchmarking import recorder as module
+
+    output = tmp_path / "bench.json"
+    output.write_text('{"previous": true}')
+    recorder = BenchmarkRecorder(1, output_path=output)
+    recorder.set_metadata("bad", object())
+    with pytest.raises(TypeError):
+        recorder.finalize()
+    assert json.loads(output.read_text()) == {"previous": True}
+    recorder.set_metadata("bad", None)
+
+    def reject_replace(*args):
+        raise OSError("publication failed")
+
+    monkeypatch.setattr(module.os, "replace", reject_replace)
+    with pytest.raises(OSError, match="publication failed"):
+        recorder.finalize()
+    assert json.loads(output.read_text()) == {"previous": True}
+    assert list(tmp_path.iterdir()) == [output]

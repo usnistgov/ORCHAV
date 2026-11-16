@@ -41,17 +41,38 @@ from ...io.storage.coverage_publication import (
 from ...io.storage.hdf5_frame_output import HDF5FrameOutputStrategy
 from ...io.storage.summary_publication import SummaryPublication, SummaryPublicationError
 from ..configuration import ReceiverConfig, SimulationConfig, TransmitterConfig
+from ..sensing.acquisition import (
+    ResolvedSensingExecutionConfig,
+    resolve_sensing_execution_config,
+)
 from ..services.actor_state_service import ActorStateService
 from ..services.coverage_service import CoverageService
 from ..services.raytracing_service import RayTracingService
 from ..services.scene_service import SceneService
 from .context import PipelineContext
 from .extensions import get_material_tuning_adapter
-from .progress import ProgressInfo, StderrProgress, format_duration
+from .progress import ProgressInfo, StderrProgress, format_duration, stderr_status
 from .schedule import FixedIntervalScheduler
 from .sensing import SensingPipelineState
 
 logger = get_logger(__name__)
+
+
+def _scenario_frame_interval_s(simulation_config: SimulationConfig) -> float:
+    """Return the authoritative scenario step interval for this run."""
+
+    num_steps = int(simulation_config.num_steps)
+    duration_s = float(simulation_config.duration)
+    sensing_enabled = bool(
+        simulation_config.sensing is not None and simulation_config.sensing.enabled
+    )
+    if sensing_enabled and (num_steps <= 1 or not math.isfinite(duration_s) or duration_s <= 0.0):
+        raise ValueError(
+            "Sensing requires finite positive timeline.duration and timeline.steps > 1"
+        )
+    if duration_s and num_steps > 1:
+        return duration_s / (num_steps - 1)
+    return 1.0
 
 
 def _write_topology_frame(
@@ -150,6 +171,19 @@ def perform_offline_pipeline(
         # some mobility providers require more output steps than the YAML value.
         actor_state_service.normalize_scene_steps(tx_configs, rx_configs, target_configs)
 
+        # Resolve the sensing contract after every timeline/config override but
+        # before output reservation, scene loading, or ray tracing. This is the
+        # single mode/cadence authority used throughout the run.
+        frame_dt_s = _scenario_frame_interval_s(simulation_config)
+        sensing_execution_config: ResolvedSensingExecutionConfig | None = (
+            resolve_sensing_execution_config(
+                simulation_config,
+                frame_dt_s=frame_dt_s,
+                tx_device_count=len(tx_configs),
+                rx_device_count=len(rx_configs),
+            )
+        )
+
         rt_cfg = getattr(scenario_configuration, "raytracing", {}) or {}
         rt_enabled = bool(rt_cfg.get("enabled", False))
 
@@ -212,20 +246,31 @@ def perform_offline_pipeline(
                 )
                 output_lifecycle.callback(coverage_publication.abort)
 
-        summary_publication = SummaryPublication(scenario_configuration)
+        summary_publication = SummaryPublication(
+            scenario_configuration,
+            frame_generation_id=(
+                output_manager.generation_id if output_manager is not None else None
+            ),
+        )
         output_lifecycle.callback(summary_publication.abort)
         summary_publication.begin()
         summary_failure: Exception | None = None
 
+        if show_progress:
+            stderr_status("Loading scene and target meshes...")
         scene_service.build_scene(tx_configs, rx_configs, target_configs)
 
         # Actor-state preparation depends on target managers created by the
         # scene service, especially for mesh-backed targets.
+        if show_progress:
+            stderr_status("Preparing actor states...")
         _actor_state_manager, actor_state_cache = actor_state_service.prepare_actor_state(
             tx_configs, rx_configs, scene_service.target_managers, motion_mode="cached"
         )
 
         if summary_publication.active:
+            if show_progress:
+                stderr_status("Generating scenario summary figures...")
             try:
                 from ...figures.summary import maybe_generate_generator_summary
 
@@ -271,6 +316,8 @@ def perform_offline_pipeline(
         assert output_manager is not None
         logger.info("Output mode: %s", simulation_config.output_mode)
 
+        if cov_enabled:
+            actor_state_service.apply_initial_state(scene_service)
         output_file = coverage_service.compute_coverage(
             scene_service,
             scenario_configuration,
@@ -338,6 +385,7 @@ def perform_offline_pipeline(
                 rx_configs,
                 target_configs,
                 scenario_configuration=scenario_configuration,
+                sensing_execution_config=sensing_execution_config,
                 motion_mode="cached",
                 actor_state_cache=actor_state_cache,
             )
@@ -361,6 +409,7 @@ def perform_offline_pipeline(
                         rx_configs,
                         target_configs,
                         scenario_configuration=scenario_configuration,
+                        sensing_execution_config=sensing_execution_config,
                         motion_mode="cached",
                         actor_state_cache=actor_state_cache,
                     )
@@ -395,32 +444,35 @@ def perform_offline_pipeline(
             else:
                 logger.info("Computing %d steps", total_steps)
             progress = StderrProgress(first_step=first_step, total_steps=total_steps)
+            if show_progress:
+                stderr_status("Starting ray tracing (the first solve may take longer)...")
+                progress.update(first_step - 1)
             # ``start_step`` selects a suffix of the existing scenario timeline;
             # it does not stretch that suffix across the full duration. Preserve
             # the same per-step cadence as a complete run so sensing metadata and
             # derived velocities remain comparable.
-            dt = (
-                float(simulation_config.duration) / max(int(simulation_config.num_steps) - 1, 1)
-                if simulation_config.duration and simulation_config.num_steps > 1
-                else 1.0
+            dt = frame_dt_s
+            rt_stride_steps = (
+                sensing_execution_config.acquisition.rt_solve_stride_scene_steps
+                if sensing_execution_config is not None
+                else simulation_config.cir_time_steps or 1
             )
-
-            cir_steps = simulation_config.cir_time_steps or 1
             sensing_state = SensingPipelineState.from_config(
                 scenario_configuration,
                 frame_dt_s=dt,
-                gt_dt_s=dt * cir_steps,
-                cir_steps=cir_steps,
+                gt_dt_s=dt * rt_stride_steps,
                 first_step=first_step,
+                source_generation_id=output_manager.generation_id,
+                execution_config=sensing_execution_config,
             )
             last_rt_frame_data: dict[str, Any] | None = None
 
-            if cir_steps > 1:
-                n_rt_calls = math.ceil(total_steps / cir_steps)
+            if rt_stride_steps > 1:
+                n_rt_calls = math.ceil(total_steps / rt_stride_steps)
                 logger.info(
                     "RT gating enabled: ray-tracing every %d steps "
                     "(%d RT calls for %d output frames)",
-                    cir_steps,
+                    rt_stride_steps,
                     n_rt_calls,
                     total_steps,
                 )
@@ -428,7 +480,7 @@ def perform_offline_pipeline(
             step_scheduler = FixedIntervalScheduler(
                 first_step=first_step,
                 last_step=last_step,
-                interval_length=cir_steps,
+                interval_length=rt_stride_steps,
             )
             try:
                 for i in range(first_step, last_step + 1):

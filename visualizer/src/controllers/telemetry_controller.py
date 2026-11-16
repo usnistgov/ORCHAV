@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional
 
@@ -50,13 +51,14 @@ class TelemetryController:
         """Refresh slider tooltip context for the displayed frame.
 
         Args:
-            step: Zero-based animation step index.
+            step: Source frame ID (may be sparse), not a playback ordinal.
             raw_frame: Optional raw frame dictionary with ``timestamp_ns`` etc.
             view_model: Optional view-model carrying canonical data.
         """
         viz = self.visualizer
         total_steps = getattr(viz, "total_animation_steps", 0)
-        display_index = step + 1
+        resolve_index = getattr(viz, "get_animation_step_index", None)
+        display_index = (resolve_index(step) if callable(resolve_index) else step) + 1
         if total_steps > 0:
             frame_summary = f"Frame {display_index} / {total_steps}"
         else:
@@ -66,6 +68,34 @@ class TelemetryController:
             viz.total_steps_label.setText(f"/ {total_steps}")
 
         tooltip_lines: List[str] = [frame_summary]
+        if display_index != step + 1:
+            tooltip_lines.append(f"Source frame ID: {step} (zero-based acquisition index)")
+
+        scene_time = None
+        for field, scale in (("timestamp_ns", 1e-9), ("timestamp_s", 1.0)):
+            value = (raw_frame or {}).get(field)
+            if value is None or isinstance(value, bool):
+                continue
+            try:
+                candidate = float(value) * scale
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(candidate):
+                scene_time = candidate
+                break
+        time_text = f"Simulation time: {scene_time:.6f} s" if scene_time is not None else ""
+        if raw_frame is None:
+            # Navigation previews/no-op frame updates carry no new timestamp.
+            # Keep the epoch of the scene actually submitted to the renderer.
+            time_text = getattr(viz, "scene_time_text", time_text)
+        label = getattr(viz, "status_time_label", None)
+        if label is not None:
+            label.setText(time_text)
+            label.setVisible(bool(time_text))
+        viz.scene_time_text = time_text
+        set_scene_time = getattr(getattr(viz, "renderer", None), "set_simulation_time_label", None)
+        if callable(set_scene_time):
+            set_scene_time(time_text)
 
         if raw_frame:
             timestamp = raw_frame.get("timestamp_ns", raw_frame.get("timestamp"))
@@ -144,7 +174,13 @@ class TelemetryController:
         tracker = getattr(viz, "playback_cadence", None)
         fps_value = tracker.frames_per_second() if tracker is not None else None
         fps_text = format_playback_fps(fps_value)
-        if getattr(viz, "animation_running", False):
+        if getattr(getattr(viz, "sensing_playback", None), "preparing", False):
+            fps_label.setText("Playback: preparing sensing frames")
+            fps_label.setToolTip(
+                "The saved sensing timeline is being prepared. Playback is paused; "
+                "press Play when preparation finishes."
+            )
+        elif getattr(viz, "animation_running", False):
             if fps_text is None:
                 fps_label.setText("Playback updates: measuring")
             else:
@@ -177,18 +213,31 @@ class TelemetryController:
 
         self.refresh_status_telemetry()
 
-    def update_file_source_summary(self) -> None:
+    def update_file_source_summary(self, *, refresh_source: bool = True) -> None:
         """Display concise scenario and frame-source context in the status bar."""
         from ..io.frame_sources import FileSource, LiveGrpcSource, RemoteHdf5Source
 
         viz = self.visualizer
+        source_identity = id(getattr(viz, "frame_source", None))
+        if source_identity != getattr(self, "_time_source_identity", None):
+            self._time_source_identity = source_identity
+            viz.scene_time_text = ""
+            label = getattr(viz, "status_time_label", None)
+            if label is not None:
+                label.setText(viz.scene_time_text)
+                label.setVisible(False)
+            set_scene_time = getattr(
+                getattr(viz, "renderer", None), "set_simulation_time_label", None
+            )
+            if callable(set_scene_time):
+                set_scene_time(viz.scene_time_text)
         manager = getattr(viz, "ui_manager", None)
         source_panel = (
             getattr(manager, "panels", {}).get("data_source") if manager is not None else None
         )
-        refresh_source = getattr(source_panel, "refresh_source_status", None)
-        if callable(refresh_source):
-            refresh_source()
+        refresh_source_panel = getattr(source_panel, "refresh_source_status", None)
+        if refresh_source and callable(refresh_source_panel):
+            refresh_source_panel()
 
         status_label = getattr(viz, "status_scenario_label", None)
         if status_label is None:
@@ -221,8 +270,14 @@ class TelemetryController:
             # endpoint/root path so the status bar can stay stable while users
             # switch between file, live gRPC, remote HDF5, and custom sources.
             if isinstance(frame_source, LiveGrpcSource):
-                fmt_tag = "Online"
-                frame_info = "streaming"
+                connection = frame_source.get_connection_status()
+                connected = bool(connection.get("connected", False))
+                fmt_tag = "Connected" if connected else "Disconnected"
+                frame_info = (
+                    "streaming"
+                    if connected and connection.get("streaming_active", False)
+                    else "stream inactive"
+                )
                 endpoint = getattr(frame_source, "endpoint", "")
                 if endpoint:
                     tooltip_text = str(endpoint)

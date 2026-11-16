@@ -86,6 +86,7 @@ db.sqlite3-journal
 *.spec
 
 # Generated ORCHAV scenario outputs
+scenarios/**/.orchav/
 scenarios/**/frames/
 scenarios/**/summary/
 scenarios/**/experiments/
@@ -103,6 +104,11 @@ scenarios/**/*.graphml
 scenarios/**/osm_metadata.json
 scenarios/**/scene.xml
 
+# User-acquired motion/geographic inputs stay outside public source history.
+scenarios/sensing/applications/osm_multi_target_tracking/assets/pedestrian/
+scenarios/sensing/applications/port_drone_tracking/scene/building_visuals.json
+scenarios/sensing/applications/port_drone_tracking/scene/provenance.json
+
 # Generated benchmark and report outputs
 benchmarks/figures/
 benchmarks/results/
@@ -114,6 +120,7 @@ test_outputs/
 test_results/
 
 # External model/data inputs and generated target libraries
+/inputs/
 models/
 motions/
 libraries/targets/smpl_*/
@@ -140,3 +147,23 @@ imgui.ini
 /inspect_h5.py
 /test_plotter.py
 /notebook_demo.ipynb
+# Exact curated release payload; generated siblings remain ignored.
+!/scenarios/sensing/foundations/RCS/06_vehicle_multi/results/
+/scenarios/sensing/foundations/RCS/06_vehicle_multi/results/*
+!/scenarios/generator/building_appearance/scene/scene.xml
+!/scenarios/generator/building_appearance/surfaces/scene/scene.xml
+!/scenarios/sensing/foundations/RCS/06_vehicle_multi/results/detection_metrics.json
+!/scenarios/sensing/foundations/RCS/06_vehicle_multi/results/detection_stages.svg
+!/scenarios/sensing/foundations/RCS/06_vehicle_multi/results/provenance.json
+!/scenarios/sensing/foundations/RCS/06_vehicle_multi/results/range_doppler.svg
+!/scenarios/sensing/foundations/RCS/06_vehicle_multi/results/range_profile.svg
+!/scenarios/sensing/foundations/RCS/06_vehicle_multi/results/tracking.svg
+!/scenarios/sensing/foundations/RCS/06_vehicle_multi/results/tracking_decisions.svg
+!/scenarios/sensing/foundations/RCS/06_vehicle_multi/scene.xml
+!/scenarios/sensing/foundations/RCS/08_human_model1/scene.xml
+!/scenarios/visualizer/sensing_selection/figures/arrival-delay-gate.png
+!/scenarios/visualizer/sensing_selection/figures/bistatic-cutaway.png
+!/scenarios/visualizer/sensing_selection/figures/bistatic-selected-bin.png
+!/scenarios/visualizer/sensing_selection/figures/delay-angle-selected-bin.png
+!/scenarios/visualizer/sensing_selection/figures/monostatic-selected-bin.png
+!/scenarios/visualizer/sensing_selection/figures/monostatic-sphere.png

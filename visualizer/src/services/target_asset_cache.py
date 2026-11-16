@@ -34,11 +34,10 @@ logger = get_logger("orchav.target_asset_cache")
 
 TargetLogicalKey = tuple[str, str]
 
-# The byte budget is the primary memory guard. Sixty-four entries keep common
-# short target animations (including the 37-frame Etoile pedestrian) warm
-# across playback loops without allowing an unbounded collection of tiny
-# assets.
-DEFAULT_TARGET_ASSET_CACHE_ENTRIES = 64
+# The byte budget is the primary memory guard. The entry cap also permits
+# several short actor loops (for example, 192 sampled pedestrian poses) to
+# stay warm when their meshes fit comfortably within that budget.
+DEFAULT_TARGET_ASSET_CACHE_ENTRIES = 512
 DEFAULT_TARGET_ASSET_CACHE_BYTES = 256 * 1024 * 1024
 DEFAULT_TARGET_ASSET_PREFETCH_WORKERS = 2
 TARGET_ASSET_CACHE_NAMESPACE = "target_assets"
@@ -489,9 +488,26 @@ class TargetAssetCache:
             sequence[(current_index + step * offset) % len(sequence)]
             for offset in range(1, candidate_count + 1)
         )
+        return self.prefetch_sources(
+            target_name, [key[1] for key in logical_candidates], loader=loader
+        )
+
+    def prefetch_sources(
+        self,
+        target_name: str,
+        mesh_filenames: Sequence[str],
+        *,
+        loader: TargetAssetLoader,
+    ) -> int:
+        """Queue registered meshes selected from authoritative future frames.
+
+        Frame stride need not equal mesh stride: several scene frames can use
+        the same pose. Callers with retained frame metadata select the actual
+        upcoming filenames rather than guessing that correspondence.
+        """
         submitted = 0
-        for logical_key in logical_candidates:
-            source = self.source_for(*logical_key)
+        for mesh_filename in dict.fromkeys(mesh_filenames):
+            source = self.source_for(str(target_name), str(mesh_filename))
             if source is None:
                 continue
             try:

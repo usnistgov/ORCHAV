@@ -1,14 +1,12 @@
 # Target Diffuse Scattering
 
-[Scenarios](../../../README.md) > [Generator](../../README.md) > Target Diffuse Scattering
-
 This scenario isolates diffuse scattering from a large target. A transmitter and receiver are placed on opposite sides of a metal cube so the difference between sparse specular interactions and diffuse target returns is easy to inspect.
 
 To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scenario overview](../../../../docs/assets/scenarios/scenarios_generator_targets_target_diffuse_scattering_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_generator_targets_target_diffuse_scattering_topology.png)
 
 | Element | Role |
 | --- | --- |
@@ -17,6 +15,8 @@ To run it, see [Running](#running).
 | `MetalCube` | Large target with diffuse scattering enabled |
 
 ## Configuration Walkthrough
+
+See [scenario.yaml](scenario.yaml) for the complete configuration.
 
 ```yaml
 raytracing:
@@ -55,15 +55,24 @@ For a target surface, the key difference from strict specular reflection is the 
 
 ## Running
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/targets/target_diffuse_scattering
 orchav-generator scenarios/generator/targets/target_diffuse_scattering
+```
+
+Open the scenario in the Visualizer:
+
+```bash
 orchav-visualizer --scenario scenarios/generator/targets/target_diffuse_scattering
 ```
 
 ## What To Notice
 
 - The target material override sets a nonzero scattering coefficient.
+- The scenario selects **Callout** labels so the large cube does not obscure its
+  own name. With a saved workspace, use `--no-resume` to start from these scenario
+  defaults, or choose **Scene → Nodes → Labels → Label style → Callout**.
 - Diffuse target interactions can produce many more returned paths than specular-only tracing.
 - The scenario has one frame, so it is a compact example of target scattering
   behavior.
@@ -75,10 +84,6 @@ Running the scenario writes one default HDF5 frame chunk under `frames/` and a
 scene summary under `summary/`. The generated frame is useful for checking
 whether object interaction metadata, path type, and target-derived paths are
 being written consistently:
-
-```bash
-orchav-inspect scenarios/generator/targets/target_diffuse_scattering --frame 0
-```
 
 A representative run with diffuse reflection enabled reports many
 target-involving paths:
@@ -123,7 +128,5 @@ This comparison shows the practical effect: for small or faceted targets, strict
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) | [Generator](../../README.md) |
-> Current: **Target Diffuse Scattering**
->
-> Track: **Targets** | Previous: [Target Orientation](../target_orientation/README.md)
+Up: [Generator](../../README.md) ·
+[Target Orientation](../target_orientation/README.md)

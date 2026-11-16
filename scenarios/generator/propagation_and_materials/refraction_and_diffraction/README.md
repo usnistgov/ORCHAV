@@ -1,14 +1,12 @@
 # Refraction And Diffraction
 
-[Scenarios](../../../README.md) > [Generator](../../README.md) > Refraction And Diffraction
-
 This scenario places a transmitter and receiver around a thin glass panel. It is a compact check for solver support around refraction and edge diffraction without adding moving actors or targets.
 
 To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scenario overview](../../../../docs/assets/scenarios/scenarios_generator_propagation_and_materials_refraction_and_diffraction_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_generator_propagation_and_materials_refraction_and_diffraction_topology.png)
 
 | Element | Role |
 | --- | --- |
@@ -17,6 +15,8 @@ To run it, see [Running](#running).
 | Glass panel | Refraction surface and edge-diffraction obstacle loaded from `meshes/glass_panel.ply` |
 
 ## Configuration Walkthrough
+
+See [scenario.yaml](scenario.yaml) for the complete configuration.
 
 ```yaml
 scene:
@@ -45,10 +45,21 @@ minimal transmissive obstacle easy to inspect alongside the YAML.
 
 ## Running
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/propagation_and_materials/refraction_and_diffraction
 orchav-generator scenarios/generator/propagation_and_materials/refraction_and_diffraction
+```
+
+Inspect the interaction paths:
+
+```bash
 orchav-inspect scenarios/generator/propagation_and_materials/refraction_and_diffraction --frame 0
+```
+
+Open the scenario in the Visualizer:
+
+```bash
 orchav-visualizer --scenario scenarios/generator/propagation_and_materials/refraction_and_diffraction
 ```
 
@@ -60,7 +71,7 @@ orchav-visualizer --scenario scenarios/generator/propagation_and_materials/refra
 
 `orchav-inspect` reports both interaction segments and the number of paths that
 contain each [interaction
-type](../../../../docs/concepts/propagation.md#interaction-types). For example, a
+type](../../../../docs/reference/propagation.md#interaction-types). For example, a
 representative run can report:
 
 ```text
@@ -86,7 +97,5 @@ RT versions or solver options.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) | [Generator](../../README.md) |
-> Current: **Refraction And Diffraction**
->
-> Track: **Propagation and Materials** | Previous: [Scene Diffuse Scattering](../scene_diffuse_scattering/README.md)
+Up: [Generator](../../README.md) ·
+[Scene Diffuse Scattering](../scene_diffuse_scattering/README.md)

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QDoubleSpinBox
 
 from visualizer.src.controllers.ui_controller import UIController
 from visualizer.src.panels.nodes_panel import NodesSelectionPanel
+from visualizer.src.renderers.protocol import RendererCapabilities
 from visualizer.src.scene.defaults import (
     DEFAULT_LABEL_OFFSET_M,
     LABEL_FONT_SIZE_BOUNDS,
@@ -100,6 +101,8 @@ def test_node_appearance_workspace_state_round_trips_values_beyond_old_limits(qa
     """Workspace extraction and restore preserve the exact displayed values."""
 
     class Renderer:
+        capabilities = RendererCapabilities()
+
         def __init__(self) -> None:
             self.trajectory_line_width = 3.0
             self.trajectory_point_size = 6.0

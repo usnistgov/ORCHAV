@@ -931,3 +931,57 @@ def test_live_grpc_protocol_omits_client_path_and_unused_file_stream() -> None:
     assert [(item.start, item.end) for item in connection_metrics_proto.reserved_range] == [(2, 3)]
     assert "StreamPreGeneratedFrames" not in frame_file_service.methods_by_name
     assert "StreamPreGeneratedFramesRequest" not in visualizer_pb2.DESCRIPTOR.message_types_by_name
+
+
+def test_live_eof_releases_only_out_of_bounds_waiters_without_disconnect():
+    provider = GrpcProvider("grpc://unit-test", buffer_size=2)
+    provider._disconnect_reason = None
+    provider.connection_manager.stub = MagicMock()
+    provider.connection_manager.is_connected = True
+    provider._shutdown.clear()
+    valid = queue.Queue(maxsize=1)
+    beyond = queue.Queue(maxsize=1)
+    provider._pending_frames = {0: [valid], 50: [beyond]}
+    provider._pending_requests = {0: 1.0, 50: 1.0}
+    provider._pending_request_origins = {0: "user", 50: "user"}
+    provider._non_playback_pending_frames = {50}
+    provider._handle_stream_response(
+        visualizer_pb2.FrameResponse(
+            eof=visualizer_pb2.EndOfStream(last_frame_idx=49),
+        )
+    )
+    assert provider._transport_available()
+    assert beyond.get_nowait() is None
+    assert valid.empty()
+    assert list(provider._pending_frames) == [0]
+    assert list(provider._pending_requests) == [0]
+    assert not provider._non_playback_pending_frames
+
+
+def test_old_epoch_eof_cannot_cancel_new_generation_requests():
+    provider = GrpcProvider("grpc://unit-test", buffer_size=2)
+    provider._generation_epoch = 1
+    waiter = queue.Queue(maxsize=1)
+    provider._pending_frames = {50: [waiter]}
+    provider._handle_stream_response(
+        visualizer_pb2.FrameResponse(
+            eof=visualizer_pb2.EndOfStream(last_frame_idx=49),
+            generation_epoch=0,
+        )
+    )
+    assert waiter.empty()
+    assert 50 in provider._pending_frames
+
+
+def test_actual_rpc_completion_after_eof_is_still_a_disconnect():
+    class ClosedStream:
+        def StreamFrames(self, _requests):
+            yield visualizer_pb2.FrameResponse(eof=visualizer_pb2.EndOfStream(last_frame_idx=49))
+
+    provider = GrpcProvider("grpc://unit-test", buffer_size=2)
+    provider.connection_manager.stub = ClosedStream()
+    provider.connection_manager.is_connected = True
+    provider._shutdown.clear()
+    provider._run_stream_loop()
+    assert not provider._transport_available()
+    assert provider._disconnect_reason == "Live gRPC stream ended unexpectedly"

@@ -68,6 +68,136 @@ class PygfxPickingMixin:
         """Return the active hover tooltip policy."""
         return self._normalize_hover_info_mode(getattr(self, "_hover_info_mode", "essential"))
 
+    def set_volume_cell_selection_callback(self, callback, *, object_ids=None):
+        """Route direct visible volume hits to the active inspection panel."""
+        if callback is not None and not callable(callback):
+            raise TypeError("Volume selection callback must be callable or None")
+        scope = None if object_ids is None else tuple(object_ids)
+        callbacks = getattr(self, "_volume_cell_selection_callbacks", {})
+        if callback is None:
+            callbacks.pop(scope, None)
+        else:
+            callbacks[scope] = callback
+        self._volume_cell_selection_callbacks = callbacks
+        self._volume_click_candidate = None
+        self._bind_volume_pick_events()
+
+    def _bind_volume_pick_events(self):
+        """Bind pending callbacks once to the currently active native backend."""
+        backend = getattr(self, "_renderer", None)
+        previous = getattr(self, "_volume_pick_event_backend", None)
+        wanted = backend if getattr(self, "_volume_cell_selection_callbacks", {}) else None
+        if previous is wanted:
+            return
+        if previous is not None:
+            previous.remove_event_handler(
+                self._route_volume_cell_event,
+                "pointer_down",
+                "pointer_move",
+                "pointer_up",
+                "pointer_leave",
+            )
+        self._volume_pick_event_backend = None
+        self._volume_click_candidate = None
+        if wanted is not None:
+            wanted.add_event_handler(
+                self._route_volume_cell_event,
+                "pointer_down",
+                "pointer_move",
+                "pointer_up",
+                "pointer_leave",
+            )
+            self._volume_pick_event_backend = backend
+
+    def clear_volume_cell_selection_callbacks(self):
+        """Retire panel references and native events with the renderer session."""
+        backend = getattr(self, "_volume_pick_event_backend", None)
+        if backend is not None:
+            backend.remove_event_handler(
+                self._route_volume_cell_event,
+                "pointer_down",
+                "pointer_move",
+                "pointer_up",
+                "pointer_leave",
+            )
+        self._volume_pick_event_backend = None
+        self._volume_cell_selection_callbacks = {}
+        self._volume_click_candidate = None
+
+    def _volume_cell_pick(self, event):
+        info = getattr(event, "pick_info", {}) or {}
+        native = info.get("world_object", getattr(event, "target", None))
+        name = getattr(self, "_reverse_objects", {}).get(id(native))
+        if name is None or getattr(self, "_kinds", {}).get(name) != "volume":
+            return None
+        payload = getattr(native, "_orchav_volume_payload", None)
+        index = info.get("index")
+        if payload is None or index is None:
+            return None
+        try:
+            if len(index) != 3:
+                return None
+            indices = tuple(int(i) for i in index)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if any(
+            i != raw or not 0 <= i < size
+            for i, raw, size in zip(indices, index, reversed(payload.values.shape), strict=True)
+        ):
+            return None
+        return name, indices, id(payload), payload.mode
+
+    def _route_volume_cell_event(self, event):
+        callbacks = getattr(self, "_volume_cell_selection_callbacks", {})
+        if not callbacks:
+            return
+        event_type = str(getattr(event, "type", ""))
+        if event_type == "pointer_leave":
+            self._volume_click_candidate = None
+            return
+        if event_type == "pointer_down":
+            self._volume_click_candidate = None
+            if not self._is_unmodified_left_button(event):
+                return
+            position, pick = self._pointer_position(event), self._volume_cell_pick(event)
+            if position is not None and pick is not None:
+                self._volume_click_candidate = (
+                    position,
+                    pick,
+                    time.monotonic(),
+                    getattr(event, "pointer_id", None),
+                )
+            return
+        candidate = getattr(self, "_volume_click_candidate", None)
+        if candidate is None:
+            return
+        position, pick, started, pointer = candidate
+        if not self._same_pointer(pointer, getattr(event, "pointer_id", None)):
+            return
+        current = self._pointer_position(event)
+        if current is None or self._pointer_moved_too_far(position, current):
+            self._volume_click_candidate = None
+            return
+        if event_type != "pointer_up":
+            return
+        self._volume_click_candidate = None
+        if (
+            not self._is_unmodified_left_button(event)
+            or time.monotonic() - started > self.MPC_CLICK_MAX_DURATION_S
+            or self._volume_cell_pick(event) != pick
+        ):
+            return
+        callback = next(
+            (value for scope, value in callbacks.items() if scope is not None and pick[0] in scope),
+            callbacks.get(None),
+        )
+        if callback is None:
+            return
+        try:
+            callback(pick[0], pick[1], pick[3])
+        except Exception:
+            logger.exception("Volume viewport-selection callback failed")
+
     def set_mpc_path_selection_callback(
         self,
         callback: MpcPathSelectionCallback | None,

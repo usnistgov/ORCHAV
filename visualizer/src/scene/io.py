@@ -14,7 +14,7 @@ import time
 import xml.etree.ElementTree as ET
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable, TypedDict
+from typing import Any, Callable, Mapping, TypedDict
 
 import numpy as np
 
@@ -46,7 +46,7 @@ logger = get_logger("orchav")
 _PATCH_PROJECTION_TRIANGLE_LIMIT = 20_000
 _ORIENTATION_BIN_DEGREES = 7.5
 _BOX_PROJECTION_UV_CACHE_VERSION = "20260414_uv_v1"
-_SCENE_PAYLOAD_CACHE_VERSION = "20260702_scene_payload_v1"
+_SCENE_PAYLOAD_CACHE_VERSION = "20260925_osm_water_v3"
 _DEFAULT_ORCHAV_CACHE_ROOT = Path("~/.orchav/cache").expanduser()
 _UV_CACHE_SUBDIR = "uvcache"
 _SCENE_PAYLOAD_CACHE_SUBDIR = "scene_payloads"
@@ -340,6 +340,7 @@ def _scene_payload_cache_fingerprint(
 
     payload = {
         "schema_version": _SCENE_PAYLOAD_CACHE_VERSION,
+        "osm_scene": Path(xml_path).with_name("osm_metadata.json").is_file(),
         "xml": xml_sig,
         "meshes": mesh_sigs,
     }
@@ -537,8 +538,9 @@ def _load_scene_payload_cache(
     cache_path: Path,
     fingerprint: str,
     xml_root: Any,
+    xml_path: str,
 ) -> list[dict[str, Any]] | None:
-    """Load neutral transformed scene payloads and reattach current XML references."""
+    """Reuse transformed geometry, resolving materials from current XML/catalog defaults."""
     start = time.perf_counter()
     try:
         with np.load(cache_path, allow_pickle=False) as data:
@@ -586,6 +588,8 @@ def _load_scene_payload_cache(
                     return None
 
             materials = MaterialHandler.parse_materials(xml_root)
+            base_dir = Path(xml_path).parent
+            is_osm_scene = Path(xml_path).with_name("osm_metadata.json").is_file()
             shapes = xml_root.findall("shape")
             entries: list[dict[str, Any]] = []
             for index, item in enumerate(metadata):
@@ -594,6 +598,12 @@ def _load_scene_payload_cache(
                     return None
                 material_id = item.get("material_id")
                 material_info = materials.get(material_id, {})
+                # Older caches contain resolved PBR defaults with absolute paths
+                # into the checkout that created them. Those are not authored
+                # texture choices and must not shadow the current catalog.
+                color, material_type, pbr_properties = _resolve_scene_material(
+                    material_info, item.get("rel_path"), base_dir, is_osm_scene
+                )
 
                 mesh = MeshPayload(
                     vertices=_scene_payload_slice(vertices, vertices_offsets, index),
@@ -624,8 +634,8 @@ def _load_scene_payload_cache(
                         "name": item.get("name"),
                         "mesh": mesh,
                         "material_id": material_id,
-                        "material_type": item.get("material_type", "default"),
-                        "pbr_properties": dict(item.get("pbr_properties") or {}),
+                        "material_type": material_type,
+                        "pbr_properties": pbr_properties,
                         "original_center": np.array(original_centers[index], copy=True),
                         "position_after_scale_rotation": np.array(
                             position_after_scale_rotation[index],
@@ -638,7 +648,7 @@ def _load_scene_payload_cache(
                             index,
                         ),
                         "transform_state": dict(item.get("transform_state") or {}),
-                        "color": list(item.get("color") or [0.7, 0.7, 0.7]),
+                        "color": color,
                         "visible": True,
                         "show_label": False,
                         "highlighted": False,
@@ -947,8 +957,9 @@ class MaterialHandler:
         """
         Extract PBR properties from a BSDF XML element.
 
-        Reads material type and PBR properties (roughness, metallic, reflectance, alpha)
-        from the XML, with fallback to catalog defaults.
+        Reads visual material properties from the XML, with fallback to catalog
+        defaults. Clearcoat fields are visualizer metadata; this parser does
+        not validate or modify the radio ray-tracing material model.
 
         Args:
             bsdf_element: BSDF XML element
@@ -981,6 +992,8 @@ class MaterialHandler:
             "metallic",
             "reflectance",
             "alpha",
+            "clearcoat",
+            "clearcoat_roughness",
             "thickness",
             "normal_map_strength",
             "uv_scale_meters",
@@ -999,6 +1012,7 @@ class MaterialHandler:
             "roughness_map_path",
             "ao_map_path",
             "metallic_map_path",
+            "clearcoat_roughness_map_path",
             "shader_variant",
         ]:
             prop_elem = bsdf_element.find(f"./string[@name='{prop_name}']")
@@ -2004,6 +2018,50 @@ class XMLSceneHandler:
             logger.error(f"Error debugging XML structure: {e}")
 
 
+def _resolve_scene_material(
+    material_info: Mapping[str, Any],
+    rel_path: str | None,
+    base_dir: Path,
+    is_osm_scene: bool,
+) -> tuple[list[float], str, dict[str, Any]]:
+    """Apply the same XML, catalog and geographic visual defaults on every load.
+
+    Geometry caches do not own material assignments. Explicit XML maps remain
+    scene-relative; catalog maps come from the current installation. Geographic
+    visual defaults do not change the entry's radio-material identity.
+    """
+    from ..materials.texture_policy import TEXTURE_MAP_KEYS
+
+    color = list(material_info.get("color", [0.7, 0.7, 0.7]))
+    material_type = material_info.get("material_type", "default")
+    pbr_properties = dict(material_info.get("pbr_properties", {}) or {})
+    for key in TEXTURE_MAP_KEYS:
+        texture_value = pbr_properties.get(key)
+        if not texture_value:
+            continue
+        texture_path = Path(str(texture_value)).expanduser()
+        if not texture_path.is_absolute():
+            texture_path = base_dir / texture_path
+        pbr_properties[key] = str(texture_path)
+
+    # Tree trunks/canopies keep their RF material; only their visual defaults
+    # use the green vegetation preset instead of the wood approximation.
+    if rel_path and os.path.basename(rel_path) == "vegetation.ply":
+        material_type = "vegetation"
+        pbr_properties = dict(material_preset("vegetation"))
+        color = list(pbr_properties["color"])
+
+    if is_osm_scene:
+        from ..materials.geographic import geographic_surface_properties
+
+        surface_properties = geographic_surface_properties(rel_path, material_type)
+        if surface_properties is not None:
+            pbr_properties = surface_properties
+            color = list(surface_properties["color"])
+
+    return color, material_type, pbr_properties
+
+
 def build_scene_from_root(xml_root, xml_path):  # pragma: no cover
     """
     Build mesh_entries from an existing XML root (without re-parsing).
@@ -2032,9 +2090,18 @@ def build_scene_from_root(xml_root, xml_path):  # pragma: no cover
             else None
         )
         if cache_path is not None and cache_path.is_file():
-            cached_entries = _load_scene_payload_cache(cache_path, fingerprint, xml_root)
+            cached_entries = _load_scene_payload_cache(cache_path, fingerprint, xml_root, xml_path)
             if cached_entries is not None:
-                return cached_entries
+                from ..materials.building_style import annotate_building_faces
+                from .geographic_layers import (
+                    annotate_geographic_layers,
+                    partition_geographic_layers,
+                )
+                from .visual_surfaces import apply_visual_surfaces
+
+                annotate_building_faces(cached_entries, xml_path)
+                annotate_geographic_layers(cached_entries, xml_path)
+                return partition_geographic_layers(apply_visual_surfaces(cached_entries, xml_path))
             record_cache_event("scene_payload", "miss")
         elif cache_path is not None:
             record_cache_event("scene_payload", "miss")
@@ -2047,7 +2114,8 @@ def build_scene_from_root(xml_root, xml_path):  # pragma: no cover
         # Parse materials from the existing root
         materials = MaterialHandler.parse_materials(xml_root)
         mesh_entries = []
-        base_dir = os.path.dirname(xml_path)
+        base_dir = Path(xml_path).parent
+        is_osm_scene = Path(xml_path).with_name("osm_metadata.json").is_file()
 
         for record in records:
             shape = record["shape"]
@@ -2055,32 +2123,10 @@ def build_scene_from_root(xml_root, xml_path):  # pragma: no cover
             full_path = record["full_path"]
             material_id = record["material_id"]
 
-            material_info = materials.get(material_id, {"color": [0.7, 0.7, 0.7]})
-            color = material_info["color"]
-            material_type = material_info.get("material_type", "default")
-            pbr_properties = dict(material_info.get("pbr_properties", {}) or {})
-            from ..materials.texture_policy import TEXTURE_MAP_KEYS
-
-            for key in TEXTURE_MAP_KEYS:
-                texture_value = pbr_properties.get(key)
-                if not texture_value:
-                    continue
-                texture_path = Path(str(texture_value)).expanduser()
-                if not texture_path.is_absolute():
-                    texture_path = Path(base_dir) / texture_path
-                pbr_properties[key] = str(texture_path)
-
-            # Vegetation material override: shapes whose PLY is ``vegetation.ply``
-            # are tree trunks + canopies.  Sionna RT keeps them bound to
-            # ``mat-itu_wood`` so the ITU-R P.833 wood attenuation model still
-            # drives propagation, but the visualizer renders them with the
-            # green ``vegetation`` PBR entry so the scene shows green trees
-            # instead of brown ones.
-            if rel_path and os.path.basename(rel_path) == "vegetation.ply":
-                veg_pbr = material_preset("vegetation")
-                material_type = "vegetation"
-                color = list(veg_pbr["color"])
-                pbr_properties = dict(veg_pbr)
+            material_info = materials.get(material_id, {})
+            color, material_type, pbr_properties = _resolve_scene_material(
+                material_info, rel_path, base_dir, is_osm_scene
+            )
 
             # UV generation is deferred until material policy selects a texture.
             mesh = MeshLoader.load_mesh(full_path, color, auto_generate_uvs=False)
@@ -2127,7 +2173,13 @@ def build_scene_from_root(xml_root, xml_path):  # pragma: no cover
         if cache_path is not None:
             _store_scene_payload_cache(cache_path, fingerprint, mesh_entries)
         logger.debug(f"Built {len(mesh_entries)} mesh entries from existing XML root")
-        return mesh_entries
+        from ..materials.building_style import annotate_building_faces
+        from .geographic_layers import annotate_geographic_layers, partition_geographic_layers
+        from .visual_surfaces import apply_visual_surfaces
+
+        annotate_building_faces(mesh_entries, xml_path)
+        annotate_geographic_layers(mesh_entries, xml_path)
+        return partition_geographic_layers(apply_visual_surfaces(mesh_entries, xml_path))
 
     except (OSError, ValueError, RuntimeError):
         logger.exception("Failed to build scene from XML root")

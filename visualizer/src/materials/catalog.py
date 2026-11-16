@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Any, Mapping, Optional
 
 from shared.logging import get_logger
-from shared.scenarios.paths import find_project_root
+from shared.scenarios.paths import find_asset_project_root
 
 from ..types.render_payloads import MaterialPayload, material_payload_from_mapping
 from .texture_policy import (
@@ -79,9 +79,11 @@ class ResolvedMaterial:
 # Curated Poly Haven CC0 starter pack under libraries/textures/pbr/. The
 # presets below reference absolute paths resolved once at import time so
 # renderer texture caches can short-circuit identity lookups. See
-# libraries/textures/pbr/CREDITS.md for provenance.
+# libraries/textures/pbr/credits.md for provenance.
 try:
-    _PBR_MAPS_ROOT = find_project_root(Path(__file__).parent) / "libraries" / "textures" / "pbr"
+    _PBR_MAPS_ROOT = (
+        find_asset_project_root(Path(__file__).parent) / "libraries" / "textures" / "pbr"
+    )
 except (OSError, ValueError):
     _PBR_MAPS_ROOT = Path("libraries/textures/pbr")
 
@@ -479,6 +481,7 @@ def material_payload_to_pbr_kwargs(material: MaterialPayload) -> dict[str, Any]:
         "alpha": material.base_color[3],
         "clearcoat": material.clearcoat,
         "clearcoat_roughness": material.clearcoat_roughness,
+        "clearcoat_roughness_map_path": material.clearcoat_roughness_map_path,
         "anisotropy": material.anisotropy,
         "emissive_color": tuple(material.emissive_color),
         "emissive_intensity": material.emissive_intensity,

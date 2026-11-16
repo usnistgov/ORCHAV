@@ -13,7 +13,6 @@ data:
 
 raytracing:
   enabled: true
-  export_path_metrics: true
   quality:
     preset: ultra-low
   antenna:
@@ -83,6 +82,6 @@ visualizer:
 
 generator_summary:
   enabled: true
-  create: [scene2d, speed]
+  create: [topology, speed]
   visualization:
     scene2d_mode: devices

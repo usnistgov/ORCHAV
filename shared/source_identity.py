@@ -192,6 +192,16 @@ def resolve_source_git_sha(source_root: str | Path) -> str | None:
     return sha if same_root and sha else None
 
 
+def resolve_source_identity(source_root: str | Path) -> SourceIdentity:
+    """Read current on-disk metadata without replacing any loaded-process identity."""
+    root = Path(source_root).expanduser().resolve()
+    return SourceIdentity(
+        source_root=root,
+        version=_source_version(root),
+        git_sha=resolve_source_git_sha(root),
+    )
+
+
 @lru_cache(maxsize=None)
 def _loaded_source_identity_for_process(
     anchor_package: str,
@@ -212,11 +222,7 @@ def _loaded_source_identity_for_process(
             "ORCHAV packages were imported from different source trees: "
             f"{anchor_package}={anchor_root}, shared={shared_root}"
         )
-    return SourceIdentity(
-        source_root=anchor_root,
-        version=_source_version(anchor_root),
-        git_sha=resolve_source_git_sha(anchor_root),
-    )
+    return resolve_source_identity(anchor_root)
 
 
 def loaded_source_identity(anchor_package: str) -> SourceIdentity:
@@ -267,6 +273,7 @@ __all__ = [
     "SourceIdentity",
     "SourceIdentityError",
     "loaded_source_identity",
+    "resolve_source_identity",
     "resolve_source_git_sha",
     "source_bound_module_command",
 ]

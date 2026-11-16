@@ -15,7 +15,11 @@ from typing import Any
 from shared.grpc_transport import DEFAULT_GRPC_BIND_HOST, format_grpc_endpoint
 from shared.logging import get_logger
 
-from ...io.grpc.live_server import GeneratorFrameCache, run_generator_server
+from ...io.grpc.live_server import (
+    GeneratorFrameCache,
+    run_generator_server,
+    validate_live_grpc_sensing_boundary,
+)
 from ..configuration import ReceiverConfig, SimulationConfig, TransmitterConfig
 from ..services.actor_state_service import ActorStateService
 from ..services.raytracing_service import RayTracingService
@@ -61,6 +65,9 @@ def perform_pipeline_streaming(
 ) -> StreamingHandle:
     """Prepare a scenario and start the gRPC-backed streaming generator."""
     logger.info("Setting up streaming pipeline for frame generation with buffering")
+    # Sensing is a file/HDF5 extension. Reject it before constructing services
+    # or loading the scene because the live protobuf has no sensing field.
+    validate_live_grpc_sensing_boundary(simulation_config)
     resolved_port, resolved_bind_host, advertised_endpoint = _resolve_streaming_endpoint(
         simulation_config,
         grpc_port=grpc_port,

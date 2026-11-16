@@ -78,3 +78,30 @@ def test_checked_state_paint():
     btn.setChecked(True)
     event = QPaintEvent(QRect(0, 0, 34, 34))
     btn.paintEvent(event)
+
+
+@pytest.mark.parametrize("size", [34, 44])
+def test_scaled_transport_icon_and_shell_fill_current_geometry(size, qtbot):
+    from PySide6.QtGui import QColor
+
+    from visualizer.src.app.theme import current_theme
+    from visualizer.src.widgets.transport_button import TransportButton
+
+    button = TransportButton("stop")
+    qtbot.addWidget(button)
+    button.setFixedSize(size, size)
+    image = button.grab().toImage()
+    foreground = QColor(current_theme().text_primary)
+    pixels = [
+        (x, y)
+        for y in range(image.height())
+        for x in range(image.width())
+        if image.pixelColor(x, y) == foreground
+    ]
+    assert pixels
+    xs, ys = zip(*pixels, strict=True)
+    assert abs((min(xs) + max(xs)) / 2 - (size - 1) / 2) <= 0.5
+    assert abs((min(ys) + max(ys)) / 2 - (size - 1) / 2) <= 0.5
+    assert max(xs) - min(xs) + 1 >= int(size * 0.25)
+    # An enlarged button must paint its right edge, not leave an empty strip.
+    assert image.pixelColor(size - 1, size // 2) == QColor(current_theme().border_primary)

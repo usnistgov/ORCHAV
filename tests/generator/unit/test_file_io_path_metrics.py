@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from generator.io.frames.builder import _extract_optional_path_metrics
 
@@ -15,7 +16,8 @@ class _ArrayHolder:
         return self._array
 
 
-def test_extract_optional_path_metrics_supports_frozen_paths_without_cir() -> None:
+@pytest.mark.parametrize("settings", [{}, {"export_path_metrics": True}])
+def test_extract_optional_path_metrics_supports_frozen_paths_without_cir(settings) -> None:
     valid = np.array([[[True, False]]], dtype=bool)
     tau = _ArrayHolder(np.array([[[1.5e-9, 2.5e-9]]], dtype=np.float32))
     a = _ArrayHolder(
@@ -35,7 +37,7 @@ def test_extract_optional_path_metrics_supports_frozen_paths_without_cir() -> No
         theta_t=theta,
         phi_t=phi,
     )
-    simulation_config = SimpleNamespace(export_path_metrics=True)
+    simulation_config = SimpleNamespace(**settings)
 
     metrics = _extract_optional_path_metrics(
         paths, valid, num_tx=1, num_rx=1, simulation_config=simulation_config
@@ -48,6 +50,21 @@ def test_extract_optional_path_metrics_supports_frozen_paths_without_cir() -> No
     )
     np.testing.assert_allclose(metrics["all_pair_aoa_az_deg"][0], np.array([0.0], dtype=np.float32))
     np.testing.assert_allclose(metrics["all_pair_aoa_el_deg"][0], np.array([0.0], dtype=np.float32))
+
+
+def test_explicitly_disabled_path_metrics_skip_extraction() -> None:
+    class UnreadPaths:
+        def __getattr__(self, name):
+            raise AssertionError(f"Metric extraction should not access {name}")
+
+    metrics = _extract_optional_path_metrics(
+        UnreadPaths(),
+        np.ones((1, 1, 1), dtype=bool),
+        num_tx=1,
+        num_rx=1,
+        simulation_config=SimpleNamespace(export_path_metrics=False),
+    )
+    assert metrics is None
 
 
 def test_extract_optional_path_metrics_supports_frozen_path_coefficients_without_time_axis() -> (

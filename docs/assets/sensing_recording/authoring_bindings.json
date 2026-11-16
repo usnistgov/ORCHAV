@@ -1,0 +1,86 @@
+{
+  "schema": "orchav.recording-authoring-bindings.v1",
+  "scope": "Storage-only authored YAML changes. Original image, acquisition, execution and scientific-result receipts remain unchanged. Each prior input is reconstructed exactly and checked against its authenticated receipt.",
+  "retention_profile_scope": "Authenticated reprocessing-to-maps retention changes only. Every other authored value remains unchanged. Original receipts continue to identify the earlier acquisition and retained products; no acquisition, image or figure was regenerated or relabelled.",
+  "retention_profiles": {
+    "scenarios/sensing/targets_motion/marching_person/coherent/scenario.yaml": {
+      "previous_authored_sha256": "00f717794c5f63b28f62a88bfeec4900d7d4678017a96bb5b428b921d871a188",
+      "current_authored_sha256": "868372750c303fe446299d9e45f8b973bfdf3e51321f5eb5d1683a3fada7411e",
+      "previous_recording_block": "  recording:\n    profile: reprocessing\n",
+      "current_recording_block": "  recording:\n    profile: maps\n",
+      "non_profile_sha256": "b637f3ddf3858c4f405b9e15b3c8972ea4bddb2590728be500fd9a2b6130b6d6"
+    }
+  },
+  "scenarios": {
+    "scenarios/sensing/applications/wall_detection_volume/scenario.yaml": {
+      "previous_authored_sha256": "e6eac0288ba6ad40ce84c7628b742207915d330702bdb39a3911b2b0636e2471",
+      "current_authored_sha256": "411e60b2dddde255dece9c2af196127bf88adc69dac5d18c6e4c0013cc5f5c39",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n    detection_stages: true\n",
+      "current_recording_block": "  recording:\n    profile: maps\n    detection_stages: true\n",
+      "non_recording_sha256": "9b0035f4873329aea25de98ea6c3f70d071474f6f589ee44d432adec7da7cff0"
+    },
+    "scenarios/sensing/cube_radar/moving/scenario.yaml": {
+      "previous_authored_sha256": "e4a4e4fb6e5ca95f6df4ac076ca5ed77d32e5b46e8bce32ed4d890d642d0a288",
+      "current_authored_sha256": "523463b867f5c9ae245dc4dcd00b46eebce161a5812677e17ccfbd0f7dc5f763",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n    detection_stages: true\n",
+      "current_recording_block": "  recording:\n    profile: reprocessing\n    detection_stages: true\n",
+      "non_recording_sha256": "2b87cefb51bf33be74fd97676da206b4e7f4439aa3e1a365699d4479fac2dde9"
+    },
+    "scenarios/sensing/cube_radar/moving_tracking_3d/scenario.yaml": {
+      "previous_authored_sha256": "516acd98d6d3ec6307e607f915abf551bea8600b9f8eb3b88222976f327afba3",
+      "current_authored_sha256": "60ac490536360cdb7d73c5c0686313b514e97274ca1fa76a9ada622a609b6604",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n    detection_stages: true\n    tracking_diagnostics: true\n",
+      "current_recording_block": "  recording:\n    profile: maps\n    detection_stages: true\n    tracking_diagnostics: true\n",
+      "non_recording_sha256": "7bb1bcf7357c8c75d6b5d94f970944023b175363644d52e00480d7389f063903"
+    },
+    "scenarios/sensing/cube_radar/oscillating_coherent/scenario.yaml": {
+      "previous_authored_sha256": "b4d3a6de7bf114342d97b50417bfeaad0896df1aebdefcf6807d7ea4ac99df6c",
+      "current_authored_sha256": "b1483fd773de7f0fe959ed152b5ff0f9da82d30af496abbb408a3fbff222ada7",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n    detection_stages: true\n",
+      "current_recording_block": "  recording:\n    profile: reprocessing\n    detection_stages: true\n",
+      "non_recording_sha256": "91ab16f2cad9602f72f9186c30dadc991f7d42f39378d6f3c3a4ae1f45edf50d"
+    },
+    "scenarios/sensing/cube_radar/oscillating_sequential/scenario.yaml": {
+      "previous_authored_sha256": "2e7dd58cffd5383518420e4ec7f6f6f884e932ad663f84fc94281e42d4c04ffa",
+      "current_authored_sha256": "1d30a03be6df7682b18c2696c5b4220d1080daf931dbd8d9ddbe188c17b6ed28",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n    detection_stages: true\n",
+      "current_recording_block": "  recording:\n    profile: reprocessing\n    detection_stages: true\n",
+      "non_recording_sha256": "05051473564af2d4dae2ef8fc9f8b874b02cf43ed0d4f5d5de2537bb7fe728f5"
+    },
+    "scenarios/sensing/cube_radar/stationary/scenario.yaml": {
+      "previous_authored_sha256": "610637c807835e49f0fae2014896003ccdc56098f616a783886fe6914221686c",
+      "current_authored_sha256": "9d693f6d7774fa7e28ac044a7d8c394aca0a9ea76e1a6c01996df860867940b6",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n    detection_stages: true\n",
+      "current_recording_block": "  recording:\n    profile: maps\n    detection_stages: true\n",
+      "non_recording_sha256": "ceb18f3aa90feb142af84d558a7c0c047810c93f8d1ed2df9b11a428ca6b6f29"
+    },
+    "scenarios/sensing/foundations/RCS/06_vehicle_multi/scenario.yaml": {
+      "previous_authored_sha256": "9ac6f4d8cd6a1bd13eaf02da80db799dda0fcb3fbf3c765c8ace5667635ad587",
+      "current_authored_sha256": "a4e7d3d00040db952820f84179f4f296b9d6ca840ff65e9d8a4b388a0bd9e134",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n    detection_stages: true\n    tracking_diagnostics: true\n",
+      "current_recording_block": "  recording:\n    profile: maps\n    detection_stages: true\n    tracking_diagnostics: true\n",
+      "non_recording_sha256": "415182f2ea14e94aa0f57f5b00e0fa60465084b54445cc1ebc324593e7686e13"
+    },
+    "scenarios/sensing/foundations/RCS/08_human_model1/scenario.yaml": {
+      "previous_authored_sha256": "2545b6343c999642f7046adb94de8990d1f9470f3043f6c1c9bce23fa6c3b297",
+      "current_authored_sha256": "1d4f83672e3e8d645eff6babf14767facb17fdba1e05b13491af51c6d3e23c61",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n    detection_stages: true\n    tracking_diagnostics: true\n",
+      "current_recording_block": "  recording:\n    profile: maps\n    detection_stages: true\n    tracking_diagnostics: true\n",
+      "non_recording_sha256": "bac9a57458d961e97483607e97d36a1ba4ec6e19860f26d0a1ac9bcc614e72a7"
+    },
+    "scenarios/sensing/foundations/static_and_moving_cubes/scenario.yaml": {
+      "previous_authored_sha256": "c819e3e3fd75412c9be688eb918de7da8e268b1fc2ec0d3703fb22fdeed1a8bb",
+      "current_authored_sha256": "e30eafa3159b20e4a4290fa03f7cd1e7a209d41b444ba366f025867330fa4b2a",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n    detection_stages: true\n",
+      "current_recording_block": "  recording:\n    profile: reprocessing\n    detection_stages: true\n",
+      "non_recording_sha256": "604990ac9e1fc8f747e259836bdaa2e256a2deab81313311690f66a641459a01"
+    },
+    "scenarios/sensing/targets_motion/marching_person/coherent/scenario.yaml": {
+      "previous_authored_sha256": "036f53835433caee190fa63c614e0b0c755bad79797f08f1c252b4a4f318da5d",
+      "current_authored_sha256": "2be79e92ef6c9da5e2dd8e5bb81f9daae416811358ab9b622a3cea1a53edd5b8",
+      "previous_recording_block": "  recording:\n    range_profile: true\n    complex_observations: always\n",
+      "current_recording_block": "  recording:\n    profile: reprocessing\n",
+      "non_recording_sha256": "aac9064b7f9319bb14170a18ee91d2de0a932e5e1295e11e41519f20617ab8ce"
+    }
+  }
+}

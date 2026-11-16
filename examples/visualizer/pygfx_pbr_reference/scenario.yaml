@@ -1,0 +1,45 @@
+schema_version: 2
+scene:
+  source: local
+  id: scene.xml
+data:
+  mode: files
+  files:
+    format: hdf5
+    directory: frames
+raytracing:
+  enabled: false
+  export_path_metrics: false
+timeline:
+  steps: 1
+  duration_s: 0.0
+actors:
+  tx:
+  - name: Tx
+    mobility:
+      type: stationary
+      position_m:
+      - -7
+      - 4.2
+      - 2.6
+  rx:
+  - name: Rx
+    mobility:
+      type: stationary
+      position_m:
+      - 7
+      - 4.2
+      - 2.6
+view_defaults:
+  resolution:
+  - 1280
+  - 900
+  camera_view: front
+  camera_dist: 24
+  merge_scene_meshes: false
+  mpc_visibility:
+    enabled: false
+    paths: false
+    bounce_points: false
+generator_summary:
+  enabled: false

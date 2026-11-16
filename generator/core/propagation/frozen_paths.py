@@ -27,6 +27,7 @@ _FROZEN_PATH_ATTRS = (
     "vertices",
     "interactions",
     "objects",
+    "primitives",
 )
 
 

@@ -19,6 +19,7 @@ from shared.frames import (
     PathMetric,
     ProjectedMPCFrame,
 )
+from shared.frames.sensing_identity import validate_sensing_identity
 
 from ..materials.canonical_materials import _normalize_material_value
 from .canonical_metrics import _compute_path_lengths
@@ -354,6 +355,24 @@ def canonical_from_projection(
     )
     segment_itype[inherit_first_bounce] = segment_itype_end[inherit_first_bounce]
 
+    native_sensing_points = None
+    sensing_identity = (frame.provenance or {}).get("sionna_sensing")
+    if sensing_identity is not None and frame.targets_metadata is not None:
+        validate_sensing_identity(sensing_identity, interactions, frame.targets_metadata)
+        native_sensing_points = {
+            int(bounce_destinations[bounce]): (
+                int(target),
+                str(frame.targets_metadata[target]["name"]),
+                int(point),
+            )
+            for bounce, target, point in zip(
+                sensing_identity["bounce_indices"],
+                sensing_identity["target_indices"],
+                sensing_identity["scattering_point_indices"],
+                strict=True,
+            )
+        }
+
     profile_ms = None
     if profile_start:
         profile_ms = {"total_ms": (time.perf_counter() - profile_start) * 1000.0}
@@ -396,6 +415,7 @@ def canonical_from_projection(
         material_id_to_name=id_to_name,
         material_id_to_itu=id_to_itu,
         material_id_to_bare=id_to_bare,
+        native_sensing_points=native_sensing_points,
         delay_min=float(np.nanmin(path_delays)),
         delay_max=float(np.nanmax(path_delays)),
         loss_min=float(np.nanmin(path_losses)),

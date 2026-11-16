@@ -724,6 +724,28 @@ class ObjectAppearanceService(BaseService):
             else SurfaceColorSource.MATERIAL
         )
         entry_type = str(canonical.get("entry_type", "mesh")).lower()
+        presentation = getattr(self.visualizer, "appearance_preset_service", None)
+        if (
+            presentation is not None
+            and entry_type in {"mesh", "target"}
+            and (presentation.surface != "original" or presentation.unlit)
+        ):
+            from ..materials.view_styles import dark_presentation_ground, styled_surface
+
+            material, color_source = styled_surface(
+                material,
+                color_source,
+                presentation.surface,
+                presentation.unlit,
+                str(canonical.get("material_type") or "default"),
+                entry_type == "target",
+                ground=(
+                    presentation.surface in {"dark", "glow"}
+                    and entry_type == "mesh"
+                    and isinstance(payload, MeshPayload)
+                    and dark_presentation_ground(canonical, payload)
+                ),
+            )
         target_index = canonical.get("node_index")
         if target_index is None and entry_type == "target":
             index = self._entry_index(getattr(self.visualizer, "target_entries", []), canonical)
@@ -741,7 +763,11 @@ class ObjectAppearanceService(BaseService):
                 runtime_visible=bool(canonical.get("_runtime_visible", True)),
                 frame_visible=bool(canonical.get("_frame_visible", True)),
                 pov_visible=pov_visible,
-                global_visible=bool(canonical.get("_global_visible", True)),
+                global_visible=bool(
+                    canonical.get("_global_visible", True)
+                    and canonical.get("_geographic_layer_visible", True)
+                    and canonical.get("_plan_view_visible", True)
+                ),
                 manual_highlight=bool(
                     canonical.get("highlighted", False)
                     if manual_highlight_override is None

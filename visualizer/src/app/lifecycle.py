@@ -13,6 +13,7 @@ from typing import Any
 
 from shared.logging import get_logger
 
+from ..extensions import clear_runtime_extension_services
 from ..io.config_handlers import RecentFilesHandler
 from .frame_loader import teardown_frame_loader
 from .renderer_lifecycle import stop_renderer_session
@@ -74,6 +75,40 @@ def shutdown_visualizer(viz: Any, *, persist_state: bool = False) -> bool:
         timer = getattr(viz, timer_name, None)
         run_step(f"timer:{timer_name}", getattr(timer, "stop", None))
     viz._pending_slider_scrub_index = None
+
+    # Restore presentation-only overrides before session persistence or renderer
+    # disposal. Shutdown must never restart the recording's original playback.
+    demo = getattr(viz, "demo_service", None)
+    run_step("demo", getattr(demo, "close", None))
+
+    fusion_window = getattr(viz, "fusion_window", None)
+    if fusion_window is not None:
+        from shiboken6 import isValid
+
+        if isValid(fusion_window):
+            run_step("fusion_inspection", fusion_window.close)
+
+    volume_window = getattr(viz, "sensing_volume_window", None)
+    if volume_window is not None:
+        from shiboken6 import isValid
+
+        if isValid(volume_window):
+            run_step("sensing_volume", volume_window.close)
+
+    coverage_generation = getattr(viz, "coverage_generation_window", None)
+    if coverage_generation is not None:
+        from shiboken6 import isValid
+
+        if isValid(coverage_generation):
+            run_step("coverage_generation", coverage_generation.close)
+
+    coverage_volume = getattr(viz, "coverage_volume_window", None)
+    if coverage_volume is not None:
+        from shiboken6 import isValid
+
+        if isValid(coverage_volume):
+            coverage_volume.old_planar_visibility = False
+            run_step("coverage_volume", coverage_volume.close)
 
     animation_controller = getattr(viz, "animation_controller", None)
     animation_stopped = run_step(
@@ -138,11 +173,20 @@ def shutdown_visualizer(viz: Any, *, persist_state: bool = False) -> bool:
     ui_manager = getattr(viz, "ui_manager", None)
     panels = getattr(ui_manager, "panels", {}) or {}
     trajectory_panel = panels.get("trajectory")
+    figures = getattr(viz, "live_figure_manager", None)
+    run_step("live_figures", getattr(figures, "close", None))
     panel_cleanup = getattr(ui_manager, "cleanup", None)
     if callable(panel_cleanup):
         run_step("ui_panels", panel_cleanup)
     else:
         run_step("trajectory_preview", getattr(trajectory_panel, "cleanup", None))
+    # Panels can outlive several scenario-scoped services. Retire the current
+    # services explicitly, while their source and renderer are still usable.
+    map_layer = getattr(getattr(viz, "scene_service", None), "map_layer", None)
+    run_step("osm_map", getattr(map_layer, "close", None))
+    plan_view = getattr(getattr(viz, "scene_service", None), "plan_view", None)
+    run_step("plan_view", getattr(plan_view, "close", None))
+    run_step("runtime_extensions", lambda: clear_runtime_extension_services(viz))
     trajectory_coordinator = getattr(viz, "trajectory_load_coordinator", None)
     run_step("trajectory", getattr(trajectory_coordinator, "shutdown", None))
 

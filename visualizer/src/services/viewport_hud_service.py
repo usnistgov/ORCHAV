@@ -28,6 +28,18 @@ _TRAJECTORY_LABELS: Mapping[str, tuple[str, str]] = {
 
 
 @dataclass(frozen=True, slots=True)
+class AnalysisLegend:
+    """Feature-owned semantic legend; the renderer owns viewport placement."""
+
+    title: str
+    lines: tuple[str, ...] = ()
+    swatches: tuple[tuple[str, str], ...] = ()
+    colorbar_label: str = ""
+    colorbar_range: tuple[float, float] | None = None
+    colorbar_colormap: str = "viridis"
+
+
+@dataclass(frozen=True, slots=True)
 class ViewportHudPolicy:
     """Effective HUD policy derived from application state."""
 

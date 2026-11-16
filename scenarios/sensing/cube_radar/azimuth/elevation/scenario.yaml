@@ -1,0 +1,86 @@
+schema_version: 2
+scene:
+  id: empty/empty.xml
+data:
+  files:
+    chunk_size: 64
+raytracing:
+  enabled: true
+  carrier_frequency_hz: 28000000000.0
+  antenna:
+    rx:
+      num_rows: 8
+      num_cols: 8
+  quality:
+    custom:
+      samples_per_src: 10000
+      max_depth: 1
+      los: false
+      specular_reflection: true
+      diffuse_reflection: false
+      refraction: false
+      seed: 42
+timeline:
+  steps: 1024
+  sample_rate_hz: 1000.0
+actors:
+  tx:
+  - name: RadarTX
+    mobility:
+      type: stationary
+      position_m: [0.0, 0.0, 0.5]
+  rx:
+  - name: RadarRX
+    mobility:
+      type: stationary
+      position_m: [0.0, 0.0, 0.5]
+  targets:
+  - name: Cube
+    asset:
+      source: directory
+      path: libraries/targets/cube
+      pattern: cube.ply
+      material_type: metal
+    mobility:
+      type: linear
+      start_m: [5.0, -0.6, 1.1]
+      end_m: [3.977, 0.423, 1.9184]
+    orientation:
+      type: look_at
+      point_m: [0.0, 0.0, 0.5]
+sensing:
+  enabled: true
+  preset: coherent_hann
+  acquisition:
+    bandwidth_hz: 500000000.0
+    frequency_samples: 128
+    sample_rate_hz: 1000.0
+    samples_per_cpi: 64
+  processing:
+    range:
+      interpretation: monostatic
+      fft_size: 128
+    clutter:
+      coherent_mode: none
+  detection:
+    mode: beam_scan
+    angle_oversampling: 8
+    cfar:
+      threshold_scale: 2.0
+      range_doppler:
+        reference_range_cells: 6
+    filters:
+      minimum_snr_db: 3.0
+      maximum_dynamic_range_db: 12.0
+    clustering:
+      range_gate_m: 0.5
+      velocity_gate_m_s: 0.3
+  recording:
+    profile: maps
+    detection_stages: true
+generator_summary:
+  enabled: true
+  create: [topology, sensing]
+  sensing:
+    figures: [range_profile, range_doppler, doppler, angles, detection]
+    inspection_figures: [detection_stages]

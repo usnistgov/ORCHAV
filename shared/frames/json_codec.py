@@ -21,6 +21,16 @@ _COMPLEX_MARKER = "__orchav_complex__"
 
 def _encode_value(value: Any) -> Any:
     """Return a JSON-compatible representation of *value*."""
+    # Recorded metadata mostly contains ordinary JSON values. Handle those
+    # exact types before NumPy and abstract-container checks on every leaf;
+    # subclasses retain the conversion behavior below.
+    kind = type(value)
+    if kind is str or kind is int or kind is float or kind is bool or value is None:
+        return value
+    if kind is dict:
+        return {str(key): _encode_value(item) for key, item in value.items()}
+    if kind is list or kind is tuple:
+        return [_encode_value(item) for item in value]
     if isinstance(value, np.ndarray):
         array = np.ascontiguousarray(value)
         return {

@@ -25,6 +25,7 @@ from ..pipeline.frame_pipeline import FramePipeline
 from ..renderers.factory import create_renderer
 from ..services.animation_service import AnimationService
 from ..services.aperture_service import ApertureService
+from ..services.appearance_preset_service import AppearancePresetService
 from ..services.cache_service import CacheService
 from ..services.camera_scene_query_service import CameraSceneQueryService
 from ..services.coverage_service import CoverageService
@@ -35,6 +36,7 @@ from ..services.material_mode_commands import MaterialModeCommandService
 from ..services.material_modes import MaterialModeService
 from ..services.material_pbr_service import MaterialPBRService
 from ..services.metrics_service import MetricsService
+from ..services.mpc_appearance_service import MpcAppearanceService
 from ..services.node_service import NodeService
 from ..services.object_appearance_service import ObjectAppearanceService
 from ..services.override_service import OverrideService
@@ -99,6 +101,8 @@ class AppServiceBundle:
     material_pbr_service: MaterialPBRService
     object_appearance_service: ObjectAppearanceService
     visual_profile_service: VisualProfileService
+    appearance_preset_service: AppearancePresetService | None
+    mpc_appearance_service: MpcAppearanceService | None
 
 
 def build_service_bundle(viz: Any, *, default_animation_cache_size: int) -> AppServiceBundle:
@@ -222,6 +226,14 @@ def build_service_bundle(viz: Any, *, default_animation_cache_size: int) -> AppS
         material_pbr_service=material_pbr_service,
         object_appearance_service=object_appearance_service,
         visual_profile_service=visual_profile_service,
+        appearance_preset_service=(
+            AppearancePresetService(viz)
+            if getattr(renderer, "renderer_id", None) == "pygfx"
+            else None
+        ),
+        mpc_appearance_service=(
+            MpcAppearanceService(viz) if getattr(renderer, "renderer_id", None) == "pygfx" else None
+        ),
     )
 
 
@@ -274,6 +286,8 @@ def _install_service_bundle(viz: Any, bundle: AppServiceBundle) -> None:
     viz.material_pbr_service = bundle.material_pbr_service
     viz.object_appearance_service = bundle.object_appearance_service
     viz.visual_profile_service = bundle.visual_profile_service
+    viz.appearance_preset_service = bundle.appearance_preset_service
+    viz.mpc_appearance_service = bundle.mpc_appearance_service
 
 
 def construct_services(viz: Any, *, default_animation_cache_size: int) -> None:

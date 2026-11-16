@@ -1,0 +1,35 @@
+{
+  "description": "Original synthetic building geometry, not an OSM extraction. Visual face annotations do not change RF materials.",
+  "visual_building_faces": {
+    "building_0.ply": {
+      "building_triangles": 12,
+      "total_triangles": 12,
+      "parts": [
+        [
+          0,
+          12
+        ]
+      ]
+    },
+    "building_1.ply": {
+      "building_triangles": 12,
+      "total_triangles": 12,
+      "parts": [
+        [
+          0,
+          12
+        ]
+      ]
+    },
+    "building_3.ply": {
+      "building_triangles": 12,
+      "total_triangles": 12,
+      "parts": [
+        [
+          0,
+          12
+        ]
+      ]
+    }
+  }
+}

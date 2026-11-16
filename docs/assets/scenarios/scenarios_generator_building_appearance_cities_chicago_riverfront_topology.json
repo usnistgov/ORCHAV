@@ -1,0 +1,284 @@
+{
+  "scenario": "scenarios/generator/building_appearance/cities/chicago_riverfront/scenario.yaml",
+  "scene_source": {
+    "source": "local",
+    "id": "generated_scene/scene.xml"
+  },
+  "source_files": {
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/buildings_brick.ply": "a2c2c9ecc6ada3ee25000d2375fe152f98b51079da485b4640cda61a065bb6be",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/buildings_concrete.ply": "c356abc0f2629a5f382d7235341e3efb59b160a9772d3fbf90276801e552ba2a",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/buildings_glass.ply": "f3c97e711c8bf735f50a7a5f70ea3292e633a7f32750ea7b28e3802ab306851c",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/buildings_marble.ply": "7b9457b1fcf9413408caaace9a289488e7838b554b9a9577c08f4540226fcb34",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/buildings_metal.ply": "f7dc8c8dc523c39d9f62582b60cbcbce7851da0d7308b57d8a1772ea211a43a0",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/ground.ply": "4cad2574ccd6dd431a3592812528a995998c8b31f7eb7f53ba1099d05fcda583",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/streets_concrete.ply": "2af3f9ea3f8e8b4956763af0fbd8d0d57639fc52478e79044a90f07eef5a616e",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/streets_medium_dry_ground.ply": "314abeb53df7d6763ed6e56d2291aabad16ba880995bc44ae3a808d696f6859e",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/vegetation.ply": "a07e285c5a8b3bd30a74be124350d663272b9155a524fec17661f354fe495673",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/mesh/water.ply": "cbea413353c0450a854a4c4f83f2ba0c36cf6e52246b4b77b8532d5324da02f3",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/generated_scene/scene.xml": "5534c8d80de14ea7f9fd5c76fdf85e10e9d2a7e4e7d6af30e0d13f6eab717ed8",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront/scenario.yaml": "7626aae7770852cd3e31c4bbbdfcfaf5d0f88a8e9e7bb562144f3a3dfdae5728"
+  },
+  "sample_indices": [
+    0
+  ],
+  "sample_times_s": [
+    0.0
+  ],
+  "steps": 1,
+  "actors": [
+    {
+      "name": "TX",
+      "role": "tx",
+      "members": [
+        "TX"
+      ],
+      "sample_positions_m": [
+        [
+          -400.0,
+          -420.0,
+          5.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            -400.0,
+            -420.0,
+            5.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RX",
+      "role": "rx",
+      "members": [
+        "RX"
+      ],
+      "sample_positions_m": [
+        [
+          400.0,
+          420.0,
+          5.0
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            400.0,
+            420.0,
+            5.0
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "8e6eece0af087da97e3cda77ad29622c37543545120fbb9960cd15f87176b59a",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [
+    {
+      "label": "Ground (mat-itu medium dry ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Ground (mat-itu wet ground)",
+      "display_rgb": [
+        0.9137254901960784,
+        0.9058823529411765,
+        0.8745098039215686
+      ]
+    },
+    {
+      "label": "Mat-Itu Brick",
+      "display_rgb": [
+        0.5920000000000001,
+        0.39480000000000004,
+        0.3812
+      ]
+    },
+    {
+      "label": "Mat-Itu Concrete",
+      "display_rgb": [
+        0.6872,
+        0.6872,
+        0.6872
+      ]
+    },
+    {
+      "label": "Mat-Itu Glass",
+      "display_rgb": [
+        0.6784313725490196,
+        0.7764705882352941,
+        0.803921568627451
+      ]
+    },
+    {
+      "label": "Mat-Itu Marble",
+      "display_rgb": [
+        0.796,
+        0.7552000000000001,
+        0.6532
+      ]
+    },
+    {
+      "label": "Mat-Itu Metal",
+      "display_rgb": [
+        0.4696,
+        0.4696,
+        0.49
+      ]
+    },
+    {
+      "label": "Mat-Itu Wood",
+      "display_rgb": [
+        0.6940000000000001,
+        0.558,
+        0.43560000000000004
+      ]
+    },
+    {
+      "label": "Road (mat-itu concrete)",
+      "display_rgb": [
+        0.6235294117647059,
+        0.6627450980392157,
+        0.6784313725490196
+      ]
+    }
+  ],
+  "output_sha256": "7acf980feb4b623af5990b195c5fe2ce66a1e8452e873e3c45d1c94797eed4df",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -764.9744140625,
+        -547.6446704101562,
+        -16.92
+      ],
+      [
+        694.0717041015625,
+        536.2762622070312,
+        439.92
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 52,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [],
+  "mesh_snapshot_styles": [],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "ef1158c348035b465264fffe0e89ec2f7ce041fa72adf21bba951cf058f35c7d",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "versions": {
+    "numpy": "2.5.0",
+    "matplotlib": "3.11.0",
+    "sionna-rt": "2.0.1",
+    "open3d": "0.19.0"
+  },
+  "command": [
+    "python",
+    "scripts/docs/generate_scenario_previews.py",
+    "scenarios/generator/building_appearance/cities/chicago_riverfront"
+  ],
+  "path_convention": {
+    "checkout_files": "Repository-relative paths.",
+    "external_sources": "Sibling paths identify retained input assets outside the checkout.",
+    "identity": "Freshly rendered image and source hashes; path prefixes are portable aliases."
+  }
+}

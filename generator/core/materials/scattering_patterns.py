@@ -23,6 +23,7 @@ _ISOTROPIC_EPS_DEFAULT = 1e-2
 _ISOTROPIC_EPS_MIN = 1e-6
 _SUPPORTED_PATTERNS_REGISTERED = False
 _PRIVATE_EXTENSIONS_LOADED = False
+_PRIVATE_EXTENSION_MODULE = "generator.core.materials._private_scattering_pattern_extensions"
 
 
 def register_supported_scattering_patterns() -> None:
@@ -134,13 +135,16 @@ def _register_private_scattering_pattern_extensions() -> None:
     global _PRIVATE_EXTENSIONS_LOADED
     if _PRIVATE_EXTENSIONS_LOADED:
         return
-    _PRIVATE_EXTENSIONS_LOADED = True
     try:
-        module = import_module("generator.core.materials._private_scattering_pattern_extensions")
-    except ImportError as exc:
+        module = import_module(_PRIVATE_EXTENSION_MODULE)
+    except ModuleNotFoundError as exc:
+        if exc.name != _PRIVATE_EXTENSION_MODULE:
+            raise
+        _PRIVATE_EXTENSIONS_LOADED = True
         logger.debug("No private scattering-pattern extensions loaded: %s", exc)
         return
 
     register = getattr(module, "register", None)
     if callable(register):
         register()
+    _PRIVATE_EXTENSIONS_LOADED = True

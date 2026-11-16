@@ -11,9 +11,11 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 
 from shared.frames.contracts import FrameReadRequest
+from shared.frames.frame_set_writer import FrameSetWriter
 from shared.frames.normalization import standard_mpc_frame_from_pair_data
 from shared.frames.packed import FrameProjection
 from shared.frames.provider_base import DataProvider
+from shared.frames.providers import Hdf5Provider
 from shared.frames.types import StandardMPCFrame
 from visualizer.src.io.frame_sources import FileSource
 from visualizer.src.panels.trajectory_preview_panel import TrajectoryPreviewPanel
@@ -179,6 +181,76 @@ def test_provider_source_uses_projection_without_bypassing_public_step_mapping(
     assert snapshot.target_positions["mapped"] == ((0, 303.0, 5.0, 6.0),)
 
 
+def test_packed_trajectory_uses_batched_positions_and_bounded_progress(
+    coordinator, qapp, tmp_path, monkeypatch
+):
+    from shared.frames import FrameComponent
+
+    steps = list(range(0, 240, 2))
+    source = _MemoryFileSource(steps)
+    writer = FrameSetWriter.create_new(tmp_path / "frames", compression=None)
+    for step in steps:
+        writer.append(source.load_frame(step))
+    writer.finalize()
+    provider = Hdf5Provider(tmp_path)
+    original = provider.iter_frame_projections
+    batches = []
+    progress = []
+
+    def projections(requested, request):
+        assert request.components == frozenset({FrameComponent.DEVICES, FrameComponent.TARGETS})
+        batches.append(list(requested))
+        return original(requested, request)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Trajectory scans must not use scalar or complete HDF5 frame reads")
+
+    monkeypatch.setattr(provider, "iter_frame_projections", projections)
+    monkeypatch.setattr(provider, "load_frame_projection", forbidden)
+    monkeypatch.setattr(provider, "load_frame", forbidden)
+    coordinator.progress_updated.connect(lambda *values: progress.append(values))
+    try:
+        coordinator.load(provider)
+        _join_and_deliver(coordinator._thread)
+        snapshot = coordinator.snapshot
+        assert coordinator.is_complete
+        assert len(batches) == 2  # Quick overview, then all remaining recorded samples.
+        assert sorted(snapshot.frames_loaded) == steps
+        assert sorted(snapshot.target_positions["pedestrian"]) == [
+            (step, float(step), 5.0, 6.0) for step in steps
+        ]
+        assert progress[-1] == (len(steps), len(steps))
+        assert len(progress) <= 30
+    finally:
+        coordinator.shutdown()
+        provider.close()
+
+
+def test_failed_batch_resumes_scalar_reads_without_losing_later_frames(coordinator, qapp):
+    class Provider(_MappedProviderSource):
+        def list_frames(self):
+            return [0, 1, 2, 3]
+
+        def load_frame(self, step):
+            self.load_calls.append(step)
+            if step == 2:
+                raise OSError("unreadable frame")
+            return _MemoryFileSource([step]).load_frame(step)
+
+        def iter_frame_projections(self, steps, request):
+            yield self.load_frame_projection(steps[0], request)
+            raise OSError("batch failed")
+
+    provider = Provider()
+    coordinator.load(provider)
+    _join_and_deliver(coordinator._thread)
+    snapshot = coordinator.snapshot
+    assert coordinator.is_complete
+    assert snapshot.frames_loaded == (0, 1, 3)
+    assert snapshot.target_positions["pedestrian"][-1] == (3, 3.0, 5.0, 6.0)
+    assert provider.load_calls.count(0) == 1
+
+
 def test_partial_snapshots_are_deeply_immutable_and_stable(
     coordinator: TrajectoryLoadCoordinator,
     qapp,
@@ -261,6 +333,18 @@ def test_shutdown_stops_publication_and_is_idempotent(
     assert coordinator.shutdown() is True
     with pytest.raises(RuntimeError, match="shut down"):
         coordinator.load(source)
+
+
+@pytest.mark.parametrize("owned", [False, True])
+def test_trajectory_scan_closes_only_explicitly_owned_sources(coordinator, qapp, owned):
+    source = _MemoryFileSource([0, 1, 2])
+    closed = []
+    source.close = lambda: closed.append(True)
+    coordinator.load(source, close_source=owned)
+    _join_and_deliver(coordinator._thread)
+    assert coordinator.is_complete
+    assert closed == ([True] if owned else [])
+    assert len(coordinator.snapshot.frames_loaded) == 3
 
 
 def test_preview_progress_is_safe_while_panel_controls_are_being_built(

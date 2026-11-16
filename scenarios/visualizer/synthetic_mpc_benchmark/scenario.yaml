@@ -2,6 +2,9 @@ schema_version: 2
 scene:
   source: sionna
   id: etoile
+raytracing:
+  export_path_metrics: false
+
 timeline:
   steps: 50
   duration_s: 0.0

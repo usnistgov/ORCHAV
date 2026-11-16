@@ -1,0 +1,10 @@
+<scene version="2.1.0">
+  <bsdf type="diffuse" id="mat-itu_concrete">
+    <rgb name="reflectance" value="0.55 0.60 0.68"/>
+  </bsdf>
+  <shape type="ply" id="mesh-wall">
+    <string name="filename" value="wall.ply"/>
+    <boolean name="face_normals" value="true"/>
+    <ref name="bsdf" id="mat-itu_concrete"/>
+  </shape>
+</scene>

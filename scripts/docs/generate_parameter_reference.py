@@ -26,6 +26,7 @@ from shared.scenarios.actors import (
     AlignMotionOrientationSpec,
     CatalogAssetSpec,
     CircularMobilitySpec,
+    ConstantRCSSpec,
     ConstantSpeedTraversalSpec,
     DirectoryAssetSpec,
     Figure8MobilitySpec,
@@ -43,6 +44,8 @@ from shared.scenarios.actors import (
     LookAtOrientationSpec,
     ManhattanGridMobilitySpec,
     MeshSequenceMobilitySpec,
+    NativeBoxGeometrySpec,
+    NativeMeshGeometrySpec,
     NetworkRouteMobilitySpec,
     OrientationKeyframeSpec,
     OscillatingMobilitySpec,
@@ -58,12 +61,14 @@ from shared.scenarios.actors import (
     SurveyMobilitySpec,
     TargetActorSpec,
     TimelineSpec,
+    TR38901RCSSpec,
     TxActorSpec,
     WaypointMobilitySpec,
 )
 from shared.scenarios.model import (
     AntennaArrayModel,
     AntennaModel,
+    CameraPoseModel,
     CoverageDistributionFigureModel,
     CoverageGridModel,
     CoverageMetricsModel,
@@ -81,13 +86,16 @@ from shared.scenarios.model import (
     LiveGrpcEndpointsModel,
     MaterialOverrideModel,
     MpcVisibilityDefaultsModel,
+    NativeRcsSolverModel,
     PathFilterModel,
+    PlaybackViewModel,
     RayTracingModel,
     RayTracingQualityModel,
     RemoteHdf5ConfigModel,
     ScenarioModel,
     SceneMaterialsModel,
     SceneModel,
+    SensingViewModel,
     ViewDefaultsModel,
     VisualizationConfigModel,
 )
@@ -258,6 +266,10 @@ FIELD_DESCRIPTION_FALLBACKS = {
 }
 
 FIELD_DESCRIPTION_OVERRIDES = {
+    ("SpiralMobilitySpec", "interpolation"): (
+        "`linear` traverses a piecewise-linear approximation; `analytic` evaluates "
+        "the smooth helix directly at each timeline sample."
+    ),
     ("ScenarioModel", "timeline"): "Shared endpoint-inclusive scenario timeline.",
     ("ScenarioModel", "actors"): "Transmitter, receiver, and target actor collections.",
     ("ScenarioModel", "groups"): "Optional shared mobility groups referenced by actors.",
@@ -272,7 +284,12 @@ FIELD_DESCRIPTION_OVERRIDES = {
         "Number of endpoint-inclusive samples prepared for every actor and group."
     ),
     ("TimelineSpec", "duration_s"): (
-        "Elapsed scenario time in seconds from the first sample at 0 s to the final sample."
+        "Elapsed time from the first sample at 0 s to the final sample. Derived when "
+        "sample_rate_hz is supplied; a redundant explicit duration must agree."
+    ),
+    ("TimelineSpec", "sample_rate_hz"): (
+        "Optional positive scene sample rate. Derives duration_s as (steps - 1) / sample_rate_hz; "
+        "this scene clock is independent of sensing PRF."
     ),
     ("ActorSpec", "name"): "Globally unique actor name used by references and output metadata.",
     ("ActorSpec", "mobility"): (
@@ -449,6 +466,8 @@ def _schema_values_and_constraints(schema: dict[str, Any]) -> str:
 
 
 def _format_when_omitted(model_class: type[BaseModel], field_name: str) -> str:
+    if model_class is TimelineSpec and field_name == "duration_s":
+        return "derived from `sample_rate_hz`; otherwise required"
     field = model_class.model_fields[field_name]
     if field.default is not PydanticUndefined:
         default = field.default
@@ -673,7 +692,19 @@ def _generate_scenario_parameters() -> str:
             "Timeline",
             "timeline",
             TimelineSpec,
-            summary="Endpoint-inclusive sampling timeline shared by every actor and group.",
+            summary=(
+                "Endpoint-inclusive sampling timeline shared by every actor and group.\n\n"
+                "Specify `steps` with either `duration_s` or `sample_rate_hz`. A rate-based\n"
+                "timeline derives `duration_s = (steps - 1) / sample_rate_hz`: 512 samples\n"
+                "at 1 kHz span 0.511 s, and a single static sample spans 0 s. Existing\n"
+                "duration-only timelines keep their authored duration. If both fields are\n"
+                "supplied, they must agree within relative roundoff tolerance `1e-12`;\n"
+                "the rate determines the resolved duration. Conflicting clocks are rejected.\n\n"
+                "The scene rate controls actor sample times, independently of sensing PRF.\n"
+                "Set them equal when the experiment uses one scene sample per pulse.\n"
+                "In the Scenario Builder's Timeline drawer, enable **Derive duration from\n"
+                "sample rate** to edit the rate and see the calculated duration."
+            ),
             anchor="timeline",
         ),
     ]
@@ -703,7 +734,7 @@ def _generate_scenario_parameters() -> str:
             "Target actor",
             "actors.targets[]",
             TargetActorSpec,
-            summary="A target with mobility, orientation, and a renderable asset.",
+            summary="A target with mobility, orientation, and exactly one RF representation.",
             anchor="actor-target",
         ),
         ModelSection(
@@ -933,6 +964,30 @@ def _generate_scenario_parameters() -> str:
     ]
     target_asset_sections = [
         ModelSection(
+            "Constant RCS model",
+            "actors.targets[].constant_rcs",
+            ConstantRCSSpec,
+            anchor="target-constant-rcs",
+        ),
+        ModelSection(
+            "TR 38.901 RCS model",
+            "actors.targets[].tr38901",
+            TR38901RCSSpec,
+            anchor="target-tr38901",
+        ),
+        ModelSection(
+            "Native absorbing box",
+            "actors.targets[].geometry",
+            NativeBoxGeometrySpec,
+            anchor="target-native-box",
+        ),
+        ModelSection(
+            "Native absorbing mesh",
+            "actors.targets[].geometry",
+            NativeMeshGeometrySpec,
+            anchor="target-native-mesh",
+        ),
+        ModelSection(
             "Catalog target asset",
             "actors.targets[].asset",
             CatalogAssetSpec,
@@ -955,6 +1010,9 @@ def _generate_scenario_parameters() -> str:
         ),
     ]
     raytracing_sections = [
+        ModelSection(
+            "Native RCS solver", "raytracing.rcs", NativeRcsSolverModel, anchor="native-rcs-solver"
+        ),
         ModelSection(
             "Ray tracing",
             "raytracing",
@@ -1118,7 +1176,9 @@ def _generate_scenario_parameters() -> str:
             "generator_summary",
             GeneratorSummaryModel,
             values_overrides={
-                "create": ("`scene2d`, `scene3d`, `speed`, `orientation`, `angular_velocity`")
+                "create": (
+                    "`topology`, `scene2d`, `scene3d`, `speed`, `orientation`, `angular_velocity`, `sensing`"
+                )
             },
             anchor="generator-summary-settings",
         ),
@@ -1133,8 +1193,8 @@ def _generate_scenario_parameters() -> str:
             "generator_summary.visualization",
             VisualizationConfigModel,
             values_overrides={
-                "scene2d_mode": "`rasterized`, `vector`, `auto`",
-                "scene3d_mode": "`floor_plan`, `mesh`, `wireframe`, `hybrid`, `city`",
+                "scene2d_mode": "`mesh`, `auto`, `vector`, `rasterized`",
+                "scene3d_mode": "`mesh`, `auto`, `wireframe`, `hybrid`, `city`, `floor_plan`",
             },
             anchor="generator-summary-presentation",
         ),
@@ -1145,6 +1205,24 @@ def _generate_scenario_parameters() -> str:
             "view_defaults",
             ViewDefaultsModel,
             anchor="view-defaults",
+        ),
+        ModelSection(
+            "Explicit camera pose",
+            "view_defaults.camera_pose",
+            CameraPoseModel,
+            anchor="view-defaults-camera-pose",
+        ),
+        ModelSection(
+            "Playback defaults",
+            "view_defaults.playback",
+            PlaybackViewModel,
+            anchor="view-defaults-playback",
+        ),
+        ModelSection(
+            "Sensing display defaults",
+            "view_defaults.sensing",
+            SensingViewModel,
+            anchor="view-defaults-sensing",
         ),
         ModelSection(
             "MPC visibility defaults",
@@ -1211,7 +1289,10 @@ orientation:
         blocks,
         "## Target Assets",
         target_asset_sections,
-        introduction="Every target actor selects one catalog, file, or directory asset.",
+        introduction=(
+            "Mesh targets select a catalog, file, or directory asset. "
+            "Native RCS targets can instead define geometry through the target representation settings."
+        ),
         example_name="target-asset",
         example_yaml="""
 asset:
@@ -1275,7 +1356,7 @@ data:
         example_yaml="""
 generator_summary:
   enabled: true
-  create: [scene2d, speed]
+  create: [topology, speed]
 """,
     )
     _append_sections(

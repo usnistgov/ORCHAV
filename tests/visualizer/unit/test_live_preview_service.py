@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import pickle
+import queue
 import sys
 from contextlib import nullcontext
 from dataclasses import replace
@@ -10,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
+import pytest
 from PySide6 import QtWidgets
 from PySide6.QtWidgets import QLabel as _REAL_Q_LABEL
 
@@ -329,16 +331,24 @@ def _preview_frame(
     )
 
 
-def _service_with_worker(qapp):
+def _service_with_worker(qapp, *, identify=True):
     viz = _make_viz()
     service = LivePreviewService(viz)
     proc = _FakeProcess()
     launch = patch.object(service, "_launch_worker_process", return_value=proc)
-    readers = patch.object(service, "_start_worker_readers")
+
+    def report_identity(_proc):
+        if identify:
+            service._handle_worker_message(
+                {"type": "identity", "source_identity": service._source_identity.to_dict()}
+            )
+
+    readers = patch.object(service, "_start_worker_readers", side_effect=report_identity)
     launch_mock = launch.start()
     readers_mock = readers.start()
 
     def cleanup():
+        service.reset()
         launch.stop()
         readers.stop()
 
@@ -520,6 +530,35 @@ def test_worker_launch_is_bound_to_loaded_visualizer_source(qapp):
     assert "visualizer.src.services.live_preview_worker" in command
 
 
+def test_worker_stdout_reader_keeps_messages_in_its_original_queue(qapp):
+    service = LivePreviewService(_make_viz())
+    original_queue = service._worker_queue
+    replacement_queue = queue.Queue()
+    identity = {"type": "identity", "source_identity": service._source_identity.to_dict()}
+
+    def outgoing_messages():
+        yield "Worker log before replacement\n"
+        service._worker_queue = replacement_queue
+        yield json.dumps(identity) + "\n"
+        yield json.dumps({"type": "bye"}) + "\n"
+
+    proc = SimpleNamespace(stdout=outgoing_messages(), stderr=None)
+    with patch("visualizer.src.services.live_preview_service.threading.Thread") as thread:
+        service._start_worker_readers(proc)
+
+    reader = thread.call_args.kwargs
+    reader["target"](*reader["args"])
+
+    assert service._worker_queue is replacement_queue
+    assert replacement_queue.empty()
+    assert [original_queue.get_nowait() for _ in range(3)] == [
+        identity,
+        {"type": "bye"},
+        {"type": "stdout_closed"},
+    ]
+    assert original_queue.empty()
+
+
 def test_enable_acquires_transform_session_starts_worker_and_sends_init(qapp):
     viz, service, proc, launch, readers, cleanup = _service_with_worker(qapp)
     try:
@@ -557,6 +596,124 @@ def test_worker_ready_rejects_a_different_source_tree(qapp, tmp_path):
         assert service._worker_ready is False
         assert service._worker_process is None
         assert "does not match" in viz._live_preview_status
+    finally:
+        cleanup()
+
+
+def test_worker_initializes_once_only_after_matching_identity(qapp):
+    _viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp, identify=False)
+    try:
+        assert service.set_enabled(True)
+        assert _messages(proc) == []
+        assert not service._worker_ready
+        identity = {"type": "identity", "source_identity": service._source_identity.to_dict()}
+
+        service._handle_worker_message(identity)
+        service._handle_worker_message(identity)
+
+        assert [message["command"] for message in _messages(proc)] == ["init"]
+        assert not service._worker_ready
+        _mark_worker_ready(service)
+        assert service._worker_ready
+    finally:
+        cleanup()
+
+
+def test_worker_initializes_with_matching_archive_identity(qapp):
+    _viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp, identify=False)
+    service._source_identity = replace(service._source_identity, git_sha=None)
+    try:
+        assert service.set_enabled(True)
+        assert _messages(proc) == []
+        service._handle_worker_message(
+            {"type": "identity", "source_identity": service._source_identity.to_dict()}
+        )
+        assert service._worker_process is proc
+        assert service._worker_identified
+        assert [message["command"] for message in _messages(proc)] == ["init"]
+        _mark_worker_ready(service)
+        assert service._worker_ready
+    finally:
+        cleanup()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("git_sha", "new-worker-revision"), ("git_sha", None), ("version", "different-version")],
+)
+def test_worker_identity_mismatch_reports_values_before_initialization(qapp, field, value):
+    viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp, identify=False)
+    # Archive installs have no Git metadata. Establish a known parent revision
+    # so the None case actually represents a mismatch in every distribution.
+    service._source_identity = replace(service._source_identity, git_sha="visualizer-revision")
+    try:
+        assert service.set_enabled(True)
+        original = service._source_identity
+        child = original.to_dict()
+        child[field] = value
+
+        service._handle_worker_message({"type": "identity", "source_identity": child})
+
+        assert service._worker_process is None
+        assert not service._worker_ready
+        assert not service._worker_identified
+        assert [message["command"] for message in _messages(proc)] == ["shutdown"]
+        assert "Restart the visualizer" in viz._live_preview_status
+        assert f"{field}: visualizer={original.to_dict()[field]!r}" in viz._live_preview_status
+        assert f"worker={value!r}" in viz._live_preview_status
+        assert service._source_identity is original
+    finally:
+        cleanup()
+
+
+def test_worker_rejects_wrong_checkout_before_initialization(qapp, tmp_path):
+    viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp, identify=False)
+    try:
+        assert service.set_enabled(True)
+        child = service._source_identity.to_dict()
+        child["source_root"] = str(tmp_path)
+
+        service._handle_worker_message({"type": "identity", "source_identity": child})
+
+        assert service._worker_process is None
+        assert [message["command"] for message in _messages(proc)] == ["shutdown"]
+        assert str(service._source_identity.source_root) in viz._live_preview_status
+        assert f"worker={str(tmp_path)!r}" in viz._live_preview_status
+    finally:
+        cleanup()
+
+
+def test_worker_ready_cannot_skip_initial_identity_check(qapp):
+    viz, service, _proc, _launch, _readers, cleanup = _service_with_worker(qapp, identify=False)
+    try:
+        assert service.set_enabled(True)
+
+        _mark_worker_ready(service)
+
+        assert service._worker_process is None
+        assert not service._worker_ready
+        assert "before source identity was verified" in viz._live_preview_status
+    finally:
+        cleanup()
+
+
+def test_worker_rejects_revision_changed_between_identity_and_ready(qapp):
+    viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp)
+    try:
+        assert service.set_enabled(True)
+        assert service._worker_identified
+        assert [message["command"] for message in _messages(proc)] == ["init"]
+        changed_identity = service._source_identity.to_dict()
+        changed_identity["git_sha"] = "revision-written-during-initialization"
+
+        service._handle_worker_message({"type": "ready", "source_identity": changed_identity})
+
+        assert service._worker_process is None
+        assert not service._worker_ready
+        assert not service._worker_identified
+        assert [message["command"] for message in _messages(proc)] == ["init", "shutdown"]
+        assert "Restart the visualizer" in viz._live_preview_status
+        assert changed_identity["git_sha"] in viz._live_preview_status
     finally:
         cleanup()
 
@@ -623,6 +780,7 @@ def test_worker_result_path_must_match_service_owned_path(qapp, tmp_path):
         assert viz._live_preview_frame is None
         assert service._worker_process is None
         assert "unexpected result path" in viz._live_preview_status
+        assert unexpected.is_file()
     finally:
         cleanup()
 
@@ -1366,6 +1524,7 @@ def test_busy_worker_queues_release_and_discards_old_result(qapp):
         )
 
         assert viz._live_preview_frame is None
+        assert not old_output.exists()
         messages = _messages(proc)
         assert messages[-1]["request"]["quality"] == "release"
     finally:
@@ -1400,6 +1559,107 @@ def test_worker_result_applies_latest_preview_frame(qapp):
         assert viz._live_preview_frame["canonical_data"] is not None
         assert viz._live_preview_step == 7
         assert viz.update_calls == 1
+        assert not output.exists()
+    finally:
+        cleanup()
+
+
+def test_repeated_preview_results_do_not_accumulate_on_disk(qapp):
+    viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp)
+    try:
+        service.set_enabled(True)
+        _mark_worker_ready(service)
+        proc.stdin.lines.clear()
+        for _ in range(5):
+            service._request_solve("release")
+            request = _messages(proc)[-1]["request"]
+            output = Path(request["output_path"])
+            with output.open("wb") as handle:
+                pickle.dump(_preview_frame(), handle)
+            service._handle_worker_message({"type": "result", "status": "ok", **request})
+            assert list(output.parent.iterdir()) == []
+        assert viz.update_calls == 5
+        assert viz._live_preview_frame["canonical_data"] is not None
+    finally:
+        cleanup()
+
+
+@pytest.mark.parametrize("failure", ["corrupt", "invalid_frame", "result_error", "worker_error"])
+def test_failed_preview_result_removes_owned_output_and_allows_next_solve(qapp, failure):
+    viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp)
+    try:
+        service.set_enabled(True)
+        _mark_worker_ready(service)
+        proc.stdin.lines.clear()
+        service._request_solve("drag")
+        request = _messages(proc)[-1]["request"]
+        output = Path(request["output_path"])
+        output.write_bytes(
+            pickle.dumps("invalid frame") if failure == "invalid_frame" else b"partial"
+        )
+        message = {"type": "result", "status": "ok", **request}
+        if failure == "result_error":
+            message.update(status="error", error="solve failed")
+        elif failure == "worker_error":
+            # The stdio worker's exception message has no sequence or path.
+            message = {"type": "error", "error": "write failed"}
+        service._handle_worker_message(message)
+        assert not output.exists()
+        assert "Preview failed:" in viz._live_preview_status
+        service._request_solve("release")
+        assert _messages(proc)[-1]["request"]["sequence"] > request["sequence"]
+    finally:
+        cleanup()
+
+
+@pytest.mark.parametrize("message_type", ["result", "error"])
+def test_worker_error_removes_partial_output_before_pending_solve(qapp, message_type):
+    _viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp)
+    try:
+        service.set_enabled(True)
+        _mark_worker_ready(service)
+        proc.stdin.lines.clear()
+        service._request_solve("drag")
+        first = _messages(proc)[-1]["request"]
+        output = Path(first["output_path"])
+        output.write_bytes(b"partial")
+        service._request_solve("release")
+        message = {"type": message_type, "status": "error", "error": "solve failed"}
+        if message_type == "result":
+            message["sequence"] = first["sequence"]
+        service._handle_worker_message(message)
+        assert not output.exists()
+        latest = _messages(proc)[-1]["request"]
+        assert latest["sequence"] > first["sequence"]
+        assert latest["quality"] == "release"
+        assert service._worker_busy
+    finally:
+        cleanup()
+
+
+def test_stale_preview_cleanup_preserves_newer_output_and_unowned_path(qapp, tmp_path):
+    _viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp)
+    try:
+        service.set_enabled(True)
+        _mark_worker_ready(service)
+        proc.stdin.lines.clear()
+        service._request_solve("drag")
+        first = _messages(proc)[-1]["request"]
+        first_output = Path(first["output_path"])
+        first_output.write_bytes(b"stale")
+        service._request_solve("release")
+        service._handle_worker_message({"type": "result", "status": "ok", **first})
+        current = _messages(proc)[-1]["request"]
+        current_output = Path(current["output_path"])
+        current_output.write_bytes(b"current result")
+        unrelated = tmp_path / "unrelated.pkl"
+        unrelated.write_bytes(b"preserve me")
+        service._handle_worker_message(
+            {"type": "result", "sequence": first["sequence"], "output_path": str(unrelated)}
+        )
+        assert not first_output.exists()
+        assert current_output.read_bytes() == b"current result"
+        assert unrelated.read_bytes() == b"preserve me"
     finally:
         cleanup()
 
@@ -1420,6 +1680,73 @@ def test_apply_preview_frame_invalidates_canonical_step(qapp):
         reason="live_preview",
     )
     assert viz.update_calls == 1
+
+
+def test_preview_request_and_apply_preserve_recorded_sensing_clock(qapp):
+    from tests.visualizer.fixtures.sensing_v3 import build_visualizer_sensing_payload
+    from visualizer.src.services.sensing_service import SensingService
+
+    viz, service, proc, _launch, _readers, cleanup = _service_with_worker(qapp)
+    sensing = build_visualizer_sensing_payload({}, scene_frame_id=7, sample_time_s=43.125)
+    recorded = {"timestamp_s": 43.125, "sensing": sensing}
+    viz.cache_service.get_frame = lambda step: recorded if step == 7 else None
+    try:
+        service.set_enabled(True)
+        _mark_worker_ready(service)
+        service.recompute_now()
+        request = _messages(proc)[-1]["request"]
+        assert request["step"] == 7
+        assert request["scene_time_s"] == 43.125
+
+        preview = replace(
+            _preview_frame(),
+            timestamp_s=request["scene_time_s"],
+            provenance={"provider": "live_preview", "timestamp": request["scene_time_s"]},
+        )
+        service._apply_preview_frame(preview, sequence=1)
+        assert SensingService._scene_time_s(viz._live_preview_frame) == 43.125
+        assert viz._live_preview_frame["_source"]["timestamp"] == 43.125
+        assert recorded["sensing"] is sensing
+        assert sensing["temporal"]["result"]["reference_time_s"] == 43.125
+    finally:
+        cleanup()
+
+
+@pytest.mark.parametrize("timestamps", [(43.125, 43.875), (None, None)])
+def test_preview_clock_cache_miss_reads_only_compact_recorded_metadata(
+    qapp, tmp_path, monkeypatch, timestamps
+):
+    from shared.frames import FrameComponent
+    from shared.frames.frame_set_writer import FrameSetWriter
+    from shared.frames.providers import Hdf5Provider
+
+    writer = FrameSetWriter.create_new(tmp_path / "frames", compression=None)
+    for step, timestamp in zip((7, 128), timestamps, strict=True):
+        writer.append(replace(_preview_frame(frame_index=step), timestamp_s=timestamp))
+    writer.finalize()
+    provider = Hdf5Provider(tmp_path)
+    viz = _make_viz()
+    viz.frame_source = SimpleNamespace(provider=provider)
+    viz.cache_service.get_frame = lambda step: None
+    service = LivePreviewService(viz)
+    reads = []
+    original = provider.load_frame_projection
+
+    def load(step, request):
+        assert request.components == frozenset({FrameComponent.PROVENANCE})
+        assert not request.metrics
+        assert not request.sensing_products
+        reads.append(step)
+        return original(step, request)
+
+    monkeypatch.setattr(provider, "load_frame_projection", load)
+    try:
+        for step, timestamp in zip((7, 128), timestamps, strict=True):
+            request = service._base_worker_request(step, quality="release")
+            assert request["scene_time_s"] == timestamp
+        assert reads == [7, 128]
+    finally:
+        provider.close()
 
 
 def test_worker_exit_reports_failure_without_applying_frame(qapp):

@@ -1,0 +1,201 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "scenarios/sensing/cube_radar/moving_tracking_3d",
+  "source_identity": {
+    "generation_id": "0d409fa3-1142-4668-9495-2384530e83c4",
+    "frame_set_id": "b5b6415be4b2fb260b87bd82e88b2dc873297a79e694249c0182232668121d76"
+  },
+  "manifest_sha256": "b07f5b6c70f08952792f27d0f0dc5d810b05ba3c7abfd7ca9eb986bdd2c321ac",
+  "source_files_sha256": {
+    "frames_manifest.json": "b07f5b6c70f08952792f27d0f0dc5d810b05ba3c7abfd7ca9eb986bdd2c321ac",
+    "mpc_frames_00000-00062.h5": "71fd7110aec9ae2083412b2104d83140955b9afdb8752062f84c47918905376c",
+    "mpc_frames_00063-00063.h5": "cdc113602844995cadca1c0a55b86523567a0bd140334b8deca4b52b8459a21b",
+    "mpc_frames_00064-00126.h5": "e4f7498dbbb2f619f747effe9bc8a56a6bcb62695d806d5b832bb5cba97f0385",
+    "mpc_frames_00127-00127.h5": "a60c3a7ecab066ef5079375ccf79750b9fe317d4f0d7264eb03bd28903c62328",
+    "mpc_frames_00128-00190.h5": "ea6cb34b04528544fe4f11a376a22ecc56d0db365446638cca8e40e814777f6d",
+    "mpc_frames_00191-00191.h5": "c965cf6a53c4b9d0b3a29dae2c11ab4163b986e7ad5dd490ab4dd34af748636d",
+    "mpc_frames_00192-00254.h5": "69548be2489b972602c3efd3fa10feb5f697bb95be82d5b03fee7024d4f8f5bc",
+    "mpc_frames_00255-00255.h5": "4dac834fbe4c5b2d9e4d5a8e7a9106751daaf6aafe1045611757c46a79702598",
+    "mpc_frames_00256-00318.h5": "5a71b74f5cbbf3f78411402b81e33ee9db0ccb114ca84412c517c2f98ee2df50",
+    "mpc_frames_00319-00319.h5": "70553268272c1515fb884b940e381c9868e02b4f01a1f5e7175aeb2eba6e6b57",
+    "mpc_frames_00320-00382.h5": "b7766cb9a0db679db58255d4e5f16a1ff34fd24c78fdbf716af67fc8eb98df06",
+    "mpc_frames_00383-00383.h5": "9a51e902c9c33948a1bc5f7ef3f99fdacdaaa7f33de768fdda6f74408cb130ae",
+    "mpc_frames_00384-00446.h5": "6abe563fcc707530d27102176587bdd024381d765ab1afece8e6c4edbd9536e6",
+    "mpc_frames_00447-00447.h5": "e3407e8bd8a96618894e61d401fbdf0759f65f206ff5c7baca6085596a7c9407",
+    "mpc_frames_00448-00510.h5": "e8bb03e3ca8ba44a4fb2b1b30103134cc10e7c8b3f460ab69e65dcfa6d227c99",
+    "mpc_frames_00511-00511.h5": "48951331803e2e503f2302930a93eed9f495ec57c31712d0f3cbf6bf1045f00c",
+    "mpc_frames_00512-00574.h5": "676d64184e7639600f1a4ebf58d7c89af28304df6e594b9675ffb67ef6ff5af8",
+    "mpc_frames_00575-00575.h5": "d57b259073f77396202a7d5b75e888a1e78554f85cda3455b14469569be6bafb",
+    "mpc_frames_00576-00638.h5": "837ea09b5c1b7ac3a1901351d17e18800c357b5ec33e9d730116f81efe0754f7",
+    "mpc_frames_00639-00639.h5": "ee08a0a8808abbc8dc11f482416445d3f8096ba919fbb523d7064726ed5ddac3",
+    "mpc_frames_00640-00702.h5": "daef290713349a9ad360f650642e6ad3b1fe4222717b326c712718143c7db98d",
+    "mpc_frames_00703-00703.h5": "9ed3e7369310a538c8df1bed12704157f49859146259d5ee6f11ed26fd642a1b",
+    "mpc_frames_00704-00766.h5": "81fed25d5b127970d51462395c5bffe71d582a27d5c4264ee9fb9b1be0be8214",
+    "mpc_frames_00767-00767.h5": "6b2dbff8157f56f33635bd6ef5bfc13ffbfb0dfeabdcfa9816b4ce2f903d33d3",
+    "mpc_frames_00768-00830.h5": "2453768dcfaeb5a9feb8cdbbcdb649ff0c051d8ef4ae055d538e17588f560f17",
+    "mpc_frames_00831-00831.h5": "30d0b4618de83b1467f9ce48153276c38ebc647405b07397f65562ce52d7aee4",
+    "mpc_frames_00832-00894.h5": "a4abdc71f71e0d8f440a7103ddeef61222eb8db3a5c1d577a0d3b99ab5489ddb",
+    "mpc_frames_00895-00895.h5": "1ca5a859b41e172372574bbe29ffc7d6bfeae10bf5e584d26b41ff640af77cfd",
+    "mpc_frames_00896-00958.h5": "e75eae280d63c3691dca58c0469b5d0818330ba486dadfe87688fdf5e3d50789",
+    "mpc_frames_00959-00959.h5": "e9958d867a1121936898eb530ae0b7bd2b96c86326b7cf71d59f588b30d68899",
+    "mpc_frames_00960-01022.h5": "7d45cda253737d77fe4a2a682d181c96b09282cd4a21affd62391f31c3a17774",
+    "mpc_frames_01023-01023.h5": "1908f36c843d4e4264cf5530e65f76354062fe7f7e062d6e9ce0044f1243eb22"
+  },
+  "figures": [
+    "tracking_cartesian",
+    "tracking_xyz"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 16,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "9c0744b3-e00e-5cc7-8275-2834252c27cd",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 0
+    },
+    {
+      "frame_index": 127,
+      "reference_time_s": 0.06399999999999999,
+      "acquisition_id": "ef4e50a4-1da4-52ed-9fea-7a0a25491dbb",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 191,
+      "reference_time_s": 0.12799999999999997,
+      "acquisition_id": "2cddb1c1-7e81-5313-bbbf-ac23659d4683",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 255,
+      "reference_time_s": 0.19199999999999995,
+      "acquisition_id": "e739a404-c074-5883-a4b0-a672182ea441",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 319,
+      "reference_time_s": 0.25599999999999995,
+      "acquisition_id": "5e594b23-7d86-594f-a34d-4cc1cae66ece",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 383,
+      "reference_time_s": 0.31999999999999995,
+      "acquisition_id": "e348ad14-9264-5d46-84bd-6a535518fb3b",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 447,
+      "reference_time_s": 0.3839999999999999,
+      "acquisition_id": "3a8f71da-6663-5886-af87-7b176474a2d7",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 511,
+      "reference_time_s": 0.4479999999999999,
+      "acquisition_id": "abd85598-5aa2-5f97-92cb-0761d36fef1b",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 575,
+      "reference_time_s": 0.5119999999999999,
+      "acquisition_id": "77308135-ea05-5394-a115-f779bb252ac0",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 639,
+      "reference_time_s": 0.5759999999999998,
+      "acquisition_id": "f27eff95-b7cf-5638-815e-d7d969621330",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 703,
+      "reference_time_s": 0.6399999999999999,
+      "acquisition_id": "60c0be04-e3bd-569f-af33-cb42bc44b4df",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 767,
+      "reference_time_s": 0.7039999999999998,
+      "acquisition_id": "d4edc25b-44a5-5dbb-b805-756496788d62",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 831,
+      "reference_time_s": 0.7679999999999998,
+      "acquisition_id": "d11b36cc-638d-5022-bd2d-ce26f149f17f",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 895,
+      "reference_time_s": 0.8319999999999999,
+      "acquisition_id": "55dc4f0d-e911-5db2-9c77-6c00b49a1d1f",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 959,
+      "reference_time_s": 0.8959999999999998,
+      "acquisition_id": "744f59cb-c4a8-5042-8bb8-9776343962a5",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 1023,
+      "reference_time_s": 0.9599999999999999,
+      "acquisition_id": "976f6627-7558-5805-a565-f90c275d553f",
+      "processing_recipe_id": "8dcce2163c591ee2278aa85c1fc779b089db50f59456d2a073a3d7155c1acee1",
+      "detection_count": 1
+    }
+  ],
+  "outputs": [
+    "sensing/tracking_cartesian.png",
+    "sensing/tracking_xyz.png"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "summary_output": "sensing/tracking_cartesian.png",
+  "output": "docs/assets/sensing_summary/cube_radar_moving_tracking_3d_tracking_cartesian.png",
+  "output_sha256": "23a7587d46bd757b9d94e8d878444ab3686e0f9e772cc1c4ab5c31c0cd3d678a",
+  "plotting_source_sha256": {
+    "generator/figures/summary/sensing.py": "68714c70423f25301376c173a5b54bd34b640b28aad113d5993120d4bdec9537",
+    "generator/figures/summary/saved_sensing.py": "93c189d60bb2b71ad65a7a454c4379d7830f1b77285dec8daec04781fd0abcd1",
+    "shared/sensing_viz.py": "45def40892a71ec9fddf952ae697673174d8d3bcf4646b67ee79206b61175ef1",
+    "shared/sensing_doppler_summary.py": "673a30d11deef54429c768cc09c61a15b0db00010cd4ce9d594db3edbb2208a3",
+    "shared/sensing_figure_style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.summary.saved_sensing",
+    "scenarios/sensing/cube_radar/moving_tracking_3d",
+    "-o",
+    "analysis/public-figure-refresh/summary-6",
+    "--figure",
+    "tracking_cartesian",
+    "--figure",
+    "tracking_xyz"
+  ],
+  "path_convention": "Repository-relative source paths and reproducible output-directory names.",
+  "image": "cube_radar_moving_tracking_3d_tracking_cartesian.png",
+  "sha256": "23a7587d46bd757b9d94e8d878444ab3686e0f9e772cc1c4ab5c31c0cd3d678a",
+  "tutorial_scenario": "scenarios/sensing/cube_radar/moving_tracking_3d/scenario.yaml",
+  "tutorial_scenario_sha256": "60ac490536360cdb7d73c5c0686313b514e97274ca1fa76a9ada622a609b6604",
+  "license_spdx": "GPL-3.0-only",
+  "execution_backend": "CPU LLVM",
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "05bfe5602c51c7b41325326dc14900bf878979074904f86d526bc6fa73959e64"
+}

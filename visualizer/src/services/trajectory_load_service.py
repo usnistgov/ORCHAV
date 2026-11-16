@@ -16,7 +16,7 @@ from typing import Any, ClassVar
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 
-from shared.frames import StandardMPCFrame, project_standard_mpc_frame
+from shared.frames import ProjectedMPCFrame, StandardMPCFrame, project_standard_mpc_frame
 from shared.logging import get_logger
 
 from ..io.frame_sources import FileSource, RemoteHdf5Source
@@ -143,12 +143,14 @@ class _TrajectoryLoadWorker:
         frame_source: Any,
         *,
         is_current: Callable[[], bool],
+        close_source: bool = False,
     ) -> None:
         """Bind the worker to a source and coordinator generation."""
         self.generation = generation
         self.frame_source = frame_source
         self.signals = _TrajectoryLoadSignals()
         self._is_current = is_current
+        self._close_source = close_source
         self._stop_requested = threading.Event()
 
     def request_stop(self) -> None:
@@ -227,6 +229,9 @@ class _TrajectoryLoadWorker:
             logger.error("Trajectory extraction failed: %s", exc)
             if not self._should_stop():
                 self.signals.error_occurred.emit(self.generation, str(exc))
+        finally:
+            if self._close_source:
+                self.frame_source.close()
 
     def _load_frames(
         self,
@@ -237,24 +242,48 @@ class _TrajectoryLoadWorker:
     ) -> bool:
         """Load one extraction phase, returning false when the run is retired."""
         total_frames = int(trajectories["total_frames"])
+        provider = frame_source_provider(self.frame_source)
+        projections = None
+        if provider is not None:
+            try:
+                projections = iter(provider.iter_frame_projections(frames, TRAJECTORY_READ_REQUEST))
+            except NotImplementedError:
+                pass
         for index, frame_idx in enumerate(frames):
             if self._should_stop():
                 return False
             try:
-                provider = frame_source_provider(self.frame_source)
-                frame_data = try_load_packed_trajectory_frame(provider, frame_idx)
+                frame_data = None
+                if projections is not None:
+                    try:
+                        frame_data = next(projections).frame
+                    except (
+                        AttributeError,
+                        IndexError,
+                        OSError,
+                        RuntimeError,
+                        KeyError,
+                        TypeError,
+                        ValueError,
+                        StopIteration,
+                    ):
+                        # A failed batch must not hide the remaining valid frames.
+                        # Resume scalar reads at this public source step.
+                        projections = None
+                if frame_data is None:
+                    frame_data = try_load_packed_trajectory_frame(provider, frame_idx)
                 if frame_data is None:
                     frame_data = self.frame_source.load_frame(frame_idx)
                 if self._should_stop():
                     return False
                 self._extract_positions(frame_idx, frame_data, trajectories)
                 trajectories["frames_loaded"].append(frame_idx)
-                self.signals.progress_updated.emit(
-                    self.generation,
-                    len(trajectories["frames_loaded"]),
-                    total_frames,
-                )
-                if index % update_interval == 0:
+                if index % update_interval == 0 or index == len(frames) - 1:
+                    self.signals.progress_updated.emit(
+                        self.generation,
+                        len(trajectories["frames_loaded"]),
+                        total_frames,
+                    )
                     self._publish_snapshot(trajectories, complete=False)
             except (
                 AttributeError,
@@ -271,18 +300,19 @@ class _TrajectoryLoadWorker:
     @staticmethod
     def _extract_positions(
         frame_idx: int,
-        frame_data: Mapping[str, Any] | StandardMPCFrame,
+        frame_data: Mapping[str, Any] | StandardMPCFrame | ProjectedMPCFrame,
         trajectories: dict[str, Any],
     ) -> None:
         """Append TX, RX, and named target positions from one frame."""
         if isinstance(frame_data, StandardMPCFrame):
-            projected = project_standard_mpc_frame(
+            frame_data = project_standard_mpc_frame(
                 frame_data,
                 TRAJECTORY_READ_REQUEST,
             ).frame
-            tx_pos = projected.tx_positions
-            rx_pos = projected.rx_positions
-            targets_meta = projected.targets_metadata
+        if isinstance(frame_data, ProjectedMPCFrame):
+            tx_pos = frame_data.tx_positions
+            rx_pos = frame_data.rx_positions
+            targets_meta = frame_data.targets_metadata
         else:
             tx_pos = frame_data.get("tx_positions")
             rx_pos = frame_data.get("rx_positions")
@@ -370,8 +400,12 @@ class TrajectoryLoadCoordinator(QObject):
         with self._lock:
             return self._shutdown
 
-    def load(self, frame_source: Any) -> bool:
+    def load(self, frame_source: Any, *, close_source: bool = False) -> bool:
         """Start one load unless this source is already loading or complete.
+
+        ``close_source`` transfers ownership of a dedicated scan source to the
+        worker. It closes that source after completion, failure or cancellation.
+        Normal playback sources remain owned by their caller by default.
 
         Returns:
             ``True`` when a new worker was started, otherwise ``False``.
@@ -386,10 +420,10 @@ class TrajectoryLoadCoordinator(QObject):
             if self._source is frame_source and (self._worker is not None or self._complete):
                 return False
 
-        self._replace_active_load(frame_source)
+        self._replace_active_load(frame_source, close_source=close_source)
         return True
 
-    def _replace_active_load(self, frame_source: Any) -> None:
+    def _replace_active_load(self, frame_source: Any, *, close_source: bool = False) -> None:
         """Retire prior work and launch a new guarded generation."""
         with self._lock:
             prior = self._detach_active_locked()
@@ -405,6 +439,7 @@ class TrajectoryLoadCoordinator(QObject):
                 generation,
                 frame_source,
                 is_current=lambda: self._is_current_generation(generation),
+                close_source=close_source,
             )
             worker.signals.progress_updated.connect(
                 self._on_worker_progress,
@@ -550,5 +585,6 @@ class TrajectoryLoadCoordinator(QObject):
                 thread.join(timeout=remaining)
             if thread.is_alive():
                 all_stopped = False
-                logger.warning("Trajectory worker did not stop within %.1f seconds", timeout)
+                if timeout > 0:
+                    logger.warning("Trajectory worker did not stop within %.1f seconds", timeout)
         return all_stopped

@@ -29,6 +29,11 @@ from PySide6.QtWidgets import (
 from shared.logging import get_logger
 
 from ..materials.appearance import MaterialDisplayMode, VisualMaterialSource
+from ..materials.texture_policy import (
+    texture_maps_override,
+    textures_globally_enabled,
+    textures_locked_off,
+)
 from ..renderers.protocol import renderer_capabilities
 from ..state import (
     DEFAULT_RF_XRAY_OPACITY,
@@ -69,6 +74,155 @@ class MaterialsPanel(BasePanel):
         layout = QVBoxLayout(group)
         layout.setSpacing(8)
         layout.setContentsMargins(8, 8, 8, 8)
+
+        # The pygfx Appearance panel reuses this same widget after construction.
+        # Other renderers keep it here; there is only one set of handlers.
+        self.surface_controls = QWidget()
+        layout.addWidget(self.surface_controls)
+        layout = QVBoxLayout(self.surface_controls)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        texture_row = self.texture_maps_row = QHBoxLayout()
+        texture_row.addWidget(QLabel("Texture maps"))
+        textures = QComboBox()
+        textures.addItem("Launch default", "default")
+        textures.addItem("On", "on")
+        textures.addItem("Off", "off")
+        textures.setToolTip(
+            "Enable albedo and surface-detail maps for this session. "
+            "Off restores solid material colors; Launch default restores your startup choice. "
+            "First activation may build texture/UV caches. RF materials and data colors are unchanged. "
+            "An explicit --disable-textures launch keeps maps locked off."
+        )
+        textures.currentIndexChanged.connect(self._on_texture_maps_changed)
+        texture_row.addWidget(textures, 1)
+        self.widgets["texture_maps"] = textures
+        layout.addLayout(texture_row)
+        self.widgets["texture_maps_status"] = QLabel()
+        self.widgets["texture_maps_status"].setWordWrap(True)
+        texture_status_row = QHBoxLayout()
+        texture_status_row.addWidget(self.widgets["texture_maps_status"], 1)
+        retry = QPushButton("Retry")
+        retry.setToolTip("Retry applying the current texture-map choice")
+        retry.clicked.connect(
+            lambda: self._on_texture_maps_changed(self.widgets["texture_maps"].currentIndex())
+        )
+        retry.hide()
+        self.widgets["texture_maps_retry"] = retry
+        texture_status_row.addWidget(retry)
+        layout.addLayout(texture_status_row)
+
+        authored = QCheckBox("Custom surface textures")
+        authored.setChecked(getattr(self.parent, "authored_surface_textures", True))
+        authored.setToolTip(
+            "Show authored landmark/surface maps. Clear to use their original material "
+            "textures. This display option does not change radio materials or geometry."
+        )
+        authored.toggled.connect(self._on_authored_surface_textures_changed)
+        self.widgets["authored_surface_textures"] = authored
+        layout.addWidget(authored)
+
+        row = QHBoxLayout()
+        building_label = QLabel("Buildings")
+        row.addWidget(building_label)
+        style = QComboBox()
+        for label, value, description in (
+            ("Original materials", "original", "Keep the scene's existing surface materials."),
+            (
+                "Repeated facade textures",
+                "procedural",
+                "Repeat generated window patterns across classified building walls, with simple roof colors.",
+            ),
+            (
+                "Facades by building",
+                "varied",
+                "Fit generated floors and window layouts to each building, using the selected facade theme.",
+            ),
+        ):
+            style.addItem(label, value)
+            style.setItemData(style.count() - 1, description, Qt.ToolTipRole)
+        style.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        style.setMinimumContentsLength(12)
+        style.setToolTip(
+            "Add illustrative facade and roof textures to classified buildings. "
+            "Repeated facade textures tile a simple pattern; Facades by building fits "
+            "floors and windows to each building and offers architecture themes. "
+            "Requires texture maps and building metadata. Radio materials and simulation geometry are unchanged."
+        )
+        building_label.setBuddy(style)
+        style.currentIndexChanged.connect(self._on_building_appearance_changed)
+        row.addWidget(style, 1)
+        self.widgets["building_appearance"] = style
+        layout.addLayout(row)
+
+        theme_row = QHBoxLayout()
+        theme_row.addWidget(QLabel("Facade theme"))
+        theme = QComboBox()
+        for label, value in (
+            ("Mixed urban", "mixed"),
+            ("American downtown", "american"),
+            ("European masonry", "european"),
+            ("East Asian urban", "asian"),
+            ("Portuguese tiles", "portuguese"),
+            ("Limestone and slate", "paris"),
+            ("Haussmann detail", "haussmann"),
+        ):
+            theme.addItem(label, value)
+        theme.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        theme.setMinimumContentsLength(12)
+        theme.setToolTip(
+            "Architecture palette for Facades by building. Portuguese tiles includes plaster "
+            "and tiled walls; Haussmann detail adds window, balcony and cornice detail maps. "
+            "Illustrative designs, not surveyed local facades; roads and radio materials are unchanged."
+        )
+        theme.currentIndexChanged.connect(self._on_facade_theme_changed)
+        theme_row.itemAt(0).widget().setBuddy(theme)
+        theme_row.addWidget(theme, 1)
+        self.widgets["facade_theme"] = theme
+        self.widgets["facade_theme_label"] = theme_row.itemAt(0).widget()
+        layout.addLayout(theme_row)
+
+        road_row = QHBoxLayout()
+        road_label = QLabel("Roads")
+        road_row.addWidget(road_label)
+        roads = QComboBox()
+        roads.addItem("Original surfaces", "original")
+        roads.addItem("Textures + markings", "marked")
+        roads.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        roads.setMinimumContentsLength(9)
+        roads.setToolTip(
+            "Explicit surface tags style paths; unknown paths retain their base color. "
+            "Markings follow producer-classified road strips. Lane tags are used when "
+            "available, otherwise a simple road-class default. No surveyed junctions "
+            "or traffic-rule claim. Requires Texture maps On and road metadata."
+        )
+        road_label.setBuddy(roads)
+        roads.currentIndexChanged.connect(self._on_road_appearance_changed)
+        road_row.addWidget(roads, 1)
+        self.widgets["road_appearance"] = roads
+        layout.addLayout(road_row)
+
+        street_row = QHBoxLayout()
+        street_names = QCheckBox("Street names")
+        street_names.setChecked(False)
+        street_names.toggled.connect(self._on_street_names_changed)
+        self.widgets["street_names"] = street_names
+        street_row.addWidget(street_names)
+        street_style = QComboBox()
+        for label, mode in (("Plain", "plain"), ("Box", "box"), ("Card", "card")):
+            street_style.addItem(label, mode)
+        street_style.setToolTip(
+            "Street-name appearance at road level, without leaders. Box adds a rectangular "
+            "background; Card adds a compact rounded frame. Actor and sensing labels keep their own style."
+        )
+        street_style.setAccessibleName("Street-name style")
+        street_style.setCurrentIndex(street_style.findData("card"))
+        street_style.currentIndexChanged.connect(self._on_street_name_style_changed)
+        self.widgets["street_name_style"] = street_style
+        street_row.addWidget(street_style, 1)
+        layout.addLayout(street_row)
+
+        layout = group.layout()
 
         # Material type selector
         material_layout = QHBoxLayout()
@@ -189,9 +343,9 @@ class MaterialsPanel(BasePanel):
 
         layout.addWidget(visual_group)
 
-        # Advanced PBR section — collapsible, default-collapsed. Explicit
-        # material-feature capabilities disable unsupported controls with a
-        # reason while preserving their semantic values for renderer changes.
+        # Advanced PBR starts collapsed. Renderer capabilities hide unsupported
+        # glass controls and disable other unsupported features, retaining values
+        # across renderer changes.
         # Note: glass_thickness is intentionally distinct from any
         # XML-derived wall/object thickness metadata.
         self.widgets["advanced_pbr_group"] = self.create_subgroup_box("Advanced PBR")
@@ -289,13 +443,10 @@ class MaterialsPanel(BasePanel):
         preset_combo_row.setSpacing(4)
         preset_combo_row.addWidget(QLabel("Built-in:"))
         self.widgets["preset_combo"] = QComboBox()
-        self.widgets["preset_combo"].setToolTip("Apply a built-in material preset")
-        self.widgets["preset_combo"].currentIndexChanged.connect(self._on_preset_selected)
+        self.widgets["preset_combo"].setPlaceholderText("Choose a preset…")
+        # Only explicit choices apply a preset, including choosing it again.
+        self.widgets["preset_combo"].activated.connect(self._on_preset_selected)
         preset_combo_row.addWidget(self.widgets["preset_combo"], 1)
-        self.widgets["apply_preset_btn"] = QPushButton("Apply")
-        self.widgets["apply_preset_btn"].setToolTip("Apply selected preset")
-        self.widgets["apply_preset_btn"].clicked.connect(self._on_apply_preset)
-        preset_combo_row.addWidget(self.widgets["apply_preset_btn"])
         self.widgets["save_preset_btn"] = QPushButton("Save")
         self.widgets["save_preset_btn"].setToolTip("Save current settings as custom preset")
         self.widgets["save_preset_btn"].clicked.connect(self._on_save_preset)
@@ -312,6 +463,7 @@ class MaterialsPanel(BasePanel):
         layout.addStretch()
 
         self._refresh_preset_combo()
+        self.sync_procedural_controls()
 
         return group
 
@@ -579,6 +731,7 @@ class MaterialsPanel(BasePanel):
         # Label
         label_text = prop_name.capitalize() + ":"
         label = QLabel(label_text)
+        self.widgets[f"{prop_name}_label"] = label
         label.setMinimumWidth(80)
         row.addWidget(label)
 
@@ -1016,69 +1169,15 @@ class MaterialsPanel(BasePanel):
                 preset_combo.addItem(preset_name, preset_name)
                 preset_combo.setItemData(preset_combo.count() - 1, description, Qt.ToolTipRole)
 
-        # General tooltip for the combo
+        preset_combo.setCurrentIndex(-1)
         preset_combo.setToolTip(
-            "Select a preset to preview values.\n"
-            "Click 'Apply' to apply the preset to the selected material."
+            "Choose a preset to apply it immediately to the selected visual material."
         )
 
     def _on_preset_selected(self, index: int):
-        """Handle preset selection - show preview of preset values.
-
-        When a preset is selected, update the UI sliders to show what values
-        will be applied when 'Apply' is clicked.
-        """
+        """Apply an explicit preset choice and show the material's applied values."""
         if self._suppress_signals or index < 0:
             return
-
-        preset_combo = self.widgets.get("preset_combo")
-        if preset_combo is None:
-            return
-
-        preset_name = preset_combo.currentData()
-        if not preset_name:
-            return
-
-        if not hasattr(self.parent, "material_pbr_service"):
-            return
-
-        preset_props = self.parent.material_pbr_service.get_preset_properties(preset_name)
-        if preset_props:
-            self._show_preset_preview(preset_props)
-
-    def _show_preset_preview(self, props: dict):
-        """Show preset property values in the UI sliders/spinboxes.
-
-        Args:
-            props: Dict of property values to show
-        """
-        self._suppress_signals = True
-        for prop_name in [
-            "roughness",
-            "metallic",
-            "reflectance",
-            "alpha",
-            "clearcoat",
-            "clearcoat_roughness",
-            "anisotropy",
-            "emissive_intensity",
-            "normal_map_strength",
-            "transmission",
-            "glass_thickness",
-        ]:
-            if prop_name in props:
-                self._set_property_ui(prop_name, props[prop_name])
-
-        if "color" in props:
-            color = props["color"]
-            if isinstance(color, (list, tuple)) and len(color) >= 3:
-                self._current_color = [color[0], color[1], color[2]]
-                self._update_color_button()
-
-        self._suppress_signals = False
-
-    def _on_apply_preset(self):
-        """Apply the selected preset to the currently selected material."""
         preset_combo = self.widgets.get("preset_combo")
         material_combo = self.widgets.get("material_combo")
 
@@ -1185,6 +1284,61 @@ class MaterialsPanel(BasePanel):
                 self._update_visibility_buttons(selected_material)
                 self._update_profile_info(selected_material)
 
+    def _on_texture_maps_changed(self, index: int) -> None:
+        """Change map policy without touching material assignments or scientific layers."""
+        if self._suppress_signals:
+            return
+        service = getattr(self.parent, "material_pbr_service", None)
+        apply = getattr(service, "set_texture_maps_enabled", None)
+        if not callable(apply):
+            self.sync_procedural_controls()
+            return
+        choice = self.widgets["texture_maps"].itemData(index)
+        self.widgets["texture_maps_status"].setText("Updating texture maps…")
+        control = self.widgets["texture_maps"]
+        control.setCursor(Qt.WaitCursor)
+        try:
+            apply({"default": None, "on": True, "off": False}[choice])
+        finally:
+            control.unsetCursor()
+        self.update_ui_from_viz()
+        panels = getattr(getattr(self.parent, "ui_manager", None), "panels", {})
+        render_panel = panels.get("render") if isinstance(panels, dict) else None
+        update_render = getattr(render_panel, "update_ui_from_viz", None)
+        if callable(update_render):
+            update_render()
+
+    def _on_building_appearance_changed(self, index: int) -> None:
+        if self._suppress_signals:
+            return
+        service = getattr(self.parent, "scene_appearance_service", None)
+        if service is not None:
+            service.set_building_appearance(self.widgets["building_appearance"].itemData(index))
+            self.update_ui_from_viz()
+
+    def _on_authored_surface_textures_changed(self, enabled: bool) -> None:
+        if self._suppress_signals:
+            return
+        service = getattr(self.parent, "scene_appearance_service", None)
+        if service is not None:
+            service.set_authored_surface_textures(enabled)
+
+    def _on_facade_theme_changed(self, index: int) -> None:
+        if self._suppress_signals:
+            return
+        service = getattr(self.parent, "scene_appearance_service", None)
+        if service is not None:
+            service.set_facade_theme(self.widgets["facade_theme"].itemData(index))
+            self.refresh_material_list()
+
+    def _on_road_appearance_changed(self, index: int) -> None:
+        if self._suppress_signals:
+            return
+        service = getattr(self.parent, "scene_appearance_service", None)
+        if service is not None:
+            service.set_road_appearance(self.widgets["road_appearance"].itemData(index))
+            self.refresh_material_list()
+
     def update_ui_from_viz(self):
         """Update UI state from visualizer."""
         renderer = getattr(self.parent, "renderer", None)
@@ -1192,8 +1346,138 @@ class MaterialsPanel(BasePanel):
         # Show/hide PBR controls based on renderer capabilities
         self.set_enabled_for_renderer(is_pbr)
 
-        # Refresh material list when scene changes
+        self.sync_procedural_controls()
         self.refresh_material_list()
+
+    def sync_procedural_controls(self) -> None:
+        """Mirror restored appearance values without applying material edits."""
+        is_pbr = renderer_capabilities(getattr(self.parent, "renderer", None)).pbr
+        textures = self.widgets.get("texture_maps")
+        if textures is not None:
+            choice = {None: "default", True: "on", False: "off"}[texture_maps_override()]
+            textures.blockSignals(True)
+            textures.setCurrentIndex(textures.findData(choice))
+            textures.blockSignals(False)
+            textures.setEnabled(is_pbr and not textures_locked_off())
+            status = "Active" if textures_globally_enabled() else "Off (solid material colors)"
+            if textures_locked_off():
+                status = "Locked off by launch policy (--disable-textures)"
+            elif not is_pbr:
+                status = "Requires a PBR renderer"
+            pending = bool(
+                getattr(
+                    getattr(self.parent, "material_pbr_service", None),
+                    "texture_maps_refresh_pending",
+                    False,
+                )
+            )
+            if pending and is_pbr and not textures_locked_off():
+                status = "Texture update incomplete. Retry the current choice."
+            self.widgets["texture_maps_status"].setText(status)
+            self.widgets["texture_maps_retry"].setVisible(
+                pending and is_pbr and not textures_locked_off()
+            )
+
+        style = self.widgets.get("building_appearance")
+        if style is not None:
+            style.blockSignals(True)
+            mode = getattr(self.parent, "building_appearance", "original")
+            style.setCurrentIndex(max(0, style.findData(mode)))
+            style.blockSignals(False)
+            classified = any(
+                e.get("_osm_building_faces", 0) for e in getattr(self.parent, "mesh_entries", [])
+            )
+            style.setEnabled(is_pbr and textures_globally_enabled() and classified)
+            varied = any(
+                e.get("_osm_building_parts") for e in getattr(self.parent, "mesh_entries", [])
+            )
+            style.model().item(style.findData("varied")).setEnabled(bool(varied))
+            style.model().item(style.findData("varied")).setToolTip(
+                "Fit generated floors and windows to each building using the facade theme. "
+                "Requires individual building-part metadata."
+            )
+        authored = self.widgets.get("authored_surface_textures")
+        if authored is not None:
+            authored.blockSignals(True)
+            authored.setChecked(getattr(self.parent, "authored_surface_textures", True))
+            authored.blockSignals(False)
+            authored.setEnabled(
+                is_pbr
+                and textures_globally_enabled()
+                and any(
+                    e.get("_visual_surface_partition")
+                    for e in getattr(self.parent, "mesh_entries", [])
+                )
+            )
+        theme = self.widgets.get("facade_theme")
+        if theme is not None:
+            theme.blockSignals(True)
+            theme.setCurrentIndex(
+                max(0, theme.findData(getattr(self.parent, "facade_theme", "mixed")))
+            )
+            theme.blockSignals(False)
+            visible = getattr(self.parent, "building_appearance", "original") == "varied"
+            theme.setVisible(visible)
+            self.widgets["facade_theme_label"].setVisible(visible)
+            theme.setEnabled(is_pbr and textures_globally_enabled())
+        roads = self.widgets.get("road_appearance")
+        if roads is not None:
+            roads.blockSignals(True)
+            roads.setCurrentIndex(
+                max(0, roads.findData(getattr(self.parent, "road_appearance", "original")))
+            )
+            roads.blockSignals(False)
+            classified_roads = any(
+                e.get("_osm_road_segments") for e in getattr(self.parent, "mesh_entries", [])
+            )
+            roads.setEnabled(is_pbr and textures_globally_enabled() and bool(classified_roads))
+
+        street_names = self.widgets.get("street_names")
+        if street_names is not None:
+            service = getattr(getattr(self.parent, "scene_service", None), "street_names", None)
+            supported = renderer_capabilities(
+                getattr(self.parent, "renderer", None)
+            ).screen_space_labels
+            available = bool(service and service.available and supported)
+            street_names.blockSignals(True)
+            street_names.setChecked(bool(service and service.enabled))
+            street_names.blockSignals(False)
+            street_names.setEnabled(available)
+            street_names.setToolTip(
+                "Show readable names from the downloaded street network. Nearby names are "
+                "spaced automatically as the camera moves. Off by default."
+                if available
+                else (
+                    "Street names require the pygfx renderer."
+                    if not supported
+                    else getattr(service, "error", "")
+                    or "No street network is available for this scene."
+                )
+            )
+            style = self.widgets.get("street_name_style")
+            if style is not None:
+                style.blockSignals(True)
+                style.setCurrentIndex(style.findData(getattr(service, "style_mode", "card")))
+                style.blockSignals(False)
+                style.setVisible(bool(service and service.enabled))
+                style.setEnabled(
+                    available
+                    and renderer_capabilities(
+                        getattr(self.parent, "renderer", None)
+                    ).screen_space_labels
+                )
+
+    def _on_street_names_changed(self, checked: bool) -> None:
+        service = getattr(getattr(self.parent, "scene_service", None), "street_names", None)
+        if service is not None:
+            service.set_enabled(checked)
+        self.sync_procedural_controls()
+
+    def _on_street_name_style_changed(self, _index: int) -> None:
+        service = getattr(getattr(self.parent, "scene_service", None), "street_names", None)
+        if service is not None:
+            service.set_style(self.widgets["street_name_style"].currentData())
+        self.sync_procedural_controls()
 
     def set_enabled_for_renderer(self, is_pbr: bool):
         """Show/hide PBR controls based on renderer type.
@@ -1225,7 +1509,6 @@ class MaterialsPanel(BasePanel):
             "reset_btn",
             "reset_all_btn",
             "preset_combo",
-            "apply_preset_btn",
             "save_preset_btn",
             "load_preset_btn",
             "clearcoat_slider",
@@ -1255,8 +1538,13 @@ class MaterialsPanel(BasePanel):
                 "normal_map_strength_slider",
                 "normal_map_strength_spin",
             ],
-            "material_transmission": ["transmission_slider", "transmission_spin"],
+            "material_transmission": [
+                "transmission_label",
+                "transmission_slider",
+                "transmission_spin",
+            ],
             "material_volume_thickness": [
+                "glass_thickness_label",
                 "glass_thickness_slider",
                 "glass_thickness_spin",
             ],
@@ -1279,6 +1567,8 @@ class MaterialsPanel(BasePanel):
                 widget = self.widgets.get(widget_name)
                 if widget is not None and hasattr(widget, "setEnabled"):
                     widget.setEnabled(supported)
+                    if capability_name in ("material_transmission", "material_volume_thickness"):
+                        widget.setVisible(supported)
                     if not supported and hasattr(widget, "setToolTip"):
                         widget.setToolTip(
                             "The active renderer does not apply this material feature; "

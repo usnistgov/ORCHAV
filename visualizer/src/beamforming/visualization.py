@@ -1,4 +1,4 @@
-"""Helpers for generating beamforming visualizations in Open3D."""
+"""Renderer-neutral arrays for beamforming surfaces and colors."""
 
 from __future__ import annotations
 

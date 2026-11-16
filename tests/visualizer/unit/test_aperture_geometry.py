@@ -428,4 +428,11 @@ class TestApertureLinePayloadOrientation:
             local=False,
         )
         label_text = {text for text, _position, _color in labels}
-        assert {"G 0", "G 90", "G 180", "G -90", "G +El", "G -El"} == label_text
+        assert {
+            "Global +X",
+            "Global +Y",
+            "Global -X",
+            "Global -Y",
+            "Global +Z",
+            "Global -Z",
+        } == label_text

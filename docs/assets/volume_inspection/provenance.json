@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "kind": "visualizer_gui_captures",
+  "captured_on": "2026-09-24",
+  "renderer": "pygfx (wgpu/Vulkan)",
+  "notes": [
+    "Unedited viewport captures with GUI legends.",
+    "Generated campaigns are not bundled. Image hashes identify exact captured pixels, not cross-driver reproducibility."
+  ],
+  "figures": [
+    {
+      "image": "paris_coverage.png",
+      "image_sha256": "d2cdd411fadb27e7ff11cef203df10ef7766580956d91ea2883697d5dd7bb2ac",
+      "scenario": "scenarios/generator/coverage/paris_volume/scenario.yaml",
+      "config_sha256": "4d79891b89e43d35a77be988e66d255d391ffde6b1b942c49698086961198b53",
+      "source_hdf5_sha256": "3a33ac1cb4ef16cc2aaff752e3db23c3e68139cffc293206682a4a3c1972044d",
+      "view": {
+        "quantity": "path_gain_db",
+        "tx": "ParisTX",
+        "mode": "slice",
+        "orientation": "xz",
+        "y_m": 37.5,
+        "color_limits_db": [
+          -130,
+          -50
+        ],
+        "opacity": 0.85,
+        "building_edges": true,
+        "cell_edges": true,
+        "threshold_edges": true
+      },
+      "captured_on": "2026-11-11",
+      "versions": {
+        "sionna-rt": "2.2.0",
+        "pygfx": "0.17.0",
+        "wgpu": "0.31.1",
+        "rendercanvas": "2.6.3",
+        "PySide6": "6.8.3"
+      },
+      "camera": {
+        "eye": [
+          65,
+          -180,
+          205
+        ],
+        "lookat": [
+          -127.5,
+          37.5,
+          35
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "fov": 50.0
+      },
+      "source_revision": "dfd4fcbc28e1aee7781209aa7f02b4b765321fb1",
+      "capture_config_sha256": "db5d9b7b2b6c36e217eaf3a07151db6bc38712ac0a2ee1ee819632e3ad22fb31",
+      "capture_method": "Unedited native Qt viewport capture after canvas presentation, including the application coverage legend. Saved coverage was reused without regeneration.",
+      "theme": "dark",
+      "theme_control": "Display > Theme > Dark",
+      "rendering_backend": "Mesa lavapipe Vulkan, Qt offscreen bitmap presentation",
+      "edge_status": [
+        "Solid dark edges: 325 usable saved cells",
+        "Cell edges are independent of fills / thresholds",
+        "Unavailable cells omitted: 0"
+      ]
+    },
+    {
+      "image": "paris_coverage_volume.png",
+      "image_sha256": "7809af9be69277228240e1acd7cece2d8768dbc8a9e6cbe27240f149f1029bdc",
+      "scenario": "scenarios/generator/coverage/paris_volume/scenario.yaml",
+      "config_sha256": "4d79891b89e43d35a77be988e66d255d391ffde6b1b942c49698086961198b53",
+      "source_hdf5_sha256": "3a33ac1cb4ef16cc2aaff752e3db23c3e68139cffc293206682a4a3c1972044d",
+      "view": {
+        "quantity": "path_gain_db",
+        "tx": "ParisTX",
+        "mode": "iso",
+        "threshold_db": -95,
+        "color_limits_db": [
+          -130,
+          -50
+        ],
+        "opacity": 0.4,
+        "building_edges": true,
+        "cell_edges": true,
+        "threshold_edges": true
+      },
+      "captured_on": "2026-11-11",
+      "versions": {
+        "sionna-rt": "2.2.0",
+        "pygfx": "0.17.0",
+        "wgpu": "0.31.1",
+        "rendercanvas": "2.6.3",
+        "PySide6": "6.8.3"
+      },
+      "camera": {
+        "eye": [
+          65,
+          -180,
+          205
+        ],
+        "lookat": [
+          -127.5,
+          37.5,
+          35
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "fov": 50.0
+      },
+      "source_revision": "dfd4fcbc28e1aee7781209aa7f02b4b765321fb1",
+      "capture_config_sha256": "db5d9b7b2b6c36e217eaf3a07151db6bc38712ac0a2ee1ee819632e3ad22fb31",
+      "capture_method": "Unedited native Qt viewport capture after canvas presentation, including the application coverage legend. Saved coverage was reused without regeneration.",
+      "theme": "dark",
+      "theme_control": "Display > Theme > Dark",
+      "rendering_backend": "Mesa lavapipe Vulkan, Qt offscreen bitmap presentation",
+      "edge_status": [
+        "Solid dark edges: 3568 above-threshold saved cells",
+        "Cell edges follow the selected display region",
+        "Unavailable cells omitted: 0"
+      ]
+    }
+  ],
+  "source_receipt_sha256": "e57efd2f01c2fb60e9192e97e6fdd439ed556df836d9a6a7ec27a9c5edef5a76",
+  "receipt_scope": "Original capture records for images included in this distribution."
+}

@@ -16,11 +16,17 @@ open it from the repository root:
 orchav-visualizer --scenario scenarios/getting_started/hello_world
 ```
 
-The default `pygfx` renderer places the 3D viewport beside the controls in one
-window. The first frame shows the scene, one transmitter, one receiver, and the
+The first frame shows the scene, one transmitter, one receiver, and the
 available propagation paths.
 
 ## 2. Orient Yourself
+
+![Hello World in the Visualizer with playback, camera and Context controls beside the scene](../assets/visualizer/hello_world_workspace.png)
+
+The left side groups playback, camera and **Context** controls above the task
+tabs. The viewport shows the generated scene and paths, with TX1 and RX1 marking
+the only link. The capture uses the existing Hello World recording with
+**Display → Theme → Dark**.
 
 The persistent **Context** controls choose the active transmitter and receiver
 and remain visible when you change tabs. The timeline changes the displayed
@@ -45,18 +51,17 @@ Open **Paths** and try these controls one at a time:
 1. Under **Color By**, choose **Order**, **Type**, **Delay**, **Loss**, or
    **Material**.
 2. Hide one available interaction order or type, then restore it.
-3. Change **Path line width**, or toggle **Bounce Points** and **Interaction
-   Markers**.
-4. Choose **Open MPC Explorer...**, then select one path to inspect its geometry,
+3. Change **Width** beside **Paths**, or toggle **Bounce points** and **Shape by type**.
+4. Under **Path tools**, choose **Path Explorer…**, then select one path to inspect its geometry,
    interactions, material sequence, delay, and path loss. See [MPC
-   Explorer](mpc_explorer.md) for its complete workflow.
+   Explorer](path_inspection.md) for its complete workflow.
 
 The filters and display controls change only the current view. They do not
 rewrite the generated HDF5 frame set.
 
 ## 4. Compare Analysis Scopes
 
-Press `M` to open **Metrics**. It describes the currently displayed frame and
+Press `M` to open the **Metrics** dock. It describes the currently displayed frame and
 follows the active TX/RX and path-filter selection.
 
 The **Analysis** tab's **Statistics** and **Graphs** sections instead summarize
@@ -64,8 +69,7 @@ the complete available frame sequence. With Hello World that sequence contains
 only one frame. The difference becomes visible in the
 [`statistics`](../../scenarios/visualizer/statistics/README.md) scenario.
 
-See [Visual Analysis](analysis.md) for Metrics, Statistics, coverage, camera
-inspection, and RF X-Ray.
+See [Channel analysis](analysis.md) for Metrics, Statistics and their scopes.
 
 ## 5. Export An Image
 

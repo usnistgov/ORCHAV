@@ -15,7 +15,7 @@ from visualizer.src.io import frame_source_extensions
 def _missing_external_package(_name: str):
     raise ModuleNotFoundError(
         "No external visualizer extension package is installed",
-        name="visualizer_extensions",
+        name=_name,
     )
 
 
@@ -71,3 +71,19 @@ def test_clearing_extension_services_also_resets_transient_state() -> None:
 
     assert services == {}
     assert state_updates == [{"extension_state": {}}]
+
+
+def test_bundled_registration_does_not_require_external_package(monkeypatch):
+    calls = []
+
+    def importer(name):
+        if name == "public_feature":
+            return SimpleNamespace(register=lambda: calls.append(name))
+        return _missing_external_package(name)
+
+    monkeypatch.setattr(extension_loader, "_loaded", False)
+    monkeypatch.setattr(extension_loader, "_BUNDLED_EXTENSION_PACKAGES", ("public_feature",))
+    monkeypatch.setattr(extension_loader, "import_module", importer)
+    extension_loader.ensure_external_extensions_loaded()
+    extension_loader.ensure_external_extensions_loaded()
+    assert calls == ["public_feature"]

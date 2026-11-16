@@ -153,6 +153,18 @@ def _check_actor_resource_paths(data: dict, scenario_dir: Path) -> List[str]:
                     resource = resolved(asset.get("path", ""))
                     pattern = asset.get("pattern", "*.ply") if source == "directory" else None
 
+                if source == "animated_asset":
+                    # V1 is a manifest file, not a mesh directory. Authenticate
+                    # its resources at the same boundary as native preparation;
+                    # ordinary scenarios never import the optional contract.
+                    from shared.animated_target import load_animated_target
+
+                    try:
+                        load_animated_target(resource)
+                    except (ValueError, OSError) as exc:
+                        warnings.append(f"{field} resolved to '{resource}': {exc}")
+                    continue
+
                 if source == "file":
                     if not resource.is_file():
                         warnings.append(
@@ -166,7 +178,12 @@ def _check_actor_resource_paths(data: dict, scenario_dir: Path) -> List[str]:
                         )
                     continue
                 if not resource.is_dir():
-                    warnings.append(f"{field} resolved to '{resource}', but no directory exists")
+                    warnings.append(
+                        f"{field} resolved to '{resource}', but no directory exists. "
+                        "Obtain or generate this configured asset before generation; "
+                        "no substitute target is selected. For separately licensed human "
+                        "motion, see docs/generator/motion/animated_targets.md."
+                    )
                     continue
                 if pattern is None:
                     matches = (
@@ -196,7 +213,8 @@ def _check_actor_resource_paths(data: dict, scenario_dir: Path) -> List[str]:
                     expected = "a supported mesh" if pattern is None else f"pattern {pattern!r}"
                     warnings.append(
                         f"{field} resolved to '{resource}', but it contains no file matching "
-                        f"{expected}"
+                        f"{expected}. Obtain or generate the configured mesh sequence; "
+                        "for human motion see docs/generator/motion/animated_targets.md"
                     )
 
     groups = data.get("groups", ()) or ()
@@ -207,7 +225,9 @@ def _check_actor_resource_paths(data: dict, scenario_dir: Path) -> List[str]:
     return warnings
 
 
-def validate_scenario(scenario_path: Path, *, strict: bool = False) -> int:
+def validate_scenario(
+    scenario_path: Path, *, strict: bool = False, require_assets: bool = False
+) -> int:
     """Validate a scenario YAML file without running the simulation.
 
     Performs three levels of validation: YAML parsing, shared schema checks,
@@ -217,6 +237,8 @@ def validate_scenario(scenario_path: Path, *, strict: bool = False) -> int:
         scenario_path: Path to scenario YAML file or directory containing one.
         strict: Require generated frame directories and treat every path
             warning as a validation failure.
+        require_assets: Treat missing input paths as failures without requiring
+            generated frame directories. Use this before generation.
 
     Returns:
         0 on success, 1 on failure.
@@ -247,6 +269,18 @@ def validate_scenario(scenario_path: Path, *, strict: bool = False) -> int:
         logger.error("%s", e)
         return 1
 
+    sensing = data.get("sensing") or {}
+    if (
+        sensing.get("enabled", False)
+        and sensing.get("processing_mode") == "coherent_cpi"
+        and sensing.get("coherent_clutter_mode") is None
+    ):
+        logger.warning(
+            "sensing.coherent_clutter_mode is omitted: coherent_cpi uses legacy "
+            "mean removal, even when clutter_removal_enabled is false. "
+            "Set none, windowed_mean or legacy explicitly to state the intended processing."
+        )
+
     path_warnings = _check_referenced_paths(
         data,
         scenario_dir,
@@ -255,11 +289,13 @@ def validate_scenario(scenario_path: Path, *, strict: bool = False) -> int:
     for warning in path_warnings:
         logger.warning("Path check: %s", warning)
 
-    if path_warnings and strict:
+    if path_warnings and (strict or require_assets):
+        mode = "strict" if strict else "input-asset"
         logger.error(
-            "%s: FAILED strict validation (%d path warning(s); "
+            "%s: FAILED %s validation (%d path warning(s); "
             "YAML syntax and scenario schema passed)",
             yaml_path,
+            mode,
             len(path_warnings),
         )
     elif path_warnings:
@@ -277,7 +313,7 @@ def validate_scenario(scenario_path: Path, *, strict: bool = False) -> int:
         strict_suffix = "; strict" if strict else ""
         logger.info("%s: OK (%s%s)", yaml_path, ", ".join(checked), strict_suffix)
 
-    return 1 if strict and path_warnings else 0
+    return 1 if (strict or require_assets) and path_warnings else 0
 
 
 def _without_empty_mappings(value: Any) -> Any:
@@ -462,6 +498,11 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--require-assets",
+        action="store_true",
+        help="Fail on missing referenced inputs before generation; output frames are not required",
+    )
+    parser.add_argument(
         "--dump-config",
         action="store_true",
         help="Validate scenario and dump normalized configuration YAML to stdout",
@@ -481,7 +522,9 @@ def main() -> None:
 
     exit_code = 0
     for path in args.paths:
-        result = validate_scenario(path.resolve(), strict=args.strict)
+        result = validate_scenario(
+            path.resolve(), strict=args.strict, require_assets=args.require_assets
+        )
         if result != 0:
             exit_code = 1
 

@@ -12,16 +12,18 @@ ServiceFactory = Callable[[Any], Any]
 FeaturePredicate = Callable[[Any], bool]
 FrameSyncHook = Callable[[Any, Any, dict[str, Any], int], bool]
 StatusChipsHook = Callable[[Any, Any, Any], Sequence[str]]
+RenderPacketHook = Callable[[Any, Any, dict[str, Any], int, Any], Any]
+PresentedFrameHook = Callable[[Any, Any, int, Any, Any], None]
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimeFeatureExtension:
-    """One optional panel/service feature synchronized with rendered frames."""
+    """A frame-synchronized service with an optional standalone control panel."""
 
     key: str
     panel_title: str
     tab_label: str
-    panel_factory: PanelFactory
+    panel_factory: PanelFactory | None
     service_factory: ServiceFactory
     enabled: FeaturePredicate
     sync_frame: FrameSyncHook
@@ -29,6 +31,10 @@ class RuntimeFeatureExtension:
     start_open: bool = False
     lazy: bool = True
     frame_data: bool = True
+    prepare_render_packet: RenderPacketHook | None = None
+    present_frame: PresentedFrameHook | None = None
+    retire_service: Callable[[Any, Any], None] | None = None
+    refresh_hud: Callable[[Any, Any], None] | None = None
 
 
 _RUNTIME_EXTENSIONS: dict[str, RuntimeFeatureExtension] = {}
@@ -60,7 +66,9 @@ def configure_runtime_extensions(viz: Any) -> tuple[str, ...]:
     enabled_keys: list[str] = []
     for extension in registered_runtime_extensions():
         if not bool(extension.enabled(viz)):
-            services.pop(extension.key, None)
+            service = services.pop(extension.key, None)
+            if service is not None and extension.retire_service is not None:
+                extension.retire_service(viz, service)
             continue
         enabled_keys.append(extension.key)
         if extension.key not in services:
@@ -72,6 +80,10 @@ def clear_runtime_extension_services(viz: Any) -> None:
     """Drop scenario-scoped extension services and their transient state."""
     services = getattr(viz, "extension_services", None)
     if isinstance(services, dict):
+        for extension in registered_runtime_extensions():
+            service = services.get(extension.key)
+            if service is not None and extension.retire_service is not None:
+                extension.retire_service(viz, service)
         services.clear()
     state = getattr(viz, "app_state", None)
     if not getattr(state, "extension_state", None):
@@ -93,6 +105,20 @@ def sync_runtime_extensions(viz: Any, raw_frame: dict[str, Any], step: int) -> b
     return succeeded
 
 
+def present_runtime_extensions(viz: Any, step: int, view_model: Any, packet: Any) -> None:
+    """Notify optional inspection consumers only after renderer acceptance."""
+    from shared.logging import get_logger
+
+    services = getattr(viz, "extension_services", {})
+    for extension in registered_runtime_extensions():
+        service = services.get(extension.key)
+        if service is not None and extension.present_frame is not None:
+            try:
+                extension.present_frame(viz, service, step, view_model, packet)
+            except (RuntimeError, ValueError, TypeError, AttributeError):
+                get_logger(__name__).exception("Inspection extension rejected a presented frame")
+
+
 def runtime_status_chips(renderer: Any, packet: Any = None) -> tuple[str, ...]:
     """Collect status-chip labels from active runtime features."""
     viz = getattr(renderer, "visualizer", None)
@@ -104,6 +130,28 @@ def runtime_status_chips(renderer: Any, packet: Any = None) -> tuple[str, ...]:
             continue
         chips.extend(str(label) for label in extension.status_chips(viz, service, packet))
     return tuple(chips)
+
+
+def refresh_runtime_hud(renderer: Any) -> None:
+    """Refresh feature-owned legends from retained presentation state only."""
+    viz = getattr(renderer, "visualizer", None)
+    services = getattr(viz, "extension_services", {}) if viz is not None else {}
+    for extension in registered_runtime_extensions():
+        service = services.get(extension.key)
+        if service is not None and extension.refresh_hud is not None:
+            extension.refresh_hud(viz, service)
+
+
+def prepare_runtime_render_packet(
+    viz: Any, raw_frame: dict[str, Any], step: int, packet: Any
+) -> Any:
+    """Apply enabled presentation layers without changing stored frame data."""
+    services = getattr(viz, "extension_services", {})
+    for extension in registered_runtime_extensions():
+        service = services.get(extension.key)
+        if service is not None and extension.prepare_render_packet is not None:
+            packet = extension.prepare_render_packet(viz, service, raw_frame, step, packet)
+    return packet
 
 
 def extension_state_value(

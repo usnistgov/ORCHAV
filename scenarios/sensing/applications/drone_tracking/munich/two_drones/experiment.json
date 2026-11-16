@@ -1,0 +1,58 @@
+{
+  "schema_version": 2,
+  "world_frame": {
+    "id": "munich_corner",
+    "origin": "Sionna RT Munich built-in scene origin",
+    "axes": [
+      "x",
+      "y",
+      "z"
+    ],
+    "handedness": "right",
+    "length_unit": "m",
+    "angle_unit": "rad"
+  },
+  "clock": {
+    "id": "munich_corner_simulation",
+    "assumption": "synchronized",
+    "unit": "s"
+  },
+  "sensors": {
+    "West": {
+      "source": ".",
+      "time_offset_s": 0.0,
+      "world_frame_id": "munich_corner",
+      "alignment": "explicit_shared_world"
+    },
+    "South": {
+      "source": "south",
+      "time_offset_s": 0.0,
+      "world_frame_id": "munich_corner",
+      "alignment": "explicit_shared_world"
+    }
+  },
+  "fusion": {
+    "range_std_m": 0.5,
+    "azimuth_std_deg": 2.0,
+    "elevation_std_deg": 3.0,
+    "closing_velocity_std_m_s": 0.1,
+    "acceleration_psd_m2_s3": 2.0,
+    "position_gate_m": 1.5,
+    "innovation_gate": 25.0,
+    "initial_velocity_std_m_s": 5.0,
+    "birth_exclusion_m": 2.0,
+    "birth_velocity_gate_m_s": 1.0,
+    "confirmation_epochs": 3,
+    "max_missed_epochs": 3,
+    "confirmation_mode": "rolling",
+    "confirmation_window": 5,
+    "minimum_recent_sensors": 1,
+    "gate_mode": "probability",
+    "quality_policy": "dc_boundary",
+    "dc_boundary_width_bins": 1,
+    "birth_policy": "measurement_consistency"
+  },
+  "evaluation": {
+    "position_gate_m": 0.75
+  }
+}

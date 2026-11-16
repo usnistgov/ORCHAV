@@ -1,14 +1,12 @@
 # Logging
 
-ORCHAV uses Python's `logging` module with a centralized configuration in
-`shared/logging/`. Both the Generator and the Visualizer share the same
-logging infrastructure.
+The Generator and Visualizer use the same logging settings. Increase the log
+level to diagnose a problem, or save messages to a file for later inspection.
 
 ## Configuration
 
-Logging is configured via `configure_logging()`, called automatically when
-the Generator pipeline starts or when the Visualizer loads a scenario. You
-rarely need to call it directly.
+The applications configure logging automatically. Set the verbosity through
+scenario YAML or an environment override.
 
 ### `debug_level` in scenario.yaml
 
@@ -22,7 +20,7 @@ debug_level: WARNING    # Only warnings and errors
 | Level | What you see |
 |-------|-------------|
 | `DEBUG` | Detailed diagnostic output for troubleshooting |
-| `INFO` | Step-by-step progress, service initialization, pipeline stages |
+| `INFO` | Service initialization and pipeline-stage messages |
 | `WARNING` | Only warnings and errors. Normal text progress remains separate. |
 | `ERROR` | Only errors |
 
@@ -39,34 +37,44 @@ Environment variables override `debug_level` from the YAML:
 | `ORCHAV_LOG_FORMAT` | `compact` | Console output format (see below) |
 | `ORCHAV_LOG_FILE` | *(none)* | Path to a rotating log file (10 MB, 5 backups) |
 
-Examples for Bash:
+Override the level for one Generator run in Bash:
 
 ```bash
-# Override log level for a single run
 ORCHAV_LOG_LEVEL=DEBUG orchav-generator scenarios/getting_started/hello_world/
-
-# Log to file
-ORCHAV_LOG_LEVEL=INFO ORCHAV_LOG_FILE=orchav.log \
-  orchav-visualizer --scenario myscenario
 ```
 
-Examples for PowerShell:
+Save Visualizer log messages to a file:
+
+```bash
+ORCHAV_LOG_LEVEL=INFO ORCHAV_LOG_FILE=orchav.log \
+  orchav-visualizer --scenario scenarios/getting_started/hello_world
+```
+
+In PowerShell, set the environment variable before launching the Generator:
 
 ```powershell
 $env:ORCHAV_LOG_LEVEL = "DEBUG"
 orchav-generator scenarios/getting_started/hello_world/
+```
 
+To save a Visualizer log instead, select its level and output path:
+
+```powershell
 $env:ORCHAV_LOG_LEVEL = "INFO"
 $env:ORCHAV_LOG_FILE = "orchav.log"
-orchav-visualizer --scenario myscenario
+orchav-visualizer --scenario scenarios/getting_started/hello_world/
+```
 
+These variables persist in that PowerShell window. Clear them after the run:
+
+```powershell
 Remove-Item Env:ORCHAV_LOG_LEVEL, Env:ORCHAV_LOG_FILE -ErrorAction SilentlyContinue
 ```
 
 The explicit `INFO` level makes normal startup and service messages visible in
 the example file. At the default `WARNING` level, a successful quiet run can
 leave the file empty. ORCHAV creates the log file but does not create missing
-parent directories; create any nested directory in the configured path before
+parent directories. Create any nested directory in the configured path before
 launching the command.
 
 ### Format profiles
@@ -104,30 +112,8 @@ and summary. Neither form is controlled by `debug_level`.
 ## Runtime level changes
 
 The Visualizer's **Performance > Diagnostics** control shows the effective
-project log level and can change it for the current process. Python
-integrations can call `set_log_level()` directly:
+project log level and changes it for the current process. Python integrations
+can use `set_log_level()` from [`shared.logging`](../../shared/logging/__init__.py).
+This updates the `orchav.*` loggers without changing scenario YAML.
 
-```python
-from shared.logging import set_log_level
-
-set_log_level("DEBUG")   # Switch to debug output
-set_log_level("WARNING") # Back to quiet mode
-```
-
-This updates all loggers in the `orchav.*` namespace immediately.
-
-## API reference
-
-The logging API is exported from `shared.logging`:
-
-| Function | Description |
-|----------|-------------|
-| `configure_logging(level, format_profile, include_third_party)` | One-time setup (idempotent) |
-| `resolve_log_level(level)` | Resolve a requested level after applying `ORCHAV_LOG_LEVEL` precedence |
-| `get_current_log_level_name()` | Return the effective project level as a display-ready name |
-| `get_logger(name)` | Get a logger, remapped to `orchav.*` namespace |
-| `set_log_level(level)` | Update all ORCHAV loggers at runtime |
-
----
-
-Home: [Documentation](../README.md) | Related: [Shared Data Layer](../shared/README.md) | [Application Configuration](application_configuration.md)
+Home: [Documentation](../README.md) | Related: [Application Configuration](application_configuration.md)

@@ -1,7 +1,5 @@
 # Actor Orientation
 
-[Scenarios](../../../README.md) > [Generator](../../README.md) > Actor Orientation
-
 This scenario focuses on actor orientation. A stationary transmitter tracks a
 moving drone, the drone tracks a walker, and the walker faces its direction of
 travel.
@@ -10,7 +8,7 @@ To run it, see [Running](#running).
 
 ## Scene Layout
 
-![2D scene layout](../../../../docs/assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_summary2d.png)
+![Scenario topology](../../../../docs/assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_topology.png)
 
 | Element | Role |
 | --- | --- |
@@ -20,6 +18,10 @@ To run it, see [Running](#running).
 | `Walker` | Moving receiver facing its path |
 
 ## Configuration Walkthrough
+
+This excerpt from [`scenario.yaml`](scenario.yaml) isolates two orientation
+choices: the stationary transmitter looks at a moving actor, and the walker
+faces along its route. The other actors are omitted from the excerpt.
 
 For orientation semantics and exact fields, see
 [Orientation Models](../../../../docs/generator/mobility_and_orientation.md#orientation-models)
@@ -47,15 +49,21 @@ actors:
         allow_pitch: false
 ```
 
-The full YAML also includes a waypoint drone, a fixed ground receiver, and
-summary output for the scene, speed, and actor orientations. The actor blocks
-remain the focus of this example.
+The full YAML also defines `PatrolDrone`, which follows waypoints while looking
+at `Walker`, and `GroundRX`, which stays fixed. It requests summary figures
+for the scene, speed, and actor orientations.
 
 ## Running
 
+Generate the frames:
+
 ```bash
-orchav-validate scenarios/generator/mobility_and_orientation/actor_orientation
 orchav-generator scenarios/generator/mobility_and_orientation/actor_orientation
+```
+
+Open the scenario in the Visualizer:
+
+```bash
 orchav-visualizer --scenario scenarios/generator/mobility_and_orientation/actor_orientation
 ```
 
@@ -80,7 +88,5 @@ the actor orientations used by the Visualizer.
 
 ## Browse Scenarios
 
-> **Scenario path:** [All scenarios](../../../README.md) | [Generator](../../README.md) |
-> Current: **Actor Orientation**
->
-> Track: **Mobility and Orientation** | Previous: [Actor Mobility](../actor_mobility/README.md)
+Up: [Generator](../../README.md) ·
+[Actor Mobility](../actor_mobility/README.md)

@@ -1,0 +1,289 @@
+{
+  "scenario": "scenarios/sensing/cube_radar/oscillating_sequential/scenario.yaml",
+  "scene_source": {
+    "source": "library",
+    "id": "empty/empty.xml"
+  },
+  "source_files": {
+    "libraries/scenes/empty/empty.xml": "cad4eee6d9d4902909746d583904e156f27f3b022d08a2055d3ccc24666b7742",
+    "libraries/targets/cube/cube.ply": "92b4c49988762b9f7e425596c2b071dc3ba8ecb2d281df7985e32249bb6ed437",
+    "scenarios/sensing/cube_radar/oscillating_sequential/scenario.yaml": "1d30a03be6df7682b18c2696c5b4220d1080daf931dbd8d9ddbe188c17b6ed28"
+  },
+  "sample_indices": [
+    0,
+    2047
+  ],
+  "sample_times_s": [
+    0.0,
+    2.047
+  ],
+  "steps": 2048,
+  "actors": [
+    {
+      "name": "Monostatic radar",
+      "role": "radar",
+      "members": [
+        "RadarTX",
+        "RadarRX"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          0.0,
+          0.5
+        ],
+        [
+          0.0,
+          0.0,
+          0.5
+        ]
+      ],
+      "physical_path": false,
+      "stationary": true,
+      "animated": false,
+      "mesh_samples": [],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            0.0,
+            0.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cube",
+      "role": "target",
+      "members": [
+        "Cube"
+      ],
+      "sample_positions_m": [
+        [
+          0.0,
+          5.0,
+          0.5
+        ],
+        [
+          0.0,
+          4.916468657526772,
+          0.5
+        ]
+      ],
+      "physical_path": true,
+      "stationary": false,
+      "animated": false,
+      "mesh_samples": [
+        {
+          "index": 0,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 0.0,
+          "topology_visible": true,
+          "opacity": 1.0
+        },
+        {
+          "index": 1024,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 1.024,
+          "topology_visible": true,
+          "opacity": 0.28
+        },
+        {
+          "index": 2047,
+          "mesh_index": 0,
+          "source": "libraries/targets/cube/cube.ply",
+          "time_s": 2.047,
+          "topology_visible": true,
+          "opacity": 1.0
+        }
+      ],
+      "orientation_samples": [
+        {
+          "index": 0,
+          "time_s": 0.0,
+          "position_m": [
+            0.0,
+            5.0,
+            0.5
+          ],
+          "rotation_matrix": [
+            [
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "forward_direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "resolved_yaml_sha256": "06dba60cc1e65ee1b784116664ad8e16e1f3ca56a9a63a85e3b350f97e8c5ebb",
+  "actor_source": "prepared_runtime",
+  "display_groups": [],
+  "material_legend": [],
+  "output_sha256": "4048e69201c4606c67fd66c48e7d6bc87c51508a5f71d1bf148cc7a2c7b20c1d",
+  "camera": {
+    "projection": "orthographic",
+    "view": "both",
+    "bounds_m": [
+      [
+        -0.54,
+        -0.22,
+        -0.04
+      ],
+      [
+        0.54,
+        5.72,
+        1.04
+      ]
+    ],
+    "panels": [
+      {
+        "view": "3d",
+        "elevation_deg": 30,
+        "azimuth_deg": -60
+      },
+      {
+        "view": "top",
+        "elevation_deg": 90,
+        "azimuth_deg": -90
+      }
+    ]
+  },
+  "layout": {
+    "panel_widths": [
+      0.65,
+      0.35
+    ],
+    "transparent": false,
+    "projected_fit": true,
+    "view_frames": {
+      "facecolor": "#f3f7fb",
+      "edgecolor": "#b5c8d9",
+      "linewidth": 1.8
+    },
+    "panel_corner_radius_in": 0.1,
+    "axis_colors": {
+      "X": "#b85b61",
+      "Y": "#398771",
+      "Z": "#527cbb"
+    }
+  },
+  "motion_details": [
+    {
+      "name": "Cube",
+      "projection_axes": [
+        "X",
+        "Y"
+      ],
+      "displacement_m": 0.08353134247322824,
+      "start_position_m": [
+        0.0,
+        5.0,
+        0.5
+      ],
+      "end_position_m": [
+        0.0,
+        4.916468657526772,
+        0.5
+      ],
+      "start_time_s": 0.0,
+      "end_time_s": 2.047,
+      "pose_times_s": {
+        "Start": 0.0,
+        "Middle": 1.024,
+        "End": 2.047
+      }
+    }
+  ],
+  "mesh_snapshot_styles": [
+    {
+      "name": "Cube",
+      "index": 2047,
+      "time_s": 2.047,
+      "style": "filled",
+      "label": "End",
+      "opacity": 0.88
+    },
+    {
+      "name": "Cube",
+      "index": 1024,
+      "time_s": 1.024,
+      "style": "filled",
+      "label": "Middle",
+      "opacity": 0.42
+    },
+    {
+      "name": "Cube",
+      "index": 0,
+      "time_s": 0.0,
+      "style": "filled",
+      "label": "Start",
+      "opacity": 0.16
+    }
+  ],
+  "topology_options": {
+    "pose_samples": 3,
+    "motion_detail": "auto",
+    "fixed_target_orientation": "auto",
+    "actor_label_mode": "role"
+  },
+  "renderer_sha256": "8832ee6a74cf03bfac1434a265d6ca1d887e04f7f95394323e31955b255118e1",
+  "geometry_loader_sha256": "47900903118e6c5e1dccca9b2760492851138dc5ed956bbe191c42a778293905",
+  "node_label_helper_sha256": "155eca98d636af16b3b5e10b7ca45d96ffbdc103805e40eafb6030eb1dce240e",
+  "motion_renderer_sha256": "8fea0d9a9ed108fe662e2941ee7b19df5b36b935bd1ac67b13769c343795aa58",
+  "versions": {
+    "numpy": "2.5.4",
+    "matplotlib": "3.11.2",
+    "sionna-rt": "2.2.0",
+    "open3d": "0.20.0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator",
+    "scenarios/sensing/cube_radar/oscillating_sequential"
+  ],
+  "path_convention": "Repository-relative source paths and reproducible output-directory names."
+}

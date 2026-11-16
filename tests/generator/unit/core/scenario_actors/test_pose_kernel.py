@@ -547,6 +547,29 @@ def test_prepare_scenario_supports_standalone_actors_without_groups() -> None:
     assert prepared.actor("mobile").positions_m[-1] == (2.0, 0.0, 0.0)
 
 
+def test_rate_authored_clock_preserves_prepared_motion_after_serialization() -> None:
+    scenario = ScenarioModel(
+        schema_version=2,
+        timeline=TimelineSpec(steps=512, sample_rate_hz=1000),
+        actors=ActorsSpec(
+            rx=(
+                RxActorSpec(
+                    name="mobile",
+                    mobility=LinearMobilitySpec(start_m=(0, 0, 0), end_m=(0.511, 0, 0)),
+                ),
+            ),
+        ),
+    )
+    restored = ScenarioModel.model_validate_json(scenario.model_dump_json())
+    actual = prepare_scenario(restored).actor("mobile")
+    expected = prepare_scenario(scenario).actor("mobile")
+    assert restored.timeline.sample_rate_hz == scenario.timeline.sample_rate_hz == 1000
+    assert actual.positions_m == expected.positions_m
+    assert actual.mobility.velocities_mps == expected.mobility.velocities_mps
+    np.testing.assert_allclose(np.asarray(actual.positions_m)[:, 0], np.arange(512) / 1000)
+    np.testing.assert_allclose(np.asarray(actual.mobility.velocities_mps)[:, 0], 1.0)
+
+
 def test_prepare_mobility_accepts_exact_sampled_positions_directly() -> None:
     positions = ((0, 0, 0), (1, 0, 0), (4, 0, 0), (9, 0, 0))
     timeline = Timeline(steps=4, duration_s=3.0)

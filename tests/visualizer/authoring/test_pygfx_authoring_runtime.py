@@ -28,6 +28,8 @@ class _Owner:
         self._gfx = SimpleNamespace(Viewport=lambda renderer: SimpleNamespace(renderer=renderer))
         self._camera = None
         self._reverse_objects = {}
+        self._objects = {}
+        self.redraws = 0
         self._controller = None
         self.gizmo_mode = None
         scale_children = [SimpleNamespace(visible=True) for _ in range(3)]
@@ -68,6 +70,13 @@ class _Owner:
         self.select_result = True
         self.proxy_removals = 0
         self.synced = None
+        self.depth_updates = 0
+
+    def _update_camera_depth_precision(self):
+        self.depth_updates += 1
+
+    def request_redraw(self):
+        self.redraws += 1
 
     def _ensure_transform_gizmo(self, *, register_before_render=True):
         assert register_before_render is False
@@ -114,6 +123,7 @@ def test_authoring_runtime_uses_semantic_proxy_and_hides_scale_handles() -> None
     assert gizmo._center_sphere.visible is False
 
     runtime.update_before_render(SimpleNamespace(type="before_render", target=None))
+    assert owner.depth_updates == 1
     assert all(not child.visible for child in gizmo._scale_children)
     assert gizmo._center_sphere.visible is False
 
@@ -263,3 +273,76 @@ def test_authoring_runtime_unregisters_handlers_when_closed() -> None:
     assert owner.proxy_removals == 1
     with np.testing.assert_raises_regex(RuntimeError, "runtime is closed"):
         runtime.add_event_handler(callback, "pointer_down")
+
+
+def _pickable_object(pick_write: bool = True):
+    return SimpleNamespace(
+        visible=True,
+        material=SimpleNamespace(pick_write=pick_write, color="red", depth_write=False),
+    )
+
+
+def test_live_preview_masks_only_overlay_picks_and_restores_original_flags() -> None:
+    owner = _Owner()
+    owner._objects = {
+        "mpc_lines": _pickable_object(),
+        "mpc_points": _pickable_object(),
+        "sensing_track_point_2": _pickable_object(),
+        "sensing_evidence": _pickable_object(False),
+        "target:walker::mesh": _pickable_object(),
+        "scene:building": _pickable_object(),
+    }
+    runtime = PygfxAuthoringRuntime(owner)
+
+    runtime.set_live_preview_picking(True)
+
+    for name, native in owner._objects.items():
+        assert native.material.pick_write is name.startswith(("target:", "scene:"))
+        assert native.visible is True
+        assert native.material.color == "red"
+        assert native.material.depth_write is False
+
+    runtime.set_live_preview_picking(False)
+
+    for name, native in owner._objects.items():
+        assert native.material.pick_write is (name != "sensing_evidence")
+    assert not runtime._overlay_pick_materials
+    assert owner.redraws == 2
+
+
+def test_live_preview_mask_survives_overlay_refresh_and_releases_old_materials() -> None:
+    owner = _Owner()
+    original = _pickable_object()
+    owner._objects["mpc_points"] = original
+    runtime = PygfxAuthoringRuntime(owner)
+    runtime.set_live_preview_picking(True)
+    replacement = _pickable_object()
+    owner._objects["mpc_points"] = replacement
+    owner._objects["sensing_track_point_2"] = _pickable_object()
+    event = SimpleNamespace(type="before_render", target=None)
+
+    runtime.update_before_render(event, authoring=False)
+
+    assert original.material.pick_write is True
+    assert replacement.material.pick_write is False
+    assert owner._objects["sensing_track_point_2"].material.pick_write is False
+    replacement.material.pick_write = True  # A later selection binding refresh.
+    del owner._objects["sensing_track_point_2"]
+    runtime.update_before_render(event, authoring=False)
+    assert replacement.material.pick_write is False
+    assert set(runtime._overlay_pick_materials) == {"mpc_points"}
+
+    runtime.close()
+    assert replacement.material.pick_write is True
+    assert not runtime._overlay_pick_materials
+
+
+def test_normal_playback_does_not_scan_or_mask_overlay_objects() -> None:
+    owner = _Owner()
+    runtime = PygfxAuthoringRuntime(owner)
+    # Normal playback needs no traversal of the renderer's object registry.
+    owner._objects = None
+
+    runtime.update_before_render(SimpleNamespace(type="before_render", target=None))
+
+    assert owner.depth_updates == 1

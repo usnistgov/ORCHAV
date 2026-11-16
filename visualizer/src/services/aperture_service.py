@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
-from dataclasses import fields, is_dataclass
+from dataclasses import fields, is_dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -14,6 +14,7 @@ from shared.logging import get_logger
 from ..model import RenderObjectState
 from ..renderers.protocol import renderer_capabilities
 from ..scene.geometry_helpers import create_text_label
+from ..types.orientation_reference import OrientationReferenceSettings
 from ..types.render_payloads import MaterialPayload
 from ..utils.aperture_geometry import (
     AOA_APERTURE_COLOR,
@@ -24,11 +25,20 @@ from ..utils.aperture_geometry import (
     create_aperture_mesh_payload,
 )
 from .base import BaseService
+from .orientation_reference import orientation_actor_pose
 
 if TYPE_CHECKING:
     from ...visualizer import OrchavVisualizer
 
 logger = get_logger("orchav.services.aperture_service")
+
+# Offset coincident global/local guides so both remain legible at zero rotation.
+GLOBAL_REFERENCE_SCALE_WITH_LOCAL = 1.3
+REFERENCE_LABEL_FONT_SIZE = 0.2
+REFERENCE_LABEL_RENDER_ORDER = 31000
+REFERENCE_LABEL_TEXT_COLOR = (0.125, 0.231, 0.420)
+GLOBAL_REFERENCE_CARD_COLOR = (0.92, 0.96, 1.0, 0.95)
+LOCAL_REFERENCE_CARD_COLOR = (1.0, 0.94, 0.73, 0.95)
 
 
 def _same_snapshot_value(left: Any, right: Any) -> bool:
@@ -220,38 +230,41 @@ class ApertureService(BaseService):
         renderer = getattr(self.visualizer, "renderer", None)
         return renderer is not None and renderer_capabilities(renderer).aperture_preview
 
-    def _iter_selected_node_contexts(
+    def _orientation_reference_contexts(
         self,
-    ) -> list[tuple[str, int, np.ndarray, tuple[float, float, float] | None]]:
-        """Return selected TX/RX node contexts that can host angular overlays."""
+    ) -> list[tuple[str, str, np.ndarray, np.ndarray | None]]:
+        """Resolve at most one actor, independently of Context's TX/RX filters."""
         viz = self.visualizer
-        state = viz.app_state
-        contexts: list[tuple[str, int, np.ndarray, tuple[float, float, float] | None]] = []
+        settings = OrientationReferenceSettings.from_dict(
+            getattr(viz.app_state, "orientation_reference", None)
+        )
+        position, orientation = orientation_actor_pose(viz, settings.actor)
+        if position is None:
+            return []
+        kind, _, key = settings.actor.partition(":")
+        return [(kind, key, position, orientation)]
 
-        for kind, selection, positions_attr in (
-            ("tx", getattr(state, "selected_tx", "all"), "current_tx_positions"),
-            ("rx", getattr(state, "selected_rx", "all"), "current_rx_positions"),
-        ):
-            if selection == "all" or not isinstance(selection, int):
-                continue
-            positions = getattr(viz, positions_attr, [])
-            if selection >= len(positions):
-                continue
-            position = np.asarray(positions[selection], dtype=np.float64)
-            orientation = self._get_node_orientation(kind, selection)
-            contexts.append((kind, selection, position, orientation))
-
-        return contexts
+    def _reference_radius(self, *, local: bool) -> float:
+        """Separate coincident guides without changing aperture-filter radius."""
+        state = self.visualizer.app_state
+        settings = OrientationReferenceSettings.from_dict(
+            getattr(state, "orientation_reference", None)
+        )
+        both = state.show_global_angular_reference and state.show_local_angular_reference
+        return settings.radius_m * (
+            GLOBAL_REFERENCE_SCALE_WITH_LOCAL if both and not local else 1.0
+        )
 
     def _update_angular_references(self, *, local: bool) -> None:
-        """Create global or local angular reference overlays at selected nodes."""
-        state = self.visualizer.app_state
+        """Create a global or local reference around the one inspected actor."""
         mode = "local" if local else "global"
-        for kind, index, position, orientation in self._iter_selected_node_contexts():
+        for kind, index, position, orientation in self._orientation_reference_contexts():
+            if local and orientation is None:
+                continue
             geom_name = f"angular_reference_{mode}_{kind}_{index}"
             line_payload = create_angular_reference_line_payload(
                 center=position,
-                radius=state.aperture_radius_m,
+                radius=self._reference_radius(local=local),
                 orientation=orientation,
                 local=local,
             )
@@ -270,12 +283,12 @@ class ApertureService(BaseService):
         self,
         *,
         kind: str,
-        index: int,
+        index: str,
         position: np.ndarray,
-        orientation: tuple[float, float, float] | None,
+        orientation: np.ndarray | None,
         local: bool,
     ) -> None:
-        """Add optional text labels for angular reference axes."""
+        """Add screen-sized axis cards at their anchors, with no poles or leaders."""
         renderer = getattr(self.visualizer, "renderer", None)
         if renderer is None:
             return
@@ -283,18 +296,31 @@ class ApertureService(BaseService):
         mode = "local" if local else "global"
         labels = angular_reference_label_positions(
             center=position,
-            radius=self.visualizer.app_state.aperture_radius_m,
+            radius=self._reference_radius(local=local),
             orientation=orientation,
             local=local,
         )
-        for label_index, (text, label_position, color) in enumerate(labels):
+        for label_index, (text, label_position, _color) in enumerate(labels):
             label_name = f"angular_reference_{mode}_{kind}_{index}_label_{label_index}"
             label = create_text_label(
                 label_name,
                 text,
-                color,
-                font_size=0.16,
+                REFERENCE_LABEL_TEXT_COLOR,
+                font_size=REFERENCE_LABEL_FONT_SIZE,
                 position=label_position,
+            )
+            label.payload = replace(label.payload, outline_thickness=0)
+            label.metadata.update(
+                label_card=True,
+                label_bold=True,
+                label_background_rgba=(
+                    LOCAL_REFERENCE_CARD_COLOR if local else GLOBAL_REFERENCE_CARD_COLOR
+                ),
+                depth_test=False,
+                depth_write=False,
+                # Keep text and translucent card in the same rendering pass.
+                alpha_mode="blend",
+                render_order=REFERENCE_LABEL_RENDER_ORDER,
             )
             self._add_reference_geometry(label, label_name)
 

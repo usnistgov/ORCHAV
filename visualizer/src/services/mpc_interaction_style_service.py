@@ -82,6 +82,14 @@ MPC_INTERACTION_STYLES: tuple[MpcInteractionStyle, ...] = (
         "Edge or wedge diffraction around obstacles.",
     ),
     MpcInteractionStyle(
+        16,
+        "Sensing",
+        "Sense",
+        None,
+        (0.9, 0.25, 0.75),
+        "Native RCS scattering point; its proxy surface is absorbing.",
+    ),
+    MpcInteractionStyle(
         99,
         "Virtual",
         "Virtual",

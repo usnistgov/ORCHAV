@@ -1,151 +1,140 @@
 # Summary and Coverage Figures
 
-ORCHAV can write standalone diagnostic figures after a scenario run. They are
-saved as ordinary image files and are not Visualizer sessions. Two settings
-families create them: `generator_summary` draws topology and motion, while
-`coverage.save.figure` draws coverage maps, metric guides, and distributions.
+Generate standalone figures of a scenario's geometry, motion, coverage and
+sensing results. Generation saves these images under `summary/`, where they
+can be viewed without opening the Visualizer. Saved frames and coverage arrays
+can also supply new figures after generation.
 
-Reusable simulation data and optional figures remain separate products:
+## Topology
 
-```mermaid
-flowchart TB
-    Scenario["scenario.yaml"] --> Frames["frames/ HDF5 frame set"]
-    Scenario --> SummarySetting["generator_summary"]
-    SummarySetting --> MotionFigures["summary/ topology and motion figures"]
-    Scenario --> CoverageSetting["coverage"]
-    CoverageSetting --> CoverageData["coverage/coverage_maps.h5"]
-    CoverageSetting --> CoverageFigures["summary/coverage/ figures"]
-```
+The topology figure combines orthographic 3D and top views of the scene,
+with actor trajectories, orientations, and material colors. Target close-ups
+show the mesh geometry; animated targets include the first, middle, and final
+sampled poses.
 
-Use `frames/` and `coverage/` for reusable data. Use `summary/` when a
-standalone figure is useful without opening the Visualizer.
+![Actor Orientation topology](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_topology.png)
 
-## Enable Summary Figures
-
-Start with the figure types the scenario needs:
+Request it in the scenario YAML:
 
 ```yaml
 generator_summary:
   enabled: true
-  create: [scene2d, speed]
+  create: [topology, speed]
 ```
 
-If `generator_summary.enabled` is omitted or false, the Generator does not
-create these figures. PNG is the default format. Optional output and
-presentation settings are described below.
+The Generator writes `summary/topology.png` and `summary/topology.json`.
 
-## Choose Summary Figures
+Set `generator_summary.visualization.topology_pose_samples: 5` to show five poses of an animated target. The default shows the first, middle and final poses. `topology_motion_detail` can add a close-up of a short rigid-target trajectory.
 
-| `create` key | What it answers | Output |
+For a YAML-authored scenario, create the figure without running ray tracing:
+
+```bash
+python -m generator.figures.topology --scenario scenarios/getting_started/hello_world
+```
+
+Use `--output path/to/figure.png` to choose the destination, or `--view top`
+or `--view 3d` to export an individual panel. The combined view is the default.
+Use `--motion-detail true` to include sampled poses and displacement for
+this figure; `auto` and `false` are also accepted. `--pose-samples 5` selects
+five animation snapshots for a standalone export; `3` retains three.
+The command requires the referenced scene and target meshes.
+
+## Motion Figures
+
+Add the products relevant to the experiment:
+
+| `create` key | Result | Output |
 | --- | --- | --- |
-| `scene2d` | Where do the actors travel in the XY plane? | `summary/topology/scene_2d.<format>` |
-| `scene3d` | How do actor altitude and scene height relate? | `summary/topology/scene_3d.<format>` |
-| `speed` | When and how fast does each actor move? | `summary/velocity/speed_evolution.<format>` |
-| `orientation` | Which way do the actors point at each output step? | `summary/angular/*_orientation_evolution.<format>` |
-| `angular_velocity` | How much do yaw, pitch, and roll change between adjacent output steps? | `summary/angular/*_angular_velocity_evolution.<format>` |
+| `topology` | Scene, actors, trajectories, and sampled orientations | `summary/topology.<format>` |
+| `speed` | Speed magnitude in meters per second | `summary/velocity/speed_evolution.<format>` |
+| `orientation` | Yaw, pitch, and roll at each output step | `summary/angular/*_orientation_evolution.<format>` |
+| `angular_velocity` | Euler-angle change in degrees per output step | `summary/angular/*_angular_velocity_evolution.<format>` |
 
-The five Generator figure selectors documented here are `scene2d`, `scene3d`,
-`speed`, `orientation`, and `angular_velocity`. Speed is a magnitude in meters
-per second sampled at each output step. `angular_velocity` reports Euler-angle
-change in degrees per output step, not degrees per second.
+Orientation products write separate figures for each populated transmitter,
+receiver, or target role. `angular_velocity` measures change per output step,
+not degrees per second.
 
-The examples below use the actors and trajectories from
-[Actor Orientation](../../scenarios/generator/mobility_and_orientation/actor_orientation/README.md),
-generated for this page with all five selectors enabled. `orientation` and
-`angular_velocity` write a separate file for each populated TX, RX, or target
-role. The receiver plots are shown here.
+These motion figures use the same
+[Actor Orientation](../../scenarios/generator/mobility_and_orientation/actor_orientation/README.md)
+scenario shown above:
 
-| `scene2d` | `scene3d` |
+![Actor speeds](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_speed.png)
+
+| Receiver orientation | Receiver orientation change |
 | --- | --- |
-| [![Top-down Actor Orientation summary showing actor positions and XY trajectories](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_summary2d.png)](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_summary2d.png) | [![Three-dimensional Actor Orientation summary showing actor trajectories at different heights](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_summary3d.png)](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_summary3d.png) |
-| Shows positions and trajectories in the XY plane. | Shows actor altitude relative to the ground plane. |
+| ![Receiver yaw, pitch, and roll](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_rx_orientation_evolution.png) | ![Receiver Euler-angle changes per output step](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_rx_angular_velocity_evolution.png) |
 
-| `speed` |
-| --- |
-| [![Actor Orientation speed summary showing stationary and moving actor speeds at each output step](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_speed.png)](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_speed.png) |
-| Shows speed magnitude in meters per second and makes stops or changes in motion easy to identify. |
+## Output and Regeneration
 
-| `orientation` | `angular_velocity` |
-| --- | --- |
-| [![Receiver yaw pitch and roll values across the Actor Orientation output steps](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_rx_orientation_evolution.png)](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_rx_orientation_evolution.png) | [![Receiver yaw pitch and roll changes between adjacent Actor Orientation output steps](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_rx_angular_velocity_evolution.png)](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_rx_angular_velocity_evolution.png) |
-| Shows yaw, pitch, and roll state at each output step. | Highlights step-to-step changes, including abrupt Euler-angle wrapping. |
-
-## Output Locations
-
-ORCHAV writes summary figures beside `scenario.yaml` under `summary/`:
-
-```text
-summary/
-|-- topology/
-|-- velocity/
-|-- angular/
-`-- coverage/      # when coverage.save.figure.enabled is true
-```
-
-See [Scenario Authoring](scenario_authoring.md#scenario-directory) for the
-standard scenario directory layout.
-
-## Reuse and Regeneration
-
-When the scenario YAML is unchanged and `summary/` already exists, ORCHAV
-reuses it and warns that external files are not included in that decision. Set
-`generator_summary.force: true` for one run after changing a scene XML, mesh,
-texture, target catalog, scripted object, or another external input.
-
-A rebuild replaces `summary/` only after every requested figure succeeds. If a
-figure fails, the previous complete summary and generated frames remain valid,
-and the next requested run retries the summary.
-
-Environment-only summary artifacts are cached between runs under
-`.cache/orchav/summary_geometry/` by default. The cache key includes the scene
-XML, referenced mesh files, and rendering options. TX/RX/target trajectories
-are still drawn fresh for each scenario run. Set `ORCHAV_SUMMARY_CACHE_DIR` to
-use a different cache location.
-
-## Presentation Options
-
-Presentation settings change how the diagnostic image is drawn. They do not
-change the scenario coordinates or generated frame data.
-
-Rasterized 2D summaries choose their vertical scene slice automatically. For
-shallow geometry, the lower exclusion offset scales with scene height and
-remains capped at 0.1 m, so sub-meter scenes remain visible. No additional YAML
-setting is required; `scene2d_resolution` controls only raster pixel size.
+PNG is the default format. Use SVG or PDF when vector output is preferable:
 
 ```yaml
 generator_summary:
   enabled: true
-  create: [scene2d, scene3d, speed, orientation, angular_velocity]
+  create: [topology, speed, orientation, angular_velocity]
   output:
     format: svg
-  visualization:
-    actor_label_mode: name
-    scene2d_material_legend: true
-    scene3d_mode: city
-    scene3d_z_exaggeration: auto
 ```
 
-| Setting | Default | Goal |
-| --- | --- | --- |
-| `output.format` | `png` | Use `svg` for scalable vector figures or `pdf` for page-oriented output. |
-| `visualization.actor_label_mode` | `role` | Use `name` when YAML actor names carry more meaning than `TX1` or `RX1`. |
-| `visualization.scene2d_material_legend` | `false` | Enable it when the 2D figure must explain the environment's material composition. |
-| `visualization.scene3d_mode` | `floor_plan` | Use `city` for dense city geometry or `wireframe` when mesh structure should remain visible. |
-| `visualization.scene3d_z_exaggeration` | unset (`city` uses `auto`) | Use `auto` to make city-scale height differences readable without changing coordinates. |
+When the YAML is unchanged and a complete summary exists, the Generator reuses
+it. Set `generator_summary.force: true` for one run after changing external
+meshes, scene files, or scripted actors. A rebuild replaces the summary only
+when every requested figure succeeds; a failed figure leaves the previous
+complete summary and simulation frames intact.
 
-Only `actor_label_mode` changes between the two figures below. Role/index
-labels are compact and consistent across scenarios. Actor names are better when
-the names communicate each actor's purpose.
-
-| Default `actor_label_mode: role` | `actor_label_mode: name` |
-| --- | --- |
-| [![Actor Orientation scene labeled TX1 RX1 RX2 and RX3](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_summary2d_role_labels.png)](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_summary2d_role_labels.png) | [![The same Actor Orientation scene labeled TrackingTX GroundRX Walker and PatrolDrone](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_summary2d.png)](../assets/scenarios/scenarios_generator_mobility_and_orientation_actor_orientation_summary2d.png) |
-| Best for comparing roles across scenarios. | Best for explaining scenario-specific behavior. |
-
-The `city` and `wireframe` 3D modes color scene geometry by detected material
-family and include those material colors in the figure legend. For every
-summary field, see the
+For all configuration fields, see the
 [Scenario YAML Reference](../reference/scenario_yaml.md#generator-summary-settings).
+
+## Sensing Figures
+
+Enable sensing summaries in the scenario YAML to generate them automatically
+after acquisition:
+
+```yaml
+generator_summary:
+  enabled: true
+  create: [topology, sensing]
+  sensing:
+    figures: [range_profile, range_doppler, doppler, detection, tracking]
+    history_time_axis: time
+    range_profile_views: [zoom_to_data, full]
+    range_doppler_views: [zoom_to_data, full]
+```
+
+The figures appear in `summary/sensing/`. Choose products saved by the scenario.
+A tracking plot needs recorded tracks, and a range–Doppler snapshot needs a
+complete acquisition window.
+
+![Stationary cube range response](../assets/sensing_curriculum/cube_radar_summary_stationary_range.png)
+
+This range profile comes from the
+[stationary cube](../../scenarios/sensing/cube_radar/stationary/README.md).
+The response is concentrated around the cube's nearest reflecting face.
+Its width and sidelobes depend on bandwidth and the selected processing window.
+
+
+### Sensing Figures From Saved Results
+
+Plot the last complete result and its detection history from an existing recording. Choose a fresh output directory:
+
+```bash
+python -m generator.figures.summary.saved_sensing scenarios/sensing/cube_radar/stationary -o analysis/cube-radar-stationary-summary --figure range_profile --figure range_doppler --figure detection_history
+```
+
+The command reads the saved products and writes plots under the output directory's `sensing/` folder. Use `--frame-index N` to end the history at a particular complete frame. To compare plots across recordings, give them matching `--range-limits`, `--velocity-limits` and `--power-limits`. See `--help` for all figure types.
+
+To reproduce the [stationary cube](../../scenarios/sensing/cube_radar/stationary/README.md)
+range–Doppler and range-profile figures with the selected final frame and fixed
+zoom and power limits, use:
+
+```bash
+python -m generator.figures.summary.saved_sensing scenarios/sensing/cube_radar/stationary -o analysis/stationary-cube-summary --frame-index 63 --figure range_doppler --figure range_profile --range-limits 3 6 --velocity-limits -2 2 --power-limits -140 -60
+```
+
+The source recording is not modified, and figure generation does not repeat ray
+tracing or detection.
+
+To change the detection or tracking algorithm, [reprocess the recording](../sensing/reprocessing.md#run-processing) before plotting it.
 
 ## Coverage Figures
 
@@ -184,22 +173,35 @@ These examples show both configured heights from
 | Metric guide | [![Single-transmitter comparison of path loss received power and SINR at 1.5 meters](../assets/scenarios/scenarios_generator_coverage_single_tx_metrics_height-01_1.5m.png)](../assets/scenarios/scenarios_generator_coverage_single_tx_metrics_height-01_1.5m.png) | [![Single-transmitter comparison of path loss received power and SINR at 30 meters](../assets/scenarios/scenarios_generator_coverage_single_tx_metrics_height-02_30m.png)](../assets/scenarios/scenarios_generator_coverage_single_tx_metrics_height-02_30m.png) |
 | Distribution | [![Single-transmitter histograms and cumulative distributions for path loss received power and SINR at 1.5 meters](../assets/scenarios/scenarios_generator_coverage_single_tx_distributions_height-01_1.5m.png)](../assets/scenarios/scenarios_generator_coverage_single_tx_distributions_height-01_1.5m.png) | [![Single-transmitter histograms and cumulative distributions for path loss received power and SINR at 30 meters](../assets/scenarios/scenarios_generator_coverage_single_tx_distributions_height-02_30m.png)](../assets/scenarios/scenarios_generator_coverage_single_tx_distributions_height-02_30m.png) |
 
-The quick-look map answers where coverage is strong or weak. The metric guide
-places selected metrics side by side, and the distribution figure compares
-their aggregate histograms and cumulative distributions. Quick-look maps and
-metric guides use metric-specific limits shared across the height stack, so a
-color has the same meaning when comparing height slices.
+Each figure uses one file per height, such as `coverage_maps_height-01_1.5m.png`. Metric-specific color limits are shared across heights. Use `metric/TXName` to select an individual transmitter.
 
-Each enabled figure type produces one file for every configured height,
-including single-height grids. Filenames combine the one-based height order
-with the physical height, for example
-`coverage_maps_height-01_1.5m.png` and
-`coverage_maps_height-02_30m.png`. Metric guides and distributions follow the
-same pattern with their configured filename stems. Enabled figure types must
-use distinct base filenames. Comparisons are case-insensitive so the output is
-portable to Windows. Per-TX metric layers use
-`metric/TXName` syntax, for example `path_loss_db/WestSector`. Coverage-map data
-is saved separately as `coverage/coverage_maps.h5`.
+### Standalone 3D Coverage Slices
+
+Export a saved height slice together with the scene meshes without opening the
+Visualizer or rerunning ray tracing:
+
+```bash
+python -m generator.tools.coverage_figure --scenario scenarios/generator/coverage/single_tx --output coverage_3d.png
+```
+
+![Standalone 3D coverage slice at 1.5 meters](../assets/scenarios/scenarios_generator_coverage_single_tx_coverage_3d.png)
+
+The command reads `coverage/coverage_maps.h5` from the scenario and writes the
+requested PNG, PDF, or SVG using a CPU renderer. It requires existing coverage
+data and scene meshes, with no display or GPU requirement. It runs only when
+requested, so it adds no work to normal scenario generation or playback.
+
+`--height-index 0` selects the first saved height; `--height-index 1` selects
+the second. Use `--metric best_rss_dbm`, `--metric serving_tx`, or a named
+transmitter such as `--metric path_loss_db/BaseStation`. `--elevation 40` and
+`--azimuth -60` set the orthographic camera angles in degrees. Use
+`--coverage-file path/to/coverage_maps.h5` to render another saved recording
+with its matching scenario.
+
+The figure preserves cell footprints, physical heights, and missing-data gaps.
+Color limits cover all stored heights for the selected metric, as in the 2D
+metric guides. This export draws one horizontal slice; volumetric and isosurface
+inspection remain available in the Visualizer.
 
 ---
 

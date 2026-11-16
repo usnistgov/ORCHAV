@@ -34,22 +34,32 @@ from shared.frames.sionna_metadata import (
     SIONNA_INTERACTION_DIFFUSE,
     SIONNA_INTERACTION_LABELS,
     SIONNA_INTERACTION_REFRACTION,
+    SIONNA_INTERACTION_SENSING,
     SIONNA_INTERACTION_SPECULAR,
     SIONNA_NON_LOS_INTERACTION_TYPES,
 )
 from shared.frames.types import StandardMPCFrame
 from shared.logging import get_logger
+from shared.scenarios.defaults import DEFAULT_EXPORT_PATH_METRICS
 
 from .filtering import (
     DEFAULT_PATH_FILTER_CONFIG,
     select_path_indices_by_power,
 )
+from .sensing_identity import pack_sensing_identity
 
 logger = get_logger(__name__)
 
 AMPLITUDE_TO_DB_SCALE = 20.0
 PATH_LOSS_EPSILON = 1e-12
 SECONDS_TO_NANOSECONDS = 1e9
+
+# Building and validating an identity index has a small fixed cost.  The
+# historical scan is faster for the small target collections used by most
+# generic scenarios, while the index wins once the triangular lookup becomes
+# material.  Keep this threshold conservative and decision-backed by the
+# target-metadata scaling benchmark.
+_TARGET_MANAGER_INDEX_MIN_TARGETS = 32
 
 __all__ = [
     "process_frame_data",
@@ -437,6 +447,59 @@ def _pack_path_metrics(
     return compact, metric_valid_bits
 
 
+def _legacy_target_manager_lookup(target_obj: Any, target_managers: list[Any]) -> Any | None:
+    """Return the first equality-matching manager using the historical scan."""
+
+    for target_manager in target_managers:
+        if target_manager.target_object == target_obj:
+            return target_manager
+    return None
+
+
+def _uses_object_identity_equality(value: Any) -> bool:
+    """Return whether ``value == other`` has Python's identity semantics."""
+
+    try:
+        return type(value).__eq__ is object.__eq__
+    except Exception:  # noqa: BLE001 - unusual extension metaclasses must fall back safely
+        return False
+
+
+def _identity_target_manager_index(
+    target_objects: list[Any],
+    target_managers: list[Any],
+) -> dict[int, Any] | None:
+    """Return an exact identity index or ``None`` when legacy lookup is required.
+
+    The historical scan selected the first manager whose target compared equal.
+    Identity lookup is equivalent only when every participating object uses
+    ``object.__eq__``, target and manager identities are unique, and every target
+    has an exact manager identity. Any uncertainty retains the historical scan.
+    """
+
+    target_ids: set[int] = set()
+    for target_obj in target_objects:
+        target_id = id(target_obj)
+        if target_id in target_ids or not _uses_object_identity_equality(target_obj):
+            return None
+        target_ids.add(target_id)
+
+    index: dict[int, Any] = {}
+    for target_manager in target_managers:
+        try:
+            managed_target = target_manager.target_object
+        except Exception:  # noqa: BLE001 - preserve legacy access behavior in the fallback
+            return None
+        managed_id = id(managed_target)
+        if managed_id in index or not _uses_object_identity_equality(managed_target):
+            return None
+        index[managed_id] = target_manager
+
+    if not target_ids.issubset(index):
+        return None
+    return index
+
+
 def _process_target_metadata(target_objects, target_managers, frame_idx):
     """Return target positions and metadata for one output frame."""
     # Positions are stored as an (n_targets, 3) array.
@@ -446,36 +509,63 @@ def _process_target_metadata(target_objects, target_managers, frame_idx):
             pos = target_obj.position
             positions.append([to_float(pos.x), to_float(pos.y), to_float(pos.z)])
         target_positions = np.array(positions, dtype=np.float64)
-        logger.debug(f"[TARGET EXPORT] Frame {frame_idx}: target_pos: {target_positions}")
+        logger.debug(
+            "[TARGET EXPORT] Frame %s: target_pos: %s",
+            frame_idx,
+            target_positions,
+        )
     else:
         target_positions = np.zeros((0, 3), dtype=np.float64)
-        logger.debug(f"[TARGET EXPORT] Frame {frame_idx}: No targets")
+        logger.debug("[TARGET EXPORT] Frame %s: No targets", frame_idx)
 
     targets_metadata = []
     if target_objects:
+        target_manager_index = (
+            _identity_target_manager_index(target_objects, target_managers)
+            if len(target_objects) >= _TARGET_MANAGER_INDEX_MIN_TARGETS
+            else None
+        )
         logger.debug(
-            f"[TARGET METADATA] Frame {frame_idx}: Found {len(target_objects)} target objects"
+            "[TARGET METADATA] Frame %s: Found %s target objects",
+            frame_idx,
+            len(target_objects),
         )
         for i, target_obj in enumerate(target_objects):
             logger.debug(
-                f"[TARGET METADATA] Frame {frame_idx}: Processing target object {i}: {target_obj}"
+                "[TARGET METADATA] Frame %s: Processing target object %s: %s",
+                frame_idx,
+                i,
+                target_obj,
             )
-            target_manager = None
-            for tm in target_managers:
-                if tm.target_object == target_obj:
-                    target_manager = tm
-                    logger.debug(
-                        f"[TARGET METADATA] Frame {frame_idx}: Found target manager for object {i}"
-                    )
-                    break
+            target_manager = (
+                _legacy_target_manager_lookup(target_obj, target_managers)
+                if target_manager_index is None
+                else target_manager_index[id(target_obj)]
+            )
+            if target_manager is not None:
+                logger.debug(
+                    "[TARGET METADATA] Frame %s: Found target manager for object %s",
+                    frame_idx,
+                    i,
+                )
 
             if target_manager:
+                snapshot = getattr(target_manager, "metadata_snapshot", None)
+                if callable(snapshot):
+                    targets_metadata.append(snapshot())
+                    continue
                 current_mesh_idx = target_manager.current_mesh_idx
                 current_mesh_file = (
                     target_manager.meshes[current_mesh_idx] if target_manager.meshes else "unknown"
                 )
+                current_mesh_basename = os.path.basename(current_mesh_file)
                 logger.info(
-                    f"[TARGET METADATA] Frame {frame_idx} (display={frame_idx+1}): Extracting mesh_file from target_manager: mesh_idx={current_mesh_idx}, mesh_file={os.path.basename(current_mesh_file)}"
+                    "[TARGET METADATA] Frame %s (display=%s): Extracting mesh_file "
+                    "from target_manager: mesh_idx=%s, mesh_file=%s",
+                    frame_idx,
+                    frame_idx + 1,
+                    current_mesh_idx,
+                    current_mesh_basename,
                 )
 
                 # Metadata requires a position even when the runtime object does
@@ -488,20 +578,28 @@ def _process_target_metadata(target_objects, target_managers, frame_idx):
                             to_float(target_obj.position.z),
                         ]
                         logger.debug(
-                            f"[TARGET METADATA] Frame {frame_idx}: Got position from target object: {current_pos}"
+                            "[TARGET METADATA] Frame %s: Got position from target object: %s",
+                            frame_idx,
+                            current_pos,
                         )
                     else:
                         current_pos = list(target_manager.config.initial_position)
                         logger.warning(
-                            f"[TARGET METADATA] Frame {frame_idx}: Using initial position from config: {current_pos}"
+                            "[TARGET METADATA] Frame %s: Using initial position from config: %s",
+                            frame_idx,
+                            current_pos,
                         )
                 except (AttributeError, TypeError, ValueError) as e:
                     logger.warning(
-                        f"[TARGET METADATA] Frame {frame_idx}: Error getting position from target object: {e}"
+                        "[TARGET METADATA] Frame %s: Error getting position from target object: %s",
+                        frame_idx,
+                        e,
                     )
                     current_pos = list(target_manager.config.initial_position)
                     logger.debug(
-                        f"[TARGET METADATA] Frame {frame_idx}: Fallback to initial position: {current_pos}"
+                        "[TARGET METADATA] Frame %s: Fallback to initial position: %s",
+                        frame_idx,
+                        current_pos,
                     )
 
                 if hasattr(target_obj, "orientation") and target_obj.orientation is not None:
@@ -513,7 +611,10 @@ def _process_target_metadata(target_objects, target_managers, frame_idx):
                 else:
                     # Missing runtime orientation is represented by zero Euler angles.
                     logger.warning(
-                        f"[TARGET METADATA] Frame {frame_idx}: Target object {i} has no orientation, using zero orientation as fallback"
+                        "[TARGET METADATA] Frame %s: Target object %s has no orientation, "
+                        "using zero orientation as fallback",
+                        frame_idx,
+                        i,
                     )
                     orientation_values = [0.0, 0.0, 0.0]
 
@@ -521,7 +622,7 @@ def _process_target_metadata(target_objects, target_managers, frame_idx):
                 # scenario-relative directory.
                 target_meta = {
                     "name": target_manager.config.name,
-                    "mesh_file": os.path.basename(current_mesh_file),
+                    "mesh_file": current_mesh_basename,
                     "mesh_directory": target_manager.relative_mesh_directory,
                     "mesh_index": current_mesh_idx,
                     "scale": to_float(target_manager.config.scale),
@@ -539,24 +640,49 @@ def _process_target_metadata(target_objects, target_managers, frame_idx):
                         else "Stationary"
                     ),
                 }
+                animation = getattr(target_manager.config, "animated_asset", None)
+                if animation is not None:
+                    target_meta["animated_asset"] = {
+                        "catalog": animation.catalog_metadata(),
+                        "state": animation.sample_metadata(current_mesh_idx),
+                    }
                 targets_metadata.append(target_meta)
 
                 logger.info(
-                    f"[TARGET METADATA] Frame {frame_idx} (0-indexed, display={frame_idx+1}): {target_meta['name']} - {target_meta['mesh_file']} at {target_meta['current_position']}, orient={orientation_values}"
+                    "[TARGET METADATA] Frame %s (0-indexed, display=%s): %s - %s at %s, "
+                    "orient=%s",
+                    frame_idx,
+                    frame_idx + 1,
+                    target_meta["name"],
+                    target_meta["mesh_file"],
+                    target_meta["current_position"],
+                    orientation_values,
                 )
-                logger.debug(f"[TARGET METADATA] Frame {frame_idx}: Full metadata: {target_meta}")
+                logger.debug(
+                    "[TARGET METADATA] Frame %s: Full metadata: %s",
+                    frame_idx,
+                    target_meta,
+                )
             else:
                 logger.error(
-                    f"[TARGET METADATA] Frame {frame_idx}: Could not find target manager for target object {i}"
+                    "[TARGET METADATA] Frame %s: Could not find target manager for target "
+                    "object %s",
+                    frame_idx,
+                    i,
                 )
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "[TARGET METADATA] Frame %s: Available target managers: %s",
+                        frame_idx,
+                        [tm.config.name for tm in target_managers],
+                    )
                 logger.debug(
-                    f"[TARGET METADATA] Frame {frame_idx}: Available target managers: {[tm.config.name for tm in target_managers]}"
-                )
-                logger.debug(
-                    f"[TARGET METADATA] Frame {frame_idx}: Target object type: {type(target_obj)}"
+                    "[TARGET METADATA] Frame %s: Target object type: %s",
+                    frame_idx,
+                    type(target_obj),
                 )
     else:
-        logger.debug(f"[TARGET METADATA] Frame {frame_idx}: No target objects found")
+        logger.debug("[TARGET METADATA] Frame %s: No target objects found", frame_idx)
 
     return target_positions, targets_metadata
 
@@ -568,7 +694,9 @@ def _extract_optional_path_metrics(paths, valid, num_tx, num_rx, simulation_conf
     arrays are RX-major and filtered with the same valid-path mask used for
     bounce geometry.
     """
-    export_metrics = bool(getattr(simulation_config, "export_path_metrics", False))
+    export_metrics = bool(
+        getattr(simulation_config, "export_path_metrics", DEFAULT_EXPORT_PATH_METRICS)
+    )
     all_pair_metrics = None
     if export_metrics:
         try:
@@ -815,7 +943,8 @@ def _apply_snapshot_overrides(
 
     updated_metadata: list[dict[str, Any]] = []
     for index, metadata in enumerate(targets_metadata):
-        updated = dict(metadata)
+        native_snapshots = (snapshots or {}).get("native_targets_metadata_snapshot", {})
+        updated = dict(native_snapshots.get(index, metadata))
         if index < len(target_positions):
             updated["current_position"] = target_positions[index].tolist()
         if index < len(target_orientations):
@@ -855,14 +984,16 @@ def _log_path_type_stats(
     diffuse = int(np.count_nonzero(first_types == SIONNA_INTERACTION_DIFFUSE))
     refraction = int(np.count_nonzero(first_types == SIONNA_INTERACTION_REFRACTION))
     diffraction = int(np.count_nonzero(first_types == SIONNA_INTERACTION_DIFFRACTION))
+    sensing = int(np.count_nonzero(first_types == SIONNA_INTERACTION_SENSING))
     known = np.isin(first_types, SIONNA_NON_LOS_INTERACTION_TYPES)
     los += int(np.count_nonzero(~known))
 
-    total = los + specular + diffuse + refraction + diffraction
+    total = los + specular + diffuse + refraction + diffraction + sensing
     logger.debug("[STATS] MPC PATH TYPE ANALYSIS:")
     logger.debug("   LoS paths: %d", los)
     logger.debug("   Specular paths: %d", specular)
     logger.debug("   Diffuse paths: %d", diffuse)
+    logger.debug("   Sensing-first paths: %d", sensing)
     if _SIONNA_12:
         logger.debug("   Refraction paths: %d", refraction)
         logger.debug("   Diffraction paths: %d", diffraction)
@@ -976,6 +1107,16 @@ def process_frame_data(
 
     _log_path_type_stats(packed_interactions, bounce_offsets)
     source = dict(provenance or {"provider": "generator", "frame_idx": int(frame_idx)})
+    native_identity = pack_sensing_identity(
+        paths,
+        raw_interactions,
+        retained_indices,
+        packed_interactions,
+        targets_metadata,
+        (snapshot_overrides or {}).get("sionna_sensing"),
+    )
+    if native_identity is not None:
+        source["sionna_sensing"] = native_identity
     return StandardMPCFrame(
         frame_index=int(frame_idx),
         timestamp_s=timestamp_s,

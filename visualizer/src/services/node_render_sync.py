@@ -10,6 +10,7 @@ import numpy as np
 from ..model import RenderObjectState, Transform, VisualEntity
 from ..services.object_identity import make_node_geometry_name
 from .entity_render_service import EntityRenderService
+from .label_callout_service import label_with_callout
 
 if TYPE_CHECKING:
     from ...visualizer import OrchavVisualizer
@@ -110,7 +111,11 @@ class NodeRenderSync:
         ensure_object = getattr(self.renderer, "ensure_object", None)
         return bool(
             callable(ensure_object)
-            and ensure_object(label.to_render_object(effective_visible=effective_visible))
+            and ensure_object(
+                label_with_callout(
+                    label.to_render_object(effective_visible=effective_visible), self.visualizer
+                )
+            )
         )
 
     def remove_label(self, label_id: str) -> bool:

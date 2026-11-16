@@ -13,13 +13,11 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
-    QFormLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
     QSpinBox,
-    QStackedWidget,
     QTableWidget,
     QToolButton,
     QVBoxLayout,
@@ -37,6 +35,8 @@ from shared.scenarios.actors import (
     SpinOrientationSpec,
 )
 
+from ..widgets.form_layout import AlignedFormLayout
+from ..widgets.responsive import CurrentPageStack
 from .orientation_models import (
     ORIENTATION_MODELS,
     OrientationKind,
@@ -292,7 +292,7 @@ class OrientationEditor(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         type_row = QWidget(self)
-        type_layout = QFormLayout(type_row)
+        type_layout = AlignedFormLayout(type_row)
         type_layout.setContentsMargins(0, 0, 0, 0)
         self.type_combo = QComboBox(type_row)
         self.type_combo.setObjectName("orientationTypeCombo")
@@ -301,7 +301,7 @@ class OrientationEditor(QWidget):
         type_layout.addRow("Type", self.type_combo)
         layout.addWidget(type_row)
 
-        self.page_stack = QStackedWidget(self)
+        self.page_stack = CurrentPageStack(self)
         self.page_stack.setObjectName("orientationPageStack")
         page_builders = {
             OrientationKind.FIXED: self._build_fixed_page,
@@ -330,7 +330,7 @@ class OrientationEditor(QWidget):
     def _build_fixed_page(self) -> QWidget:
         page = QWidget(self)
         page.setObjectName("orientationFixedPage")
-        form = QFormLayout(page)
+        form = AlignedFormLayout(page)
         self.fixed_angle_spins = _angle_spins(page, "orientationFixed")
         for label, spin in zip(("Yaw", "Pitch", "Roll"), self.fixed_angle_spins, strict=True):
             form.addRow(label, spin)
@@ -397,7 +397,7 @@ class OrientationEditor(QWidget):
         layout.addWidget(self.align_motion_explanation)
 
         primary = QWidget(page)
-        primary_form = QFormLayout(primary)
+        primary_form = AlignedFormLayout(primary)
         primary_form.setContentsMargins(0, 0, 0, 0)
         self.align_allow_pitch_check = QCheckBox("Follow vertical motion", primary)
         self.align_allow_pitch_check.setObjectName("orientationAlignMotionAllowPitchCheck")
@@ -410,7 +410,7 @@ class OrientationEditor(QWidget):
             "orientationAlignMotionAdvancedSection",
             page,
         )
-        advanced = QFormLayout(self.align_advanced_section.content)
+        advanced = AlignedFormLayout(self.align_advanced_section.content)
         self.align_smoothing_time_spin = _configured_spin(
             self.align_advanced_section.content,
             "orientationAlignMotionSmoothingTimeSpin",
@@ -462,7 +462,7 @@ class OrientationEditor(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         primary = QWidget(page)
-        form = QFormLayout(primary)
+        form = AlignedFormLayout(primary)
         form.setContentsMargins(0, 0, 0, 0)
         self.look_at_target_mode_combo = QComboBox(primary)
         self.look_at_target_mode_combo.setObjectName("orientationLookAtTargetModeCombo")
@@ -470,10 +470,10 @@ class OrientationEditor(QWidget):
         self.look_at_target_mode_combo.addItem("Point", _LOOK_AT_POINT)
         form.addRow("Target", self.look_at_target_mode_combo)
 
-        self.look_at_target_stack = QStackedWidget(primary)
+        self.look_at_target_stack = CurrentPageStack(primary)
         self.look_at_target_stack.setObjectName("orientationLookAtTargetStack")
         actor_page = QWidget(self.look_at_target_stack)
-        actor_form = QFormLayout(actor_page)
+        actor_form = AlignedFormLayout(actor_page)
         actor_form.setContentsMargins(0, 0, 0, 0)
         self.look_at_combo = QComboBox(actor_page)
         self.look_at_combo.setObjectName("orientationLookAtCombo")
@@ -483,7 +483,7 @@ class OrientationEditor(QWidget):
         self.look_at_target_stack.addWidget(actor_page)
 
         point_page = QWidget(self.look_at_target_stack)
-        point_form = QFormLayout(point_page)
+        point_form = AlignedFormLayout(point_page)
         point_form.setContentsMargins(0, 0, 0, 0)
         self.look_at_point_spins = _vector_spins(
             point_page,
@@ -506,7 +506,7 @@ class OrientationEditor(QWidget):
             "orientationLookAtAdvancedSection",
             page,
         )
-        advanced = QFormLayout(self.look_at_advanced_section.content)
+        advanced = AlignedFormLayout(self.look_at_advanced_section.content)
         self.look_at_smoothing_time_spin = _configured_spin(
             self.look_at_advanced_section.content,
             "orientationLookAtSmoothingTimeSpin",
@@ -579,7 +579,7 @@ class OrientationEditor(QWidget):
     def _build_spin_page(self) -> QWidget:
         page = QWidget(self)
         page.setObjectName("orientationSpinPage")
-        form = QFormLayout(page)
+        form = AlignedFormLayout(page)
         self.spin_axis_combo = QComboBox(page)
         self.spin_axis_combo.setObjectName("orientationSpinAxisCombo")
         for axis in ("yaw", "pitch", "roll"):
@@ -615,7 +615,7 @@ class OrientationEditor(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         primary = QWidget(page)
-        form = QFormLayout(primary)
+        form = AlignedFormLayout(primary)
         form.setContentsMargins(0, 0, 0, 0)
         self.random_seed_spin = _configured_int_spin(
             primary,
@@ -647,7 +647,7 @@ class OrientationEditor(QWidget):
             "orientationRandomAdvancedSection",
             page,
         )
-        advanced = QFormLayout(self.random_advanced_section.content)
+        advanced = AlignedFormLayout(self.random_advanced_section.content)
         (
             update_widget,
             self.random_update_interval_enabled_check,

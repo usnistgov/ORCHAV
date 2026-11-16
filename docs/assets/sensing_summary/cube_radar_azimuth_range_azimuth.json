@@ -1,0 +1,208 @@
+{
+  "kind": "standard_sensing_summary_from_saved_products",
+  "source": "scenarios/sensing/cube_radar/azimuth",
+  "source_identity": {
+    "generation_id": "6d85456d-097d-42d6-b023-ad0639dc7c27",
+    "frame_set_id": "45c45af5141a7c391d1735c83e78160dc40f8a9ab139bee3f59bbf3bc8cd9a0a"
+  },
+  "manifest_sha256": "40d93cdeb222aa889094b4645d7b84e7b2b41941761b6e7e8131219b0cb26835",
+  "source_files_sha256": {
+    "frames_manifest.json": "40d93cdeb222aa889094b4645d7b84e7b2b41941761b6e7e8131219b0cb26835",
+    "mpc_frames_00000-00062.h5": "48a0e9bbd0a18937a72cd9a81f0e4aeefc98a8c7d02e3b625d46661a19533e3a",
+    "mpc_frames_00063-00063.h5": "ce005703a28024d9a3c5e67f022aab314874e82bd782d331ad2e6720b1ba51db",
+    "mpc_frames_00064-00126.h5": "f1dfe1040b150251073e159d397bb4c4a0b98ba25e7dd5e38d4dfe91c3996951",
+    "mpc_frames_00127-00127.h5": "082504969e657f8ecf4a0594e26f50f9a1e4e75de422fe02d3dba491266d780a",
+    "mpc_frames_00128-00190.h5": "4930b701b00358c938a9cb0ae48d80d83442c966800944e098b2ce10efdb50bf",
+    "mpc_frames_00191-00191.h5": "9b13f664c6a1b2da3f1dbb4793d88f842bbb66a7fd9b36de79a6d1d3e04aed28",
+    "mpc_frames_00192-00254.h5": "8d250ff11a06222766d454fbe873048f25ccdccae8360d80b716714d193b68f4",
+    "mpc_frames_00255-00255.h5": "070902158cda1f3c41346f5584e3f5f3b671bb3cce783186fcf3a48d9abfd589",
+    "mpc_frames_00256-00318.h5": "a6eb74c2fa64140674556745dd6c78c15658f3e2a8b704e08fae7750061bef18",
+    "mpc_frames_00319-00319.h5": "5b26ca126be026c90ac92c8ad1dccc49cc201fb4b0d583ab7f380b99915fefa0",
+    "mpc_frames_00320-00382.h5": "32abdd7201ebd1c126f48113a399e8f2d9b8480d92ce5ef5e5060ca538426bb0",
+    "mpc_frames_00383-00383.h5": "6c2eb085da92ba0191eca64723037142c1100c5723a0cdc461ff21115489a1aa",
+    "mpc_frames_00384-00446.h5": "4712fa4774568427679955a17f04f363aaf6ef6868d8abf9059aa7d4d03b18b2",
+    "mpc_frames_00447-00447.h5": "f4f4296ab23afa11933f3b8e25a16d4a299bdb0c3e19eb42e89429abc811beb8",
+    "mpc_frames_00448-00510.h5": "75a700df76aa49b1b17549649babb7da2c52b9588587eed8c160b897453c46c0",
+    "mpc_frames_00511-00511.h5": "c969ecfcc9f4ae826ae08043d03ae1adbcfd3f61af584114f1f5bd584852335f",
+    "mpc_frames_00512-00574.h5": "bedf1c76ee6e654c06de542c930ccb60b7b2b21792a04d101231ed6ac46afbab",
+    "mpc_frames_00575-00575.h5": "86f1c0f38b30e8b994d9ba549b23f3d16a0babcf8393b340caecd0b0f5cf0ae6",
+    "mpc_frames_00576-00638.h5": "1e3634f5fb1bd9e714109aa007b74d8918699eb771f0cc94b8f3b5ba52848315",
+    "mpc_frames_00639-00639.h5": "b3943f6ed53a9e7e9768899b6fb4144f7feccb33bfcd9bc0aae8f1b09425f198",
+    "mpc_frames_00640-00702.h5": "4331b2dd94f4cf6f6e2c147b136cdd8d06aa2daf4b40f6ac3d7c40f327771bf0",
+    "mpc_frames_00703-00703.h5": "04a28ddf511f3b9a8b7bba4112783b0bd49ef0d9253e4a5bab11ccdbd6ec828e",
+    "mpc_frames_00704-00766.h5": "9710f662e84e8c1e7e9b79504e171a5a98efc29680d443e1aefa4bc6b742f8c6",
+    "mpc_frames_00767-00767.h5": "b93e786b6e0f1e32b315d4b3b20e122c75b2a68ee41e882a75c45808a77927a6",
+    "mpc_frames_00768-00830.h5": "6b3c53893f94e44efd753d6a81d45f0d4b467ff92cfc80d3243199c757d06819",
+    "mpc_frames_00831-00831.h5": "da81c131c57c77ebf533257df8819a40fea36bbd1095611b6ed72cdd4e2f0f2b",
+    "mpc_frames_00832-00894.h5": "79eb98c0965dc2fa77d99c262dace17a46a489bbcadf6277a7167d1dd9c872dc",
+    "mpc_frames_00895-00895.h5": "aadde0155cd6c469e9c372ea8776eaa7a28d6db1f78f88fc25d5b487403d0594",
+    "mpc_frames_00896-00958.h5": "da394e5896cb19eaccd72754e36c2a056e66deb3e48d9a0216ec90b26a5e375b",
+    "mpc_frames_00959-00959.h5": "0c83794dd896d7b204129a0edaef1b15ee4fcd8146fc9d8a4eb1b7389fc21c5f",
+    "mpc_frames_00960-01022.h5": "27d982677df8ae0388425e4f2a11cd22a53b637ed31a8461dda23f4864705ccf",
+    "mpc_frames_01023-01023.h5": "21a6279d4f8500c3df9421542546aa16e4db52d970449a397a37e438cdc8200c"
+  },
+  "figures": [
+    "angles"
+  ],
+  "incomplete_acquisition_count": 0,
+  "result_count": 16,
+  "results": [
+    {
+      "frame_index": 63,
+      "reference_time_s": 0.0,
+      "acquisition_id": "e66ba192-ff44-5aa0-b0bb-068570068277",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 127,
+      "reference_time_s": 0.064,
+      "acquisition_id": "bb68bd3d-9867-5cb4-800a-614acd6f7395",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 191,
+      "reference_time_s": 0.128,
+      "acquisition_id": "c6204092-dfce-5a1f-a860-f950f14e9ca0",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 255,
+      "reference_time_s": 0.192,
+      "acquisition_id": "62e5108c-3e81-5bfe-b994-07f3be9fdddd",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 319,
+      "reference_time_s": 0.256,
+      "acquisition_id": "1a2a4981-3c9f-55f9-aab9-4b99bceb2b62",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 383,
+      "reference_time_s": 0.32,
+      "acquisition_id": "2682dc29-5e78-5547-b61c-5477950fddf0",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 447,
+      "reference_time_s": 0.384,
+      "acquisition_id": "47e35b51-8373-55a9-b754-2898177b85d1",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 511,
+      "reference_time_s": 0.448,
+      "acquisition_id": "fa37b7d6-a180-54d0-93f2-d5af2e918f93",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 575,
+      "reference_time_s": 0.512,
+      "acquisition_id": "db652bd9-fdab-5829-bb34-793c5a84b001",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 639,
+      "reference_time_s": 0.576,
+      "acquisition_id": "bf8be832-ee42-57b5-b881-c7ef0ebb5e68",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 703,
+      "reference_time_s": 0.64,
+      "acquisition_id": "e6c0da77-aa86-50bb-aeec-de8cd48dd00f",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 767,
+      "reference_time_s": 0.704,
+      "acquisition_id": "efb3ea0e-a3b1-5046-8f2b-b694143c5b66",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 831,
+      "reference_time_s": 0.768,
+      "acquisition_id": "973a5f28-66c2-57af-b4bf-545b8992e769",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 895,
+      "reference_time_s": 0.832,
+      "acquisition_id": "7643bee7-bbd7-549a-af0b-8d8591c376a7",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 959,
+      "reference_time_s": 0.896,
+      "acquisition_id": "7a605143-66e7-5c99-b503-63b69d175ffe",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    },
+    {
+      "frame_index": 1023,
+      "reference_time_s": 0.96,
+      "acquisition_id": "868453ba-b6fe-5435-b894-db701498e8a5",
+      "processing_recipe_id": "a76ab781a605e1a02bd9063a13276206d075898a2e2a29ab441691ed2cf5fb0c",
+      "detection_count": 1
+    }
+  ],
+  "outputs": [
+    "sensing/range_azimuth.png",
+    "sensing/doppler_azimuth.png",
+    "sensing/angular_tracking.png",
+    "sensing/angular_errors.png",
+    "sensing/angular_summary.json"
+  ],
+  "processing": "Saved products, detections, and track identities; no detector or tracker rerun.",
+  "evaluation": null,
+  "summary_output": "sensing/range_azimuth.png",
+  "output": "docs/assets/sensing_summary/cube_radar_azimuth_range_azimuth.png",
+  "output_sha256": "eec72dde6e76ec02b6ca3920d5e381138626547806cfbf1996f26fd53cb3bff9",
+  "plotting_source_sha256": {
+    "generator/figures/summary/sensing.py": "0866c47e1189f22189dbc854e1c16599729d252bd416c54fb2787e197130bb85",
+    "generator/figures/summary/saved_sensing.py": "e3c98eff30a9d8c76e9348703e08fba18ea93ae5295c2d842141d9c3fd8277a0",
+    "shared/sensing/plotting/figures.py": "16085dc9aeedecab0a52b39f976eb4c2fff76428ba998312912d29862d01ddf5",
+    "shared/sensing/plotting/cartesian.py": "4a9aac0d95529b1ef7ef80866639fb1812c550f48999140fdd29bf5a5b7e778f",
+    "shared/sensing/angular.py": "b8cb56d0cf2bae43e6d1645f6b3569edfb37e40b78730333667aed8f15c4bd32",
+    "shared/sensing/plotting/style.py": "75ee8b43dfb33bfab173e1d96ad47bead7ce73e00260232f51ced2d4242a2fe0"
+  },
+  "command": [
+    "python",
+    "-m",
+    "generator.figures.summary.saved_sensing",
+    "scenarios/sensing/cube_radar/azimuth",
+    "--output",
+    "analysis/scenario-figures/azimuth",
+    "--figure",
+    "angles"
+  ],
+  "reproduction_command": "python -m generator.figures.summary.saved_sensing scenarios/sensing/cube_radar/azimuth --output analysis/scenario-figures/azimuth --figure angles",
+  "image": "cube_radar_azimuth_range_azimuth.png",
+  "sha256": "eec72dde6e76ec02b6ca3920d5e381138626547806cfbf1996f26fd53cb3bff9",
+  "tutorial_scenario": "scenarios/sensing/cube_radar/azimuth/scenario.yaml",
+  "tutorial_scenario_sha256": "1bbf0b452445ab9bb944cc8fcf2a4e8daeea7c5b6e0e28cd6c06ab6980ca077c",
+  "execution_scenario": "scenarios/sensing/cube_radar/azimuth/scenario.yaml",
+  "execution_scenario_sha256": "1bbf0b452445ab9bb944cc8fcf2a4e8daeea7c5b6e0e28cd6c06ab6980ca077c",
+  "parsed_configuration_sha256": "1f818d352c709b004a91d8f243980dbab1fd08632a3d00000c60b923b30ede39",
+  "configuration_comparison": "The execution and tutorial YAML documents were compared in full and are identical after parsing. Prepared-run resources remain external to the published figure.",
+  "acquisition_git_sha": "fcc65affd49402b12a598b36b54f9f77e6f3b36f",
+  "rendering_git_sha": "dfd4fcbc28e1aee7781209aa7f02b4b765321fb1",
+  "path_convention": "Repository-relative source paths. The source recording is external evidence and is not shipped.",
+  "license_spdx": "GPL-3.0-only",
+  "public_receipt_scope": "Figure, scenario, settings and scientific provenance; historical execution locations and internal campaign records are omitted.",
+  "source_receipt_sha256": "cfd866913fbb4499f491c23e9013f8607a501b6b4ad049c46cdcfdcd402e58dc"
+}

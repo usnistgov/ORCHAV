@@ -17,6 +17,7 @@ from shared.frames.sionna_metadata import (
     SIONNA_INTERACTION_DIFFRACTION,
     SIONNA_INTERACTION_DIFFUSE,
     SIONNA_INTERACTION_REFRACTION,
+    SIONNA_INTERACTION_SENSING,
     SIONNA_INTERACTION_SPECULAR,
     SIONNA_INVALID_OBJECT_ID,
 )
@@ -95,7 +96,11 @@ def _material_lookup(scene: Any, used_ids: np.ndarray) -> dict[Any, MaterialInfo
 
 def _material_interaction_mask(interactions: np.ndarray, obj_ids: np.ndarray) -> np.ndarray:
     """Return real interactions whose scene object can be looked up."""
-    return (interactions > 0) & (obj_ids != SIONNA_INVALID_OBJECT_ID)
+    return (
+        (interactions > 0)
+        & (interactions != SIONNA_INTERACTION_SENSING)
+        & (obj_ids != SIONNA_INVALID_OBJECT_ID)
+    )
 
 
 def _material_info_for_object_id(
@@ -167,17 +172,30 @@ def materials_per_bounce(scene: Any, paths: Any) -> MaterialMapping:
             diffraction_paths = int(
                 np.count_nonzero(first_bounce_types == SIONNA_INTERACTION_DIFFRACTION)
             )
-            known_non_los = specular_paths + diffuse_paths + refraction_paths + diffraction_paths
+            sensing_paths = int(np.count_nonzero(first_bounce_types == SIONNA_INTERACTION_SENSING))
+            known_non_los = (
+                specular_paths
+                + diffuse_paths
+                + refraction_paths
+                + diffraction_paths
+                + sensing_paths
+            )
             los_paths = int(num_rx * num_tx * num_paths - known_non_los)
 
             logger.debug("   LoS paths: %d", los_paths)
             logger.debug("   Specular paths: %d", specular_paths)
             logger.debug("   Diffuse paths: %d", diffuse_paths)
+            logger.debug("   Sensing-first paths: %d", sensing_paths)
             if _sionna_12:
                 logger.debug("   Refraction paths: %d", refraction_paths)
                 logger.debug("   Diffraction paths: %d", diffraction_paths)
             total = (
-                los_paths + specular_paths + diffuse_paths + refraction_paths + diffraction_paths
+                los_paths
+                + specular_paths
+                + diffuse_paths
+                + refraction_paths
+                + diffraction_paths
+                + sensing_paths
             )
             logger.debug("   Total paths: %d", total)
 
@@ -192,6 +210,12 @@ def materials_per_bounce(scene: Any, paths: Any) -> MaterialMapping:
                 depth_indices, path_indices = np.nonzero(pair_mask)
                 for depth_idx, path_idx in zip(depth_indices, path_indices):
                     obj_id = pair_obj_ids[depth_idx, path_idx]
+                    if (
+                        interactions[depth_idx, rx_idx, tx_idx, path_idx]
+                        == SIONNA_INTERACTION_SENSING
+                    ):
+                        pair_materials[int(path_idx)].append(dict(NO_MATERIAL))
+                        continue
                     pair_materials[int(path_idx)].append(
                         _material_info_for_object_id(id2mat, obj_id)
                     )

@@ -4,7 +4,7 @@ from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -15,6 +15,13 @@ from visualizer.src.services.session_service import (
     WorkspaceSnapshot,
     WorkspaceSnapshotSummary,
 )
+
+
+@pytest.fixture(autouse=True)
+def restore_launch_environment():
+    """Launch APIs mutate os.environ directly, including initially absent keys."""
+    with patch.dict(os.environ):
+        yield
 
 
 def _startup_workspace_selection(
@@ -92,6 +99,101 @@ def test_parse_cli_args_accepts_data_mode_and_grpc_port_overrides():
 
     assert args.data_mode == "live_grpc"
     assert args.grpc_port == 50052
+
+
+def test_sensing_frames_only_is_opt_in():
+    assert not startup_workflow.parse_cli_args([]).sensing_frames_only
+    args = startup_workflow.parse_cli_args(["--scenario", "demo", "--sensing-frames-only"])
+    assert args.sensing_frames_only
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--sensing-frames-only"],
+        ["--scenario", "demo", "--sensing-frames-only", "--benchmark", "1"],
+        ["--scenario", "demo", "--sensing-frames-only", "--render-frames", "out"],
+        ["--scenario", "demo", "--sensing-frames-only", "--author"],
+        ["--scenario", "demo", "--sensing-frames-only", "--data-mode", "live_grpc"],
+        ["--scenario", "demo", "--sensing-frames-only", "--data-mode", "remote_hdf5"],
+        ["--scenario", "demo", "--sensing-frames-only", "--grpc-port", "50052"],
+    ],
+)
+def test_sensing_frames_only_rejects_incompatible_launches(argv):
+    with pytest.raises(SystemExit):
+        startup_workflow.parse_cli_args(argv)
+
+
+@pytest.mark.parametrize("resume", [False, True])
+def test_sensing_only_startup_defers_preload_through_scenario_and_workspace(monkeypatch, resume):
+    calls = []
+    selection = _startup_workspace_selection("workspace.json", "demo", frame=17, camera=None)
+    args = startup_workflow.parse_cli_args(["--scenario", "demo", "--sensing-frames-only"])
+    viz = SimpleNamespace(
+        use_preload_mode=True,
+        _deferred_init=lambda **kwargs: None,
+        cancel_startup_preload=lambda: calls.append("cancel-preload"),
+        cancel_scheduled_update=lambda: calls.append("cancel-update"),
+        sensing_playback=SimpleNamespace(),
+    )
+
+    def open_scenario(*args, **kwargs):
+        assert not viz.use_preload_mode
+        assert not kwargs["autorun_initial_frame"]
+        calls.append("open")
+        return SimpleNamespace(succeeded=True, scenario_root=Path("demo"), frame_source_ready=True)
+
+    def restore(*args, **kwargs):
+        assert not viz.use_preload_mode
+        calls.append("restore")
+        return True
+
+    def enable(**kwargs):
+        assert viz.use_preload_mode
+        assert callable(kwargs["on_error"])
+        calls.append("enable-filter")
+
+    viz.open_scenario = open_scenario
+    viz.session_service = SimpleNamespace(load_session=restore)
+    viz.sensing_playback.enable_for_startup = enable
+    monkeypatch.setattr(
+        startup_workflow, "select_startup_workspace", lambda _: selection if resume else None
+    )
+    startup_workflow._complete_cli_startup(
+        args=args,
+        app=SimpleNamespace(processEvents=lambda: None),
+        reporter=SimpleNamespace(note=lambda _: None, task=lambda _: nullcontext()),
+        viz=viz,
+    )
+    assert calls == [
+        "cancel-preload",
+        "open",
+        *(["restore"] if resume else []),
+        "cancel-update",
+        "enable-filter",
+    ]
+
+
+@pytest.mark.parametrize("ready", [False, True])
+def test_sensing_only_startup_rejects_missing_frames_or_sensing_panel(ready):
+    args = startup_workflow.parse_cli_args(
+        ["--scenario", "demo", "--sensing-frames-only", "--no-resume"]
+    )
+    viz = SimpleNamespace(
+        use_preload_mode=True,
+        _deferred_init=lambda **kwargs: None,
+        cancel_startup_preload=lambda: None,
+        sensing_playback=None if ready else object(),
+        open_scenario=lambda *a, **k: SimpleNamespace(succeeded=True, frame_source_ready=ready),
+    )
+    with pytest.raises(startup_workflow._CliScenarioOpenError, match="saved sensing results"):
+        startup_workflow._complete_cli_startup(
+            args=args,
+            app=SimpleNamespace(processEvents=lambda: None),
+            reporter=SimpleNamespace(note=lambda _: None, task=lambda _: nullcontext()),
+            viz=viz,
+        )
+    assert not viz.use_preload_mode
 
 
 @pytest.mark.parametrize(
@@ -777,7 +879,10 @@ def test_exec_with_deferred_cli_startup_reraises_callback_failure(monkeypatch):
 
 def test_run_visualizer_cli_exits_one_for_handled_scenario_failure(monkeypatch):
     calls = []
-    app = SimpleNamespace(processEvents=lambda: calls.append("process-events"))
+    app = SimpleNamespace(
+        processEvents=lambda: calls.append("process-events"),
+        setProperty=lambda key, value: calls.append((key, value)),
+    )
     viz = SimpleNamespace(show=lambda: calls.append("show"))
     reporter = SimpleNamespace(note=lambda message: calls.append(("note", message)))
     monkeypatch.setattr(startup_workflow, "QApplication", lambda _argv: app)
@@ -1081,7 +1186,7 @@ def test_complete_cli_startup_without_scenario_opens_selected_workspace_once(mon
     assert [call for call in calls if call[0] == "scenario"] == [
         (
             "scenario",
-            (str(selection.scenario_root),),
+            (str(selection.scenario_reference),),
             {"pending_camera": None, "autorun_initial_frame": False},
         )
     ]
@@ -1131,3 +1236,38 @@ def test_complete_cli_startup_preserves_benchmark_scenario_semantics(monkeypatch
     ) in calls
     assert "cancel-update" in calls
     assert ("benchmark", {}) in calls
+
+
+def test_sensing_entrypoints_are_hidden_when_package_is_not_shipped(monkeypatch):
+    from visualizer.src.app import startup_workflow
+
+    monkeypatch.setattr(startup_workflow.importlib.util, "find_spec", lambda _: None)
+    help_text = startup_workflow.build_argument_parser().format_help()
+    assert "--fusion-results" not in help_text
+    assert "--sensing-volume" not in help_text
+
+
+def test_select_startup_workspace_keeps_yaml_variants_separate(tmp_path):
+    scenario_root = tmp_path / "example"
+    scenario_root.mkdir()
+    default = scenario_root / "scenario.yaml"
+    personal = scenario_root / "scenario_personal.yaml"
+    for config in (default, personal):
+        config.write_text("name: example", encoding="utf-8")
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    for config, frame, modified in ((default, 3, 200), (personal, 17, 100)):
+        path = sessions / (config.stem + ".json")
+        _write_startup_workspace(path, scenario_root, frame=frame)
+        payload = json.loads(path.read_text())
+        payload["scenario_config_path"] = str(config)
+        path.write_text(json.dumps(payload))
+        os.utime(path, (modified, modified))
+    selected = startup_workflow.select_startup_workspace(str(personal), session_dir=sessions)
+    assert selected.frame == 17
+    assert selected.scenario_reference == personal.resolve()
+    selected_default = startup_workflow.select_startup_workspace(
+        str(scenario_root), session_dir=sessions
+    )
+    assert selected_default.frame == 3
+    assert selected_default.scenario_reference == default.resolve()

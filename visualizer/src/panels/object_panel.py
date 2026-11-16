@@ -10,14 +10,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt, QTimer
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
-    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -25,8 +24,10 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QToolButton,
     QTreeView,
     QVBoxLayout,
+    QWidget,
 )
 
 from shared.logging import get_logger
@@ -90,6 +91,20 @@ class ObjectManagementPanel(BasePanel):
             """Store the callback used to maintain compact checkbox columns."""
             super().__init__(parent)
             self._resize_callback = resize_callback
+            self._layout_settler = QTimer(self)
+            self._layout_settler.setSingleShot(True)
+            self._layout_settler.timeout.connect(self.executeDelayedItemsLayout)
+
+        def settle_layout(self):
+            """Finish hidden-tree layouts before accessibility reads its cells.
+
+            Qt defers hidden item-view layout. If a later AT-SPI cell state
+            query is the first caller of visualRect(), that layout can reset
+            the accessible-cell cache and delete the interface being read.
+            Coalesce a tree-owned callback after model/header updates settle;
+            deletion of the tree also cancels the callback.
+            """
+            self._layout_settler.start(0)
 
         def resizeEvent(self, event):
             """Forward resize events, then rebalance the tree columns."""
@@ -138,32 +153,66 @@ class ObjectManagementPanel(BasePanel):
         visibility_layout.addStretch()
         layout.addLayout(visibility_layout)
 
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(separator)
+        geographic = QWidget()
+        geo_layout = QVBoxLayout(geographic)
+        geo_layout.setContentsMargins(0, 0, 0, 0)
+        toggle = QToolButton()
+        toggle.setText("Geographic layers")
+        toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        toggle.setArrowType(Qt.RightArrow)
+        toggle.setCheckable(True)
+        toggle.setAutoRaise(True)
+        geo_layout.addWidget(toggle)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(18, 0, 0, 0)
+        from ..scene.geographic_layers import LAYER_LABELS
 
-        list_header = QLabel("OBJECT LIST")
-        list_header.setStyleSheet("font-weight: bold; font-size: 13px; margin: 5px 0px;")
-        layout.addWidget(list_header)
+        for layer, label in LAYER_LABELS.items():
+            checkbox = QCheckBox(label)
+            checkbox.setToolTip(
+                "Display only. Ray-tracing geometry and saved results stay unchanged."
+            )
+            checkbox.toggled.connect(
+                lambda checked, key=layer: self._set_geographic_layer(key, checked)
+            )
+            self.widgets[f"geo_{layer}"] = checkbox
+            content_layout.addWidget(checkbox)
+        map_layer = getattr(getattr(self.parent, "scene_service", None), "map_layer", None)
+        if map_layer is not None:
+            from .map_layer_controls import MapLayerControls
+
+            self.widgets["osm_map"] = MapLayerControls(map_layer, content)
+            content_layout.addWidget(self.widgets["osm_map"])
+            map_layer.changed.connect(self.sync_geographic_layers)
+        content.hide()
+        toggle.toggled.connect(content.setVisible)
+        toggle.toggled.connect(
+            lambda expanded: toggle.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        )
+        geo_layout.addWidget(content)
+        self.widgets["geographic_layers"] = geographic
+        self.widgets["geographic_layers_toggle"] = toggle
+        geographic.hide()
+        layout.addWidget(geographic)
 
         header_layout = QHBoxLayout()
         self.widgets["header_label"] = QLabel("Loaded 0 objects")
-        self.widgets["header_label"].setStyleSheet("font-weight: bold; font-size: 12px;")
+        self.widgets["header_label"].setProperty("role", "secondary")
         header_layout.addWidget(self.widgets["header_label"])
 
         self.widgets["target_count_label"] = QLabel("")
         self.widgets["target_count_label"].setProperty("role", "secondary")
-        self.widgets["target_count_label"].setStyleSheet("font-size: 11px;")
         header_layout.addWidget(self.widgets["target_count_label"])
 
         header_layout.addStretch()
         layout.addLayout(header_layout)
 
         search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("Search:"))
         self.widgets["object_search_filter"] = QLineEdit()
-        self.widgets["object_search_filter"].setPlaceholderText("Type to search objects...")
+        self.widgets["object_search_filter"].setPlaceholderText("Find an object or material…")
+        self.widgets["object_search_filter"].setAccessibleName("Find objects")
+        self.widgets["object_search_filter"].setClearButtonEnabled(True)
         self.widgets["object_search_filter"].textChanged.connect(self._on_search_changed)
         search_layout.addWidget(self.widgets["object_search_filter"], 1)
         layout.addLayout(search_layout)
@@ -176,20 +225,18 @@ class ObjectManagementPanel(BasePanel):
         filter_layout.addWidget(self.widgets["group_by_combo"])
 
         filter_layout.addStretch()
-        layout.addLayout(filter_layout)
-
-        # Large scenes default to collapsed groups, so expose explicit tree controls.
-        tree_controls = QHBoxLayout()
-        expand_all_btn = QPushButton("Expand All")
+        # Keep tree navigation beside grouping; large scenes start collapsed.
+        expand_all_btn = QPushButton("Expand")
+        expand_all_btn.setToolTip("Expand all object groups")
         expand_all_btn.clicked.connect(lambda: self._expand_all_groups())
 
-        collapse_all_btn = QPushButton("Collapse All")
+        collapse_all_btn = QPushButton("Collapse")
+        collapse_all_btn.setToolTip("Collapse all object groups")
         collapse_all_btn.clicked.connect(lambda: self._collapse_all_groups())
 
-        tree_controls.addWidget(expand_all_btn)
-        tree_controls.addWidget(collapse_all_btn)
-        tree_controls.addStretch()
-        layout.addLayout(tree_controls)
+        filter_layout.addWidget(expand_all_btn)
+        filter_layout.addWidget(collapse_all_btn)
+        layout.addLayout(filter_layout)
 
         tree = self._ObjectTreeView(self._apply_object_column_widths)
         tree.setModel(self.proxy_model)
@@ -219,6 +266,35 @@ class ObjectManagementPanel(BasePanel):
             badge_parts.append(f"{rx_count} RX")
         self.widgets["target_count_label"].setText(" | ".join(badge_parts))
 
+    def _set_geographic_layer(self, layer: str, visible: bool) -> None:
+        service = getattr(getattr(self.parent, "scene_service", None), "geographic_layers", None)
+        if service is not None:
+            service.set_visible(layer, visible)
+
+    def cleanup(self) -> None:
+        """Retire this non-QObject panel's scene notification before Qt teardown."""
+        service = getattr(getattr(self.parent, "scene_service", None), "map_layer", None)
+        if service is not None and "osm_map" in self.widgets:
+            service.changed.disconnect(self.sync_geographic_layers)
+            self.widgets.pop("osm_map")
+
+    def sync_geographic_layers(self) -> None:
+        from ..scene.geographic_layers import LAYER_LABELS
+
+        group = self.widgets.get("geographic_layers")
+        if group is None:
+            return
+        service = getattr(getattr(self.parent, "scene_service", None), "geographic_layers", None)
+        states = service.snapshot() if service is not None else {}
+        map_layer = getattr(getattr(self.parent, "scene_service", None), "map_layer", None)
+        group.setVisible(bool(states) or bool(map_layer is not None and map_layer.available))
+        for layer in LAYER_LABELS:
+            checkbox = self.widgets[f"geo_{layer}"]
+            checkbox.setVisible(layer in states)
+            checkbox.blockSignals(True)
+            checkbox.setChecked(states.get(layer, True))
+            checkbox.blockSignals(False)
+
     def populate_object_list(
         self,
         mesh_entries,
@@ -230,6 +306,7 @@ class ObjectManagementPanel(BasePanel):
     ):
         """Load scene entries into the tree model and apply search/grouping state."""
         self._mesh_entries = list(mesh_entries)
+        self.sync_geographic_layers()
         self._target_entries = list(target_entries)
         self._tx_entries = list(tx_entries or [])
         self._rx_entries = list(rx_entries or [])
@@ -561,6 +638,7 @@ class ObjectManagementPanel(BasePanel):
         tree.setColumnWidth(1, material_width)
         tree.setColumnWidth(2, label_width)
         tree.setColumnWidth(3, highlight_width)
+        tree.settle_layout()
 
     def _entry_identity_key(self, entry: Dict[str, Any]) -> str:
         """Build a stable fallback key for scene entries whose dict identity changes."""
@@ -735,13 +813,13 @@ class ObjectManagementPanel(BasePanel):
         focus_camera_action = menu.addAction("Focus Camera")
 
         selected = menu.exec(tree.viewport().mapToGlobal(pos))
-        if selected == properties_action:
+        if properties_action is not None and selected == properties_action:
             self._show_node_properties_dialog(entry)
         elif selected == focus_camera_action:
             self._focus_camera_on_entry(entry)
 
     def _focus_camera_on_entry(self, entry: Dict[str, Any]) -> None:
-        """Focus the camera on the selected object by adjusting the lookat target."""
+        """Aim at an object through the same transition used for deliberate views."""
         import numpy as np
 
         renderer = getattr(self.parent, "renderer", None)
@@ -765,6 +843,14 @@ class ObjectManagementPanel(BasePanel):
 
         if not isinstance(cam, CameraState):
             return
+        controller = getattr(self.parent, "camera_controller", None)
+        tools = controller.presentation() if controller is not None else None
+        if tools is not None:
+            if tools.exporting:
+                return
+            tools.prepare()
+            # Object-table focus is a one-time view, independent of actor tracking.
+            tools.free_camera()
         renderer.set_camera_state(
             CameraState(
                 eye=cam.eye, lookat=tuple(float(x) for x in center), up=cam.up, fov_deg=cam.fov_deg

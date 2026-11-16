@@ -10,12 +10,9 @@ import numpy as np
 
 from shared.logging import get_logger
 
-logger = get_logger("orchav")
+from .smoothing import smooth_coverage_values
 
-# Gaussian smoothing sigma values (in grid-cell units).
-# A 5 m grid with sigma=1.5 smooths across ~15 m; sigma=3.0 across ~30 m.
-COVERAGE_SMOOTH_SIGMA_LINEAR = 1.5
-COVERAGE_SMOOTH_SIGMA_CUBIC = 3.0
+logger = get_logger("orchav")
 
 
 class CoverageMeshCache:
@@ -218,40 +215,7 @@ class CoverageMeshCache:
         Returns:
             Smoothed values array (same shape as input, NaN mask preserved).
         """
-        if interpolation in ("none", "nearest"):
-            return values_2d
-
-        sigma = {
-            "linear": COVERAGE_SMOOTH_SIGMA_LINEAR,
-            "cubic": COVERAGE_SMOOTH_SIGMA_CUBIC,
-        }.get(interpolation)
-        if sigma is None:
-            return values_2d
-
-        try:
-            from scipy.ndimage import gaussian_filter
-        except ImportError:
-            logger.warning("scipy not available for smoothing, returning raw values")
-            return values_2d
-
-        # Non-finite-aware normalized convolution:
-        # 1. Replace invalid values with 0, build a weight mask (1=valid, 0=invalid)
-        # 2. Smooth both arrays with the same kernel
-        # 3. Divide smoothed values by smoothed weights (avoids NaN bleed)
-        # 4. Restore the original invalid-cell mask as NaN
-        invalid_mask = ~np.isfinite(values_2d)
-        filled = np.where(invalid_mask, 0.0, values_2d)
-        weights = (~invalid_mask).astype(np.float64)
-
-        smoothed_values = gaussian_filter(filled, sigma=sigma)
-        smoothed_weights = gaussian_filter(weights, sigma=sigma)
-
-        # Avoid division by zero in fully-NaN regions
-        with np.errstate(invalid="ignore", divide="ignore"):
-            result = np.where(smoothed_weights > 1e-10, smoothed_values / smoothed_weights, 0.0)
-
-        result[invalid_mask] = np.nan
-        return result
+        return smooth_coverage_values(values_2d, interpolation)
 
     def log_stats(self):
         """Log current cache statistics."""

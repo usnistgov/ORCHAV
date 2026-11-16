@@ -66,3 +66,45 @@ def test_real_time_mode_hides_fixed_fps_selector(qtbot):
 
     assert panel.playback_mode() is PlaybackMode.REAL_TIME
     assert panel.widgets["playback_fps_spinbox"].isHidden() is True
+
+
+def test_sparse_context_does_not_leak_into_dense_recording(qtbot):
+    panel = AnimationControlsPanel(None, settings=_MemorySettings())
+    group = panel.create_panel()
+    qtbot.addWidget(group)
+    panel.update_total_steps(3)
+    panel.set_recorded_frame_context([63, 127, 191])
+    assert panel.widgets["frame_input"].maximum() == 3
+    label = panel.widgets["recorded_frame_context"]
+    assert not label.isHidden() and "3 saved frames" in label.text()
+    panel.set_recorded_frame_context(list(range(192)))
+    assert label.isHidden()
+
+
+def test_finite_live_endpoint_does_not_request_out_of_range(qtbot):
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QWidget
+
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    calls = []
+    from unittest.mock import Mock
+
+    from shared.frames.providers import DataProvider
+
+    provider = Mock(spec=DataProvider)
+    provider.info = SimpleNamespace(total_frames=50)
+    parent.frame_source = SimpleNamespace(
+        provider=provider,
+        list_frames=lambda: list(range(50)),
+        request_frame=lambda i: calls.append(i) or True,
+    )
+    panel = AnimationControlsPanel(parent, settings=_MemorySettings())
+    panel.is_online_mode = panel.auto_request_frames = True
+    assert not panel.request_frame_if_needed(50)
+    assert not calls
+    assert panel.request_frame_if_needed(49)
+    provider.info.total_frames = -1
+    assert panel.request_frame_if_needed(50)
+    assert calls == [50]

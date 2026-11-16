@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import colorsys
+import math
 from contextlib import nullcontext
-from dataclasses import replace
+from dataclasses import fields, replace
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
 from uuid import UUID
@@ -17,6 +19,7 @@ from ..renderers.protocol import renderer_capabilities
 from ..types.render_payloads import (
     LineSetPayload,
     MaterialPayload,
+    MeshPayload,
     OrientationFramePayload,
     PointCloudPayload,
     TextLabelPayload,
@@ -188,13 +191,142 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
         self.router = router_factory()
         self._owned_objects: dict[str, RenderObject] = {}
         self._actor_positions: dict[UUID, np.ndarray] = {}
+        self._pov_hidden_actor: UUID | None = None
         self._snapshot: OverlaySnapshot | None = None
         self._pending_snapshot: OverlaySnapshot | None = None
         self._desired_gizmo_actor_id: UUID | None = None
         self._closed = False
+        self._paper_mode = False
+        self._appearance_settings = None
+        self._appearance_service = getattr(visualizer, "appearance_preset_service", None)
+        self._paper_edges: dict[str, LineSetPayload] = {}
+        self._work_plane_scene_bounds: dict[str, tuple[MeshPayload, np.ndarray]] = {}
+        self._node_color_mode = "role"
+        self._node_colors: dict[UUID, tuple[float, float, float]] = {}
+        self._ordinary_background = list(
+            getattr(visualizer, "current_background_color", (0.1, 0.1, 0.1, 1.0))
+        )
+        self._ordinary_unlit = (
+            self.renderer.get_color_fidelity_mode()
+            if callable(getattr(self.renderer, "get_color_fidelity_mode", None))
+            else False
+        )
         self._flush_timer = QTimer(host_widget)
         self._flush_timer.setSingleShot(True)
         self._flush_timer.timeout.connect(self._flush_pending_snapshot)
+
+    def set_node_color_mode(self, mode: str) -> None:
+        """Color valid radios by role or by their Tx-then-Rx document order."""
+        if mode not in {"role", "individual"}:
+            raise ValueError("Node color mode must be role or individual")
+        self._node_color_mode = mode
+        snapshot = self._pending_snapshot or self._snapshot
+        if snapshot is not None:
+            self.reconcile(snapshot)
+
+    def set_paper_mode(self, enabled: bool) -> None:
+        """Use a white background and unlit, texture-preserving scene materials."""
+        self._paper_mode = bool(enabled)
+        self.renderer.set_background_color(
+            [1.0, 1.0, 1.0, 1.0] if enabled else self._ordinary_background
+        )
+        self.renderer.set_color_fidelity_mode(True if enabled else self._ordinary_unlit)
+        snapshot = self._pending_snapshot or self._snapshot
+        if snapshot is not None:
+            self.reconcile(snapshot)
+        self.renderer.request_redraw()
+
+    def set_appearance_preset(self, name: str) -> str:
+        """Apply the shared look recipe locally, preserving the main viewport."""
+        from ..materials.view_styles import PRESETS
+        from ..services.appearance_preset_service import AppearancePresetService
+
+        service = self._appearance_service
+        if service is None:
+            raise ValueError("Appearance presets are unavailable until the renderer is ready.")
+        if name in PRESETS:
+            data, notice = AppearancePresetService.recipe(name, service.capture())
+        else:
+            data, notice = service.load(name), ""
+        with self.renderer.batch_updates():
+            loaded = AppearancePresetService.apply_renderer_settings(
+                self.renderer, data, matching_sky=name == "Detailed"
+            )
+            self.renderer.set_background_color(data["background"])
+            self._paper_mode = bool(data["outlines"])
+            self._appearance_settings = data
+        snapshot = self._pending_snapshot or self._snapshot
+        if snapshot is not None:
+            self.reconcile(snapshot)
+        self.renderer.request_redraw()
+        return (
+            notice if loaded else "Saved sky is unavailable; the current environment was retained."
+        )
+
+    def apply_scenario_defaults(self, defaults, scenario_root):
+        """Use the ordinary visualizer's camera and portable appearance recipe."""
+        from pathlib import Path
+
+        from shared.scenarios.paths import PathPolicy
+
+        from ..app.scenario_presentation import apply_camera_pose, load_appearance_recipe
+        from ..services.appearance_preset_service import AppearancePresetService
+
+        policy = PathPolicy(Path(scenario_root) / "scenario.yaml")
+        data = load_appearance_recipe(defaults, policy, self._appearance_service)
+        if data is not None:
+            from ..materials.texture_policy import set_texture_maps_override
+
+            set_texture_maps_override(data["textures"])
+            AppearancePresetService.apply_renderer_settings(self.renderer, data)
+            self.renderer.set_background_color(data["background"])
+            self._appearance_settings = data
+            self._paper_mode = bool(data["outlines"])
+        if renderer_capabilities(self.renderer).dusk_lighting:
+            self.renderer.configure_dusk(defaults.get("dusk"))
+        apply_camera_pose(self.renderer, defaults)
+        snapshot = self._pending_snapshot or self._snapshot
+        if snapshot is not None:
+            self.reconcile(snapshot)
+
+    def _styled_object(self, obj, *, material_type="", ground=False, target=False):
+        from ..materials.view_styles import styled_surface
+
+        data = self._appearance_settings
+        original = obj.material_payload
+        if data is None or original is None or original.shader_variant == "reference_image":
+            return obj
+        material, color_source = styled_surface(
+            original,
+            obj.payload.color_source,
+            data["surface"],
+            data["unlit"],
+            material_type,
+            target,
+            ground,
+        )
+        if not data["textures"]:
+            material = replace(
+                material,
+                **{
+                    field.name: None
+                    for field in fields(material)
+                    if field.name == "texture_path" or field.name.endswith("_map_path")
+                },
+            )
+        material = replace(material, base_color=(*material.base_color[:3], data["alpha"]))
+        payload = obj.payload
+        if payload.color_source != color_source:
+            payload = replace(payload, color_source=color_source)
+        return replace(
+            obj,
+            material=material,
+            payload=payload,
+            metadata={
+                **obj.metadata,
+                "geometry_signature": (obj.metadata.get("geometry_signature"), color_source),
+            },
+        )
 
     @property
     def widget(self) -> QWidget:
@@ -217,6 +349,15 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
         """Switch Orbit/Fly through the renderer-lifetime interaction route."""
 
         return self.router.set_camera_mode(mode)
+
+    def set_pov_hidden_actor(self, actor_id: UUID | None) -> None:
+        """Hide only the POV subject without changing authored visibility."""
+        if self._pov_hidden_actor == actor_id:
+            return
+        self._pov_hidden_actor = actor_id
+        snapshot = self._pending_snapshot or self._snapshot
+        if snapshot is not None:
+            self.reconcile(snapshot)
 
     def begin_drag_plane(self, z: float, source: HitResult) -> None:
         self.router.begin_drag_plane(z, source)
@@ -297,9 +438,51 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
             enabled=snapshot.work_plane_visible,
         )
         desired: dict[str, RenderObject] = {}
+        for guide in snapshot.guides:
+            object_id = stable_scene_renderer_id(snapshot.document_id, "guide:" + guide.name)
+            desired[object_id] = RenderObject(
+                id=object_id,
+                payload=guide.payload,
+                material=MaterialPayload(base_color=guide.color, line_width=2.0),
+                metadata={
+                    "pickable": False,
+                    "surface_pickable": False,
+                    "component": "authoring_guide",
+                    "geometry_signature": (
+                        guide.name,
+                        hash(guide.payload.points.tobytes()),
+                        hash(guide.payload.lines.tobytes()),
+                    ),
+                },
+            )
         for asset in snapshot.scene_assets:
             scene_object = self._scene_object(snapshot.document_id, asset)
             desired[scene_object.id] = scene_object
+            if (
+                self._paper_mode
+                and asset.material.shader_variant != "reference_image"
+                and not asset.cache_key.startswith("osm-")
+            ):
+                from ..scene.geometry_payload_factory import extract_wireframe_payload
+
+                if asset.cache_key not in self._paper_edges:
+                    self._paper_edges[asset.cache_key] = extract_wireframe_payload(asset.payload)
+                edge_id = scene_object.id + ":paper_edges"
+                desired[edge_id] = RenderObject(
+                    id=edge_id,
+                    payload=self._paper_edges[asset.cache_key],
+                    material=MaterialPayload(base_color=(0.2, 0.2, 0.2, 0.7), line_width=0.8),
+                    metadata={
+                        "pickable": False,
+                        "depth_compare": "<=",
+                        "depth_write": False,
+                        "render_order": 1,
+                    },
+                )
+        current_assets = {asset.cache_key for asset in snapshot.scene_assets}
+        self._paper_edges = {
+            key: value for key, value in self._paper_edges.items() if key in current_assets
+        }
         if snapshot.work_plane_visible:
             work_plane = self._work_plane_object(snapshot)
             desired[work_plane.id] = work_plane
@@ -309,6 +492,20 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
         if snapshot.placement_ghost is not None and snapshot.placement_guide_start is not None:
             placement_guide = self._placement_guide_object(snapshot)
             desired[placement_guide.id] = placement_guide
+        radios = [
+            actor
+            for role in ("tx", "rx")
+            for actor in snapshot.actors
+            if actor.role.lower() == role
+        ]
+        self._node_colors = (
+            {
+                actor.actor_id: colorsys.hsv_to_rgb(index / len(radios), 0.8, 0.9)
+                for index, actor in enumerate(radios)
+            }
+            if self._node_color_mode == "individual"
+            else {}
+        )
         actor_positions: dict[UUID, np.ndarray] = {}
         for actor in snapshot.actors:
             objects = self._actor_objects(
@@ -317,8 +514,28 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                 orientation_axes_visibility=snapshot.orientation_axes_visibility,
                 look_at_visibility=snapshot.look_at_visibility,
             )
-            desired.update((obj.id, obj) for obj in objects)
-            actor_positions[actor.actor_id] = np.asarray(actor.positions, dtype=float)
+            desired.update(
+                (
+                    obj.id,
+                    (
+                        replace(obj, visibility=False)
+                        if actor.actor_id == self._pov_hidden_actor
+                        else obj
+                    ),
+                )
+                for obj in objects
+            )
+            for obj in objects:
+                if isinstance(obj.payload, MeshPayload):
+                    desired[obj.id] = self._styled_object(desired[obj.id], target=True)
+            actor_positions[actor.actor_id] = np.asarray(
+                (
+                    (actor.current_position,)
+                    if actor.current_position is not None
+                    else actor.positions
+                ),
+                dtype=float,
+            )
 
         # Geometry payload identity is the renderer's upload boundary.  Reuse
         # the prior immutable payload whenever the workspace says the
@@ -345,6 +562,21 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                 semantic_pose = obj.metadata.get("authoring_actor_pose")
                 if semantic_pose is not None:
                     self.router.sync_transform_pose(obj.id, semantic_pose)
+            silhouette = getattr(self.renderer, "set_target_silhouette", None)
+            if callable(silhouette):
+                selected = next(
+                    (
+                        a
+                        for a in snapshot.actors
+                        if a.selected and a.visible and a.target_asset is not None
+                    ),
+                    None,
+                )
+                silhouette(
+                    stable_renderer_id(snapshot.document_id, selected.actor_id, "target")
+                    if selected
+                    else None
+                )
             # Keep the redraw request inside the renderer batch so a complete
             # overlay reconciliation schedules exactly one canvas update.
             self.renderer.request_redraw()
@@ -353,11 +585,10 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
         self._snapshot = snapshot
         self._attach_desired_transform_gizmo(snapshot)
 
-    @staticmethod
-    def _scene_object(document_id: UUID, asset: SceneOverlayAsset) -> RenderObject:
+    def _scene_object(self, document_id: UUID, asset: SceneOverlayAsset) -> RenderObject:
         """Build one pickable base-scene mesh with stable asset identity."""
 
-        return RenderObject(
+        obj = RenderObject(
             id=stable_scene_renderer_id(document_id, asset.cache_key),
             payload=asset.payload,
             material=asset.material,
@@ -369,8 +600,10 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                 "asset_cache_key": asset.cache_key,
                 "geometry_signature": ("scene", asset.cache_key),
                 "surface_pickable": True,
+                "pickable": True,
             },
         )
+        return self._styled_object(obj, material_type=asset.material_type, ground=asset.ground)
 
     @staticmethod
     def _placement_ghost_object(snapshot: OverlaySnapshot) -> RenderObject:
@@ -435,26 +668,53 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
             },
         )
 
-    @staticmethod
-    def _work_plane_object(snapshot: OverlaySnapshot) -> RenderObject:
-        """Build a lightweight visible grid for the empty-space placement plane."""
-
+    def _work_plane_object(self, snapshot: OverlaySnapshot) -> RenderObject:
+        """Fit a metric placement grid to scene bounds with bounded line density."""
+        bounds = []
+        active = {}
+        for asset in snapshot.scene_assets:
+            cached = self._work_plane_scene_bounds.get(asset.cache_key)
+            if cached is None or cached[0] is not asset.payload:
+                vertices = asset.payload.vertices[:, :2]
+                if not len(vertices):
+                    continue
+                cached = (asset.payload, np.stack((vertices.min(0), vertices.max(0))))
+            active[asset.cache_key] = cached
+            bounds.extend(cached[1])
+        self._work_plane_scene_bounds = active
+        for actor in snapshot.actors:
+            if not actor.visible or (
+                actor.status in (ActorVisualState.INVALID, ActorVisualState.PENDING)
+                and actor.preview_provenance is PreviewProvenance.AUTHORED_DRAFT
+            ):
+                continue
+            points = actor.pending_positions or actor.positions
+            if points:
+                values = np.asarray(points)[:, :2]
+                bounds.extend((values.min(0), values.max(0)))
+            if actor.current_position is not None:
+                bounds.append(actor.current_position[:2])
         spacing = float(snapshot.grid_snap_m or 5.0)
-        half_extent = max(25.0, min(spacing * 10.0, 500.0))
-        coordinates = np.linspace(-half_extent, half_extent, 21, dtype=np.float32)
+        if bounds:
+            low, high = np.min(bounds, axis=0), np.max(bounds, axis=0)
+            padding = max(spacing, float(np.max(high - low)) * 0.05)
+            center = (low + high) * 0.5
+            half = np.maximum((high - low) * 0.5 + padding, 25.0)
+            low, high = center - half, center + half
+        else:
+            low, high = np.full(2, -50.0), np.full(2, 50.0)
+        # Display a coarser multiple on large scenes; snap precision stays exact.
+        spacing *= max(1, math.ceil(float(np.max(high - low)) / (spacing * 100)))
+        low, high = np.floor(low / spacing) * spacing, np.ceil(high / spacing) * spacing
         points: list[tuple[float, float, float]] = []
         lines: list[tuple[int, int]] = []
-        for coordinate in coordinates:
-            base = len(points)
-            points.extend(
-                (
-                    (-half_extent, float(coordinate), snapshot.work_plane_z),
-                    (half_extent, float(coordinate), snapshot.work_plane_z),
-                    (float(coordinate), -half_extent, snapshot.work_plane_z),
-                    (float(coordinate), half_extent, snapshot.work_plane_z),
-                )
-            )
-            lines.extend(((base, base + 1), (base + 2, base + 3)))
+        for axis in (0, 1):
+            for coordinate in np.arange(low[axis], high[axis] + spacing * 0.5, spacing):
+                start, end = [*low, snapshot.work_plane_z], [*high, snapshot.work_plane_z]
+                start[axis] = end[axis] = float(coordinate)
+                base = len(points)
+                points.extend((tuple(start), tuple(end)))
+                lines.append((base, base + 1))
         point_array = np.asarray(points, dtype=np.float32)
         return RenderObject(
             id=f"authoring:{snapshot.document_id}:work_plane",
@@ -474,7 +734,9 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                 "geometry_signature": (
                     "work_plane",
                     float(snapshot.work_plane_z),
-                    float(snapshot.grid_snap_m or 5.0),
+                    spacing,
+                    tuple(low),
+                    tuple(high),
                 ),
             },
         )
@@ -489,16 +751,24 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
     ) -> tuple[RenderObject, ...]:
         points = np.asarray(actor.positions, dtype=np.float32).reshape((-1, 3))
         current_position = np.asarray(
-            (actor.current_position if actor.current_position is not None else points[0]),
+            (
+                actor.pending_current_position
+                if actor.pending_current_position is not None
+                else actor.current_position if actor.current_position is not None else points[0]
+            ),
             dtype=np.float32,
         )
+        orientation = actor.pending_orientation_matrix or actor.orientation_matrix
         actor_pose = (
-            np.asarray(actor.orientation_matrix, dtype=float).copy()
-            if actor.orientation_matrix is not None
+            np.asarray(orientation, dtype=float).copy()
+            if orientation is not None
             else np.eye(4, dtype=float)
         )
         actor_pose[:3, 3] = current_position
         frozen_actor_pose = tuple(tuple(float(value) for value in row) for row in actor_pose)
+        rig = actor.mobility_control_rig
+        if rig is not None and actor.pending_mobility_control_rig is not None:
+            rig = actor.pending_mobility_control_rig
         controls = actor.mobility_controls
         control_points = np.asarray(
             tuple(control.position for control in controls),
@@ -512,6 +782,12 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
             else np.vstack((control_points, current_position))
         )
         color = _color(actor)
+        if actor.status not in {
+            ActorVisualState.INVALID,
+            ActorVisualState.INCOMPLETE,
+            ActorVisualState.PENDING,
+        }:
+            color = self._node_colors.get(actor.actor_id, color)
         trajectory_color = (
             _SELECTED_COLOR
             if actor.trajectory_hovered
@@ -522,6 +798,10 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
             )
         )
         trajectory_key = actor.trajectory_geometry_key or repr(actor.positions)
+        hit_points = np.asarray(actor.pending_positions, dtype=np.float32).reshape((-1, 3))
+        if not len(hit_points):
+            hit_points = points
+        hit_key = actor.pending_geometry_key or repr(hit_points)
         frame_samples_key = actor.frame_samples_geometry_key or repr(actor.frame_samples)
 
         def prefix(component: str) -> str:
@@ -625,11 +905,11 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                         },
                     )
                 )
-            if len(points) >= 2:
+            if len(hit_points) >= 2:
                 objects.append(
                     RenderObject(
                         id=prefix("trajectory_hit"),
-                        payload=_path_hit_payload(points),
+                        payload=_path_hit_payload(hit_points),
                         material=MaterialPayload(
                             base_color=(1.0, 1.0, 1.0, 0.001),
                             shader="transparent",
@@ -645,7 +925,7 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                             "interaction_role": "mobility_path",
                             "interaction_priority": 20,
                             "preview_provenance": actor.preview_provenance.value,
-                            "geometry_signature": ("path_hit", trajectory_key),
+                            "geometry_signature": ("path_hit", hit_key),
                         },
                     )
                 )
@@ -695,7 +975,7 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
             objects.append(
                 RenderObject(
                     id=prefix("trajectory_hit"),
-                    payload=PointCloudPayload(points=points),
+                    payload=PointCloudPayload(points=hit_points),
                     material=MaterialPayload(
                         base_color=(1.0, 1.0, 1.0, 0.001),
                         shader="transparent",
@@ -710,7 +990,7 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                         "interaction_role": "mobility_path",
                         "interaction_priority": 20,
                         "preview_provenance": actor.preview_provenance.value,
-                        "geometry_signature": ("observation_hit", trajectory_key),
+                        "geometry_signature": ("observation_hit", hit_key),
                     },
                 )
             )
@@ -740,7 +1020,6 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                 )
             )
 
-        rig = actor.mobility_control_rig
         if rig is not None:
             for guide in rig.guides:
                 guide_component = f"mobility_guide_{guide.key}"
@@ -1035,7 +1314,7 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                     },
                 )
             )
-        if actor.pending_mobility_control_rig is not None:
+        if actor.pending_mobility_control_rig is not None and rig is None:
             pending_rig = actor.pending_mobility_control_rig
             for guide in pending_rig.guides:
                 objects.append(
@@ -1146,8 +1425,12 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                     metadata={
                         **metadata,
                         "component": "target",
+                        "representation": actor.target_asset.representation,
+                        "metadata_source": actor.target_asset.metadata_source,
                         "asset_cache_key": actor.target_asset.cache_key,
-                        "depth_write": True,
+                        # Native proxies are translucent inspection geometry;
+                        # do not override the backend's transparent depth policy.
+                        "depth_write": actor.target_asset.representation == "mesh_material",
                         "depth_compare": "<",
                         "render_order": 0,
                         "authoring_actor_pose": frozen_actor_pose,
@@ -1156,6 +1439,34 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
                     },
                 )
             )
+        if actor.target_asset is not None:
+            asset = actor.target_asset
+            for point_id, point in zip(asset.scattering_point_ids, asset.scattering_points_local_m):
+                objects.append(
+                    RenderObject(
+                        id=prefix(f"scattering_point_{point_id}"),
+                        payload=PointCloudPayload(points=np.asarray([point], dtype=float)),
+                        material=MaterialPayload(
+                            base_color=(1.0, 0.7, 0.1, 1.0), shader="unlit", point_size=9.0
+                        ),
+                        transform=Transform(actor_pose),
+                        visibility=actor.visible,
+                        metadata={
+                            **metadata,
+                            "component": "native_scattering_point",
+                            "scattering_point_id": point_id,
+                            "representation": asset.representation,
+                            "metadata_source": asset.metadata_source,
+                            "visibility_evidence": "not_recorded",
+                            "pickable": False,
+                            "geometry_signature": (
+                                "native_scattering_point",
+                                asset.cache_key,
+                                point_id,
+                            ),
+                        },
+                    )
+                )
         if actor.pending_target_asset is not None:
             pending_actor_pose = (
                 np.asarray(actor.pending_orientation_matrix, dtype=float).copy()
@@ -1319,8 +1630,31 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
             )
         return tuple(objects)
 
+    def show_ground_map(self, bounds) -> None:
+        """Frame a geographic map without exposing native camera objects to the workspace."""
+        from ..types.camera_state import CameraState
+
+        self._flush_pending_snapshot()
+        if not getattr(self, "_ground_map_camera_active", False):
+            self._ground_map_camera = self.renderer.get_camera_state()
+            self._ground_map_camera_active = True
+        west, south, east, north = bounds
+        x, y = (west + east) / 2, (south + north) / 2
+        aspect = max(0.25, self.widget.width() / max(1, self.widget.height()))
+        height = max(east - west, north - south) * 1.6 * max(1.0, 1 / aspect)
+        self.renderer.set_camera_state(CameraState((x, y, height), (x, y, 0), (0, 1, 0), 45))
+        self.renderer.request_redraw()
+
+    def leave_ground_map(self) -> None:
+        self.router.end_drag()
+        state = getattr(self, "_ground_map_camera", None)
+        if getattr(self, "_ground_map_camera_active", False) and state is not None:
+            self.renderer.set_camera_state(state)
+            self.renderer.request_redraw()
+        self._ground_map_camera_active = False
+
     def focus_actor(self, actor_id: UUID) -> bool:
-        """Focus the camera on an actor's reconciled sample centroid."""
+        """Focus the camera on an actor's current displayed position."""
 
         self._flush_pending_snapshot()
         points = self._actor_positions.get(UUID(str(actor_id)))
@@ -1329,16 +1663,72 @@ class PygfxScenarioAuthoringViewportPort(ScenarioAuthoringViewportPort):
         return bool(self.renderer.focus_camera(points.mean(axis=0)))
 
     def fit_all(self) -> bool:
-        """Reset camera bounds when the reconciled snapshot has actors."""
+        """Fit scene and actor geometry without work-plane or label extents."""
+
+        return self._fit_preview_bounds(include_scene=True)
+
+    def fit_actors(self) -> bool:
+        """Fit available visible actors and routes, including elevated samples."""
+
+        return self._fit_preview_bounds(include_scene=False)
+
+    def _fit_preview_bounds(self, *, include_scene: bool) -> bool:
+        """Pass semantic geometry bounds through the renderer's camera API."""
+
+        bounds = self.preview_bounds(include_scene=include_scene)
+        return bool(bounds is not None and self.renderer.set_overview_camera("isometric", bounds))
+
+    def preview_bounds(self, *, include_scene: bool = True):
+        """Return shared camera bounds excluding editor decorations and guides."""
 
         self._flush_pending_snapshot()
-        if not self._actor_positions:
-            return False
-        reset = getattr(self.renderer, "reset_camera_bounds", None)
-        if not callable(reset):
-            return False
-        reset()
-        return True
+        snapshot = self._snapshot
+        if snapshot is None:
+            return None
+        bounds: list[np.ndarray] = []
+
+        def include(points: Any) -> None:
+            values = np.asarray(points, dtype=float).reshape((-1, 3))
+            if values.size:
+                bounds.extend((values.min(axis=0), values.max(axis=0)))
+
+        if include_scene:
+            for asset in snapshot.scene_assets:
+                include(asset.payload.vertices)
+        for actor in snapshot.actors:
+            if not actor.visible:
+                continue
+            # Unresolved resources may have only an origin placeholder. Such
+            # draft markers do not establish a physical actor/path extent.
+            if (
+                actor.status in (ActorVisualState.INVALID, ActorVisualState.PENDING)
+                and actor.preview_provenance is PreviewProvenance.AUTHORED_DRAFT
+            ):
+                continue
+            for points in (
+                actor.positions,
+                actor.frame_samples,
+                actor.authored_path,
+                actor.pending_positions,
+            ):
+                include(points)
+            if actor.current_position is not None:
+                include((actor.current_position,))
+            # Reuse the exact reconciled world transform of each target mesh.
+            for component in ("target", "pending_target"):
+                obj = self._owned_objects.get(
+                    stable_renderer_id(snapshot.document_id, actor.actor_id, component)
+                )
+                if obj is not None and obj.visibility:
+                    vertices = np.asarray(obj.payload.vertices, dtype=float)
+                    transform = np.asarray(obj.transform.matrix, dtype=float)
+                    include(vertices @ transform[:3, :3].T + transform[:3, 3])
+        if not bounds:
+            return None
+        low, high = np.min(bounds, axis=0), np.max(bounds, axis=0)
+        center = (low + high) / 2.0
+        extent = np.maximum(high - low, 1.0)
+        return center, extent
 
     def renderer_objects(self) -> Mapping[str, Any]:
         """Return a read-only snapshot after queued reconciliation completes."""

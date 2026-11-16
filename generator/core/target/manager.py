@@ -8,6 +8,7 @@ scene ownership and per-frame updates.
 """
 
 import os
+from contextlib import contextmanager
 from typing import Any, cast
 
 import mitsuba as mi
@@ -39,6 +40,7 @@ from .mesh import (
     _prepare_mesh_path_for_mitsuba,
     mesh_sequence_index,
 )
+from .pose import MeshPoseReference
 
 logger = get_logger(__name__)
 
@@ -79,6 +81,7 @@ class TargetManager:
         # updates when mesh_update_interval_s is configured.
         self._mesh_call_count = 0
         self.target_object = None
+        self._mesh_pose: MeshPoseReference | None = None
 
         self.material_type = target_config.material_type
         self.target_material = None
@@ -102,6 +105,13 @@ class TargetManager:
         """
         if not self.meshes:
             return 0
+        if getattr(self.config, "animated_asset", None) is not None:
+            index = int(mesh_call_count)
+            if not 0 <= index < len(self.meshes):
+                raise ValueError(
+                    f"animated target {self.config.name!r} step {index} is outside its bound timeline"
+                )
+            return index
         return mesh_sequence_index(
             len(self.meshes),
             mesh_call_count,
@@ -287,6 +297,7 @@ class TargetManager:
             candidate = SceneObject(
                 fname=scene_mesh_path, name=self.config.name, radio_material=self.target_material
             )
+            mesh_pose = MeshPoseReference(candidate)
 
             logger.debug("SceneObject created successfully")
 
@@ -321,7 +332,9 @@ class TargetManager:
             logger.debug(f"Final scaling: {candidate.scaling}")
             logger.debug(f"Final orientation: {candidate.orientation}")
 
+            mesh_pose.restore(candidate)
             self.target_object = candidate
+            self._mesh_pose = mesh_pose
             logger.info(
                 f"Created target '{self.config.name}' with mesh: {os.path.basename(mesh_path)}"
             )
@@ -362,7 +375,11 @@ class TargetManager:
                 f"Target {self.config.name!r} position update failed: no active scene object exists"
             )
         try:
-            self.target_object.position = point3f(new_position)
+            position = point3f(new_position)
+            if point_to_tuple(self.target_object.position) == point_to_tuple(position):
+                return
+            self.target_object.position = position
+            self._restore_mesh_pose()
         except Exception as exc:  # noqa: BLE001 - preserve external setter context
             raise ComputationError(
                 f"Target {self.config.name!r} position update failed for {new_position}: {exc}"
@@ -381,7 +398,10 @@ class TargetManager:
             )
         try:
             orient, engine_orientation = orientation_to_point3f_with_engine_radians(orient_tuple)
+            if point_to_tuple(self.target_object.orientation) == point_to_tuple(orient):
+                return
             self.target_object.orientation = orient
+            self._restore_mesh_pose()
             logger.debug(
                 "Updated orientation from tuple to: %s (converted to radians: %.4f, %.4f, %.4f)",
                 orient_tuple,
@@ -408,7 +428,11 @@ class TargetManager:
             return
         if self.target_object is not None:
             try:
-                self.target_object.scaling = mi.Vector3f(scale_value, scale_value, scale_value)
+                scaling = mi.Vector3f(scale_value, scale_value, scale_value)
+                if point_to_tuple(self.target_object.scaling) == point_to_tuple(scaling):
+                    return
+                self.target_object.scaling = scaling
+                self._restore_mesh_pose()
                 logger.debug("Updated scale for target %s to %.3f", self.config.name, scale_value)
             except (ValueError, TypeError, RuntimeError) as exc:
                 logger.warning(
@@ -418,12 +442,33 @@ class TargetManager:
                     exc,
                 )
 
+    def _restore_mesh_pose(self) -> None:
+        """Rebuild rigid geometry after the external pose setter updates metadata."""
+        reference = getattr(self, "_mesh_pose", None)
+        if reference is not None:
+            if getattr(self, "_pose_update_depth", 0):
+                self._mesh_pose_dirty = True
+                return
+            reference.restore(self.target_object)
+
+    @contextmanager
+    def pose_update(self):
+        """Restore reference geometry once after a complete frame's pose setters."""
+        previous_depth = getattr(self, "_pose_update_depth", 0)
+        self._pose_update_depth = previous_depth + 1
+        try:
+            yield
+        finally:
+            self._pose_update_depth = previous_depth
+        if not previous_depth and getattr(self, "_mesh_pose_dirty", False):
+            self._restore_mesh_pose()
+            self._mesh_pose_dirty = False
+
     def get_current_position(self) -> tuple[float, float, float]:
         """Get current target position"""
         if self.target_object is not None:
             try:
-                pos = cast(Any, self.target_object.position)
-                return (float(pos.x), float(pos.y), float(pos.z))
+                return point_to_tuple(self.target_object.position)
             except (AttributeError, RuntimeError) as e:
                 logger.warning(f"Error getting position: {e}")
                 return self.config.initial_position
@@ -461,9 +506,13 @@ class TargetManager:
             return self.target_object
 
         call_count = (
-            max(0, int(expected_call_count))
-            if expected_call_count is not None
-            else self._mesh_call_count
+            int(frame_idx)
+            if getattr(self.config, "animated_asset", None) is not None
+            else (
+                max(0, int(expected_call_count))
+                if expected_call_count is not None
+                else self._mesh_call_count
+            )
         )
         mesh_index = self._mesh_index_for_update_call(call_count)
         next_call_count = call_count + 1
@@ -504,6 +553,7 @@ class TargetManager:
                 name=self.config.name,
                 radio_material=self.target_material,
             )
+            mesh_pose = MeshPoseReference(candidate)
 
             previous_position = previous_target.position
             previous_scaling = previous_target.scaling
@@ -532,7 +582,9 @@ class TargetManager:
                 if previous_velocity is not None and hasattr(candidate, "velocity"):
                     candidate.velocity = previous_velocity
 
+            mesh_pose.restore(candidate)
             self.target_object = candidate
+            self._mesh_pose = mesh_pose
             self.current_mesh_idx = mesh_index
             self._mesh_call_count = next_call_count
             logger.info(
