@@ -18,7 +18,7 @@ components (MPCs). A camera moves around the scene as it switches between
 realistic, radio-material and glow views, then holds still during playback of
 the recorded motion. Pulses along the paths are slowed for visual inspection.
 
-https://github.com/user-attachments/assets/12392243-90c8-4697-be55-5a6e6acc1bbf
+https://github.com/user-attachments/assets/a5323a2a-e1a5-41c9-b92e-50fa75766d85
 
 [Backup MP4: Eiffel Tower demo](../assets/visualizer/orchav_eiffel_mpc_demo.mp4) ·
 [Demo mode controls](presentation_tools.md#demo-mode)
@@ -31,7 +31,7 @@ This video shows scene appearance, channel metrics and coverage inspection
 across several examples. It includes changes to building facades and material
 rendering, channel statistics as actors move, and coverage at different heights.
 
-https://github.com/user-attachments/assets/8758b1ad-4659-47ca-8d4b-c8141bee6317
+https://github.com/user-attachments/assets/5b0d127e-bc3a-4fc9-abbf-b8a30b915a74
 
 | Time | What the video shows |
 | --- | --- |
@@ -53,7 +53,7 @@ Khalifa and a set of spatial detection trials. It illustrates target tracking,
 estimated position uncertainty, range and angle evidence, and comparisons of
 matched and missed detections.
 
-https://github.com/user-attachments/assets/9a0bcbdc-75e8-447c-b28a-5ccbec93747d
+https://github.com/user-attachments/assets/20ae98b8-a0ef-42fc-b5be-af6792563441
 
 | Time | What the video shows |
 | --- | --- |
@@ -75,7 +75,7 @@ signature for the mesh.
 At 00:14, the comparison replays with all saved MPCs visible, showing the single
 RCS return beside the mesh’s surface paths.
 
-https://github.com/user-attachments/assets/126bc63a-b932-42aa-a20f-f592f323522f
+https://github.com/user-attachments/assets/c90e0244-d974-40e5-b002-6084213e7738
 
 The panels share time and velocity axes. Power is relative to each recording’s
 fixed peak, so compare spectral shape rather than absolute received power.
